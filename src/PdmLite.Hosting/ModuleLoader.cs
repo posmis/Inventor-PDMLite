@@ -31,6 +31,7 @@ public sealed class ModuleLoader(ILogger logger)
         // Загружаем в тот же контекст, что и ядро, иначе IPdmModule из модуля
         // и из ядра окажутся разными типами (актуально для плагина внутри Inventor).
         var context = AssemblyLoadContext.GetLoadContext(typeof(IPdmModule).Assembly) ?? AssemblyLoadContext.Default;
+        RegisterFolderResolver(context, folder);
         var modules = new List<IPdmModule>();
 
         foreach (var file in Directory.EnumerateFiles(folder, AssemblyPattern).Order(StringComparer.OrdinalIgnoreCase))
@@ -49,6 +50,31 @@ public sealed class ModuleLoader(ILogger logger)
         }
 
         return modules;
+    }
+
+    private static readonly HashSet<string> ResolvedFolders = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Зависимости модулей (EF Core, Npgsql…) ищутся и в папке модулей. Без этого сборка,
+    /// которой нет в списке зависимостей приложения (.deps.json), не загрузится,
+    /// даже если файл лежит рядом.
+    /// </summary>
+    private void RegisterFolderResolver(AssemblyLoadContext context, string folder)
+    {
+        lock (ResolvedFolders)
+        {
+            if (!ResolvedFolders.Add(Path.GetFullPath(folder)))
+                return;
+        }
+
+        context.Resolving += (ctx, name) =>
+        {
+            var candidate = Path.Combine(folder, name.Name + ".dll");
+            if (!File.Exists(candidate))
+                return null;
+            logger.LogDebug("Сборка {Assembly} загружена из папки модулей", name.Name);
+            return ctx.LoadFromAssemblyPath(candidate);
+        };
     }
 
     private IEnumerable<IPdmModule> CreateModules(Assembly assembly)
