@@ -12,6 +12,11 @@ public partial class MaintenanceWindow : Window
     {
         InitializeComponent();
         DataContext = _viewModel = viewModel;
+        _viewModel.Ask = window =>
+        {
+            window.Owner = this;
+            return window.ShowDialog() == true;
+        };
         // Закрыть окно посреди операции — значит остановить её.
         Closing += (_, _) =>
         {

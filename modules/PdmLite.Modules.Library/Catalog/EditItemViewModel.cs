@@ -7,7 +7,10 @@ using PdmLite.Modules.Library.Import;
 
 namespace PdmLite.Modules.Library.Catalog;
 
-/// <summary>Карточка компонента: правка с проверкой «на лету».</summary>
+/// <summary>
+/// Карточка компонента: правка с проверкой «на лету». В режиме копии — новый компонент из того же
+/// файла (те же размеры) с другим обозначением.
+/// </summary>
 public sealed partial class EditItemViewModel : ObservableObject
 {
     private readonly LibraryItemService _service;
@@ -15,8 +18,9 @@ public sealed partial class EditItemViewModel : ObservableObject
     private readonly LibraryItemSummary _item;
     private int _checkVersion;
 
-    public EditItemViewModel(LibraryItemService service, LibraryCatalog catalog, LibraryItemSummary item)
+    public EditItemViewModel(LibraryItemService service, LibraryCatalog catalog, LibraryItemSummary item, bool duplicate = false)
     {
+        IsDuplicate = duplicate;
         _service = service;
         _catalog = catalog;
         _item = item;
@@ -29,6 +33,12 @@ public sealed partial class EditItemViewModel : ObservableObject
         _standard = item.Standard;
         _ = CheckAsync();
     }
+
+    public bool IsDuplicate { get; }
+    public string Title => IsDuplicate ? "Дублировать компонент библиотеки" : "Изменить компонент библиотеки";
+    public string CurrentHeader => IsDuplicate ? "Исходный компонент (файл будет скопирован)" : "Сейчас";
+    public string NewHeader => IsDuplicate ? "Копия" : "Новые значения";
+    public string SaveText => IsDuplicate ? "Создать копию" : "Сохранить";
 
     public string CurrentDesignation => _item.Designation;
     public string CurrentPath => _item.RelativePath;
@@ -73,13 +83,15 @@ public sealed partial class EditItemViewModel : ObservableObject
         CanSave = false;
         try
         {
-            var check = await _service.CheckEditAsync(_catalog, _item.Id, Edit);
+            var check = IsDuplicate
+                ? await _service.CheckDuplicateAsync(_catalog, _item.Id, Edit)
+                : await _service.CheckEditAsync(_catalog, _item.Id, Edit);
             if (version != _checkVersion)
                 return; // пока проверяли, пользователь продолжил печатать
             Issues = check.Issues.OrderByDescending(i => i.Severity).Select(i => new IssueViewModel(i)).ToList();
             NewPath = check.NewRelativePath;
             Standard = check.Standard;
-            CanSave = !check.HasErrors && HasChanges(check);
+            CanSave = !check.HasErrors && (IsDuplicate || HasChanges(check));
         }
         catch (Exception ex)
         {
@@ -101,7 +113,10 @@ public sealed partial class EditItemViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            await _service.ApplyEditAsync(_catalog, _item.Id, Edit);
+            if (IsDuplicate)
+                await _service.DuplicateAsync(_catalog, _item.Id, Edit);
+            else
+                await _service.ApplyEditAsync(_catalog, _item.Id, Edit);
             return null;
         }
         catch (Exception ex)

@@ -33,6 +33,13 @@
                             <TextBlock Text="Изменить…" Margin="5,0,2,0" />
                         </StackPanel>
                     </Button>
+                    <Button Style="{StaticResource Pdm.ToolButton}" Click="Duplicate_OnClick"
+                            ToolTip="Копия компонента с другим обозначением (например, другое покрытие); размеры те же">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Pdm.Icon.Cmd.LibraryAdd}" Style="{StaticResource Pdm.Icon16}" />
+                            <TextBlock Text="Дублировать…" Margin="5,0,2,0" />
+                        </StackPanel>
+                    </Button>
                     <Button Style="{StaticResource Pdm.ToolButton}" Click="Delete_OnClick" ToolTip="Удалить компонент из библиотеки">
                         <StackPanel Orientation="Horizontal">
                             <Image Source="{StaticResource Pdm.Icon.State.Error}" Style="{StaticResource Pdm.Icon16}" />
@@ -54,7 +61,7 @@
                     </Button>
                     <Rectangle Style="{StaticResource Pdm.ToolSeparator}" />
                     <Button Style="{StaticResource Pdm.ToolButton}" Click="Maintenance_OnClick"
-                            ToolTip="Служебные операции: обновление свойств PdmLite в файлах библиотеки">
+                            ToolTip="Служебные операции: свойства PdmLite в файлах библиотеки, поиск и объединение дубликатов">
                         <StackPanel Orientation="Horizontal">
                             <Image Source="{StaticResource Pdm.Icon.Cmd.Database}" Style="{StaticResource Pdm.Icon16}" />
                             <TextBlock Text="Обслуживание…" Margin="5,0,2,0" />

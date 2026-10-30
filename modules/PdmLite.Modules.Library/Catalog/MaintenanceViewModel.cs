@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PdmLite.Core.UI;
@@ -9,39 +11,61 @@ using PdmLite.UI.Shared;
 namespace PdmLite.Modules.Library.Catalog;
 
 /// <summary>
-/// Обслуживание библиотеки в два шага: «Проверить» (только чтение, список изменений) →
-/// «Применить к отмеченным» (запись после предупреждения).
+/// Обслуживание библиотеки. Каждая операция в три шага: «Проверить/Найти» (только чтение, таблица
+/// изменений) → отметки → окно со всем списком изменений и предупреждением → запись.
 /// </summary>
-public sealed partial class MaintenanceViewModel(
-    LibraryItemService service,
-    LibraryCatalog catalog,
-    IReadOnlyCollection<Guid> selectedIds,
-    int totalCount) : ObservableObject
+public sealed partial class MaintenanceViewModel : ObservableObject
 {
+    private readonly LibraryItemService _service;
+    private readonly LibraryCatalog _catalog;
+    private readonly IReadOnlyCollection<Guid> _selectedIds;
     private CancellationTokenSource? _cts;
 
-    public int SelectedCount => selectedIds.Count;
-    public int TotalCount => totalCount;
-    public bool HasSelection => selectedIds.Count > 0;
+    public MaintenanceViewModel(LibraryItemService service, LibraryCatalog catalog, IReadOnlyCollection<Guid> selectedIds, int totalCount)
+    {
+        _service = service;
+        _catalog = catalog;
+        _selectedIds = selectedIds;
+        TotalCount = totalCount;
+        _onlySelected = selectedIds.Count > 0;
 
-    public ObservableCollection<DiffRow> Rows { get; } = [];
+        // Изменения — по строке на свойство, сгруппированы по файлу компонента.
+        Changes = new ListCollectionView(ChangeRows);
+        Changes.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ChangeRow.Owner)));
+        Duplicates = new ListCollectionView(DuplicateRows);
+        Duplicates.GroupDescriptions.Add(new PropertyGroupDescription(nameof(DuplicateRow.Owner)));
+    }
 
-    [ObservableProperty] private bool _onlySelected = selectedIds.Count > 0;
+    /// <summary>Показ окна подтверждения (задаёт окно обслуживания).</summary>
+    public Func<ConfirmChangesWindow, bool> Ask { get; set; } = w => w.ShowDialog() == true;
+
+    public int SelectedCount => _selectedIds.Count;
+    public int TotalCount { get; }
+    public bool HasSelection => _selectedIds.Count > 0;
+
+    [ObservableProperty] private bool _onlySelected;
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(CheckCommand), nameof(ApplyCommand), nameof(StopCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CheckCommand), nameof(ApplyCommand), nameof(StopCommand), nameof(FindDuplicatesCommand), nameof(MergeCommand))]
     private bool _isRunning;
+
+    [ObservableProperty] private double _progress;
+    [ObservableProperty] private string _progressText = "";
+
+    /// <summary>Файлы изменялись — каталог стоит перечитать.</summary>
+    public bool Changed { get; private set; }
+
+    // ---------- Свойства в файлах ----------
+
+    public ObservableCollection<ChangeRow> ChangeRows { get; } = [];
+    public ICollectionView Changes { get; }
+    private readonly List<DiffRow> _diffs = [];
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ApplyCommand))]
     private int _toApply;
 
-    [ObservableProperty] private double _progress;
-    [ObservableProperty] private string _progressText = "";
     [ObservableProperty] private string _summary = "Нажмите «Проверить»: файлы будут только прочитаны, ничего не изменится.";
-
-    /// <summary>Файлы изменялись — каталог стоит перечитать.</summary>
-    public bool Changed { get; private set; }
 
     private bool CanCheck() => !IsRunning;
 
@@ -49,42 +73,57 @@ public sealed partial class MaintenanceViewModel(
     [RelayCommand(CanExecute = nameof(CanCheck))]
     private Task CheckAsync() => RunAsync("Проверка", async (progress, ct) =>
     {
-        var diffs = await service.DiagnosePropertiesAsync(catalog, OnlySelected ? selectedIds : null, progress, ct);
-        Rows.Clear();
+        var diffs = await _service.DiagnosePropertiesAsync(_catalog, OnlySelected ? _selectedIds : null, progress, ct);
+        ChangeRows.Clear();
+        _diffs.Clear();
         foreach (var diff in diffs.Where(d => d.NeedsUpdate || d.Error is not null))
-            Rows.Add(new DiffRow(diff, UpdateCount));
+        {
+            var owner = new DiffRow(diff, UpdateCount);
+            _diffs.Add(owner);
+            if (diff.Error is not null)
+                ChangeRows.Add(new ChangeRow(owner, "Файл не прочитан", diff.Error, ""));
+            else
+                foreach (var change in diff.Changes)
+                    ChangeRows.Add(new ChangeRow(owner, change.Property, Show(change.Current), Show(change.Expected)));
+        }
         UpdateCount();
 
         var needs = diffs.Count(d => d.NeedsUpdate);
         var errors = diffs.Count(d => d.Error is not null);
-        Summary = $"Проверено: {diffs.Count}. В порядке: {diffs.Count - needs - errors}. Нужно обновить: {needs}."
+        Summary = $"Проверено файлов: {diffs.Count}. В порядке: {diffs.Count - needs - errors}. Нужно обновить: {needs}"
+                  + $" (изменений свойств: {diffs.Where(d => d.NeedsUpdate).Sum(d => d.Changes.Count)})."
                   + (errors > 0 ? $" Не прочитаны: {errors}." : "")
-                  + (needs > 0 ? " Посмотрите список, снимите отметки с лишнего и нажмите «Применить к отмеченным»." : "");
+                  + (needs > 0 ? " Ниже — каждое изменение: свойство, что сейчас в файле и что будет записано." : "");
     });
 
     private bool CanApply() => !IsRunning && ToApply > 0;
 
-    /// <summary>Шаг 2: запись — только отмеченные, после предупреждения.</summary>
+    /// <summary>Шаг 2: окно со всеми изменениями, затем запись — только отмеченные файлы.</summary>
     [RelayCommand(CanExecute = nameof(CanApply))]
     private async Task ApplyAsync()
     {
-        var ids = Rows.Where(r => r.Apply).Select(r => r.Diff.ItemId).ToList();
-        if (System.Windows.MessageBox.Show(
-                $"Будут изменены файлы библиотеки: {ids.Count}.\n\n" +
-                "• перед записью каждый файл проверяется ещё раз — если он уже в порядке, не изменяется;\n" +
-                "• перед записью делается резервная копия файла, при ошибке файл восстанавливается;\n" +
-                "• остановить можно в любой момент — обработанные файлы останутся обновлёнными.\n\n" +
-                "Продолжить?",
-                UiMessages.Caption, System.Windows.MessageBoxButton.OKCancel, System.Windows.MessageBoxImage.Warning)
-            != System.Windows.MessageBoxResult.OK)
+        var chosen = _diffs.Where(d => d.Apply).ToList();
+        var lines = chosen.SelectMany(d => d.Diff.Changes.Select(c =>
+            new ChangeLine($"{d.Designation}\n{d.Path}", c.Property, Show(c.Current), Show(c.Expected)))).ToList();
+        var totals = string.Join("; ", chosen.SelectMany(d => d.Diff.Changes).GroupBy(c => c.Property)
+            .Select(g => $"{g.Key} — в {Files(g.Count())}"));
+
+        var confirm = new ConfirmChangesWindow("Обслуживание: подтверждение записи",
+            $"Будут изменены свойства в {Files(chosen.Count)} библиотеки ({lines.Count} изменений).",
+            totals,
+            "Перед записью каждый файл проверяется ещё раз (если уже в порядке — не изменяется) и копируется; при ошибке " +
+            "файл восстанавливается из копии. Остановить можно в любой момент — обработанные файлы останутся обновлёнными.",
+            "Записать в файлы", ("Компонент", "Свойство", "Сейчас в файле", "Будет записано"), lines);
+        if (!Ask(confirm))
             return;
 
         RewriteResult? result = null;
-        await RunAsync("Запись свойств", async (progress, ct) => result = await service.RewritePropertiesAsync(catalog, ids, progress, ct));
+        await RunAsync("Запись свойств", async (progress, ct) =>
+            result = await _service.RewritePropertiesAsync(_catalog, chosen.Select(d => d.Diff.ItemId).ToList(), progress, ct));
         Changed = true;
         if (result is not null)
         {
-            var text = $"Обновлено: {result.Updated}. Уже были в порядке: {result.UpToDate}.";
+            var text = $"Обновлено файлов: {result.Updated}. Уже были в порядке: {result.UpToDate}.";
             if (result.Failed.Count > 0)
                 UiMessages.Error(text + $"\n\nНе удалось ({result.Failed.Count}):\n" + string.Join("\n", result.Failed.Take(20)));
             else
@@ -94,6 +133,97 @@ public sealed partial class MaintenanceViewModel(
         // Повторная проверка: в списке остаётся только то, что ещё не в порядке.
         await CheckAsync();
     }
+
+    private void UpdateCount() => ToApply = _diffs.Count(d => d.Apply);
+
+    // ---------- Дубликаты ----------
+
+    public ObservableCollection<DuplicateRow> DuplicateRows { get; } = [];
+    public ICollectionView Duplicates { get; }
+    private readonly List<DuplicateGroupRow> _groups = [];
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(MergeCommand))]
+    private int _toMerge;
+
+    [ObservableProperty] private string _duplicatesSummary =
+        "Нажмите «Найти дубликаты»: ищутся компоненты с одинаковым файлом и с обозначениями, которые отличаются только " +
+        "пробелами, знаками или регистром. Ничего не изменится, пока вы не подтвердите объединение.";
+
+    [RelayCommand(CanExecute = nameof(CanCheck))]
+    private Task FindDuplicatesAsync() => RunAsync("Поиск дубликатов", async (_, ct) =>
+    {
+        var groups = await _service.FindDuplicatesAsync(_catalog, ct);
+        DuplicateRows.Clear();
+        _groups.Clear();
+        foreach (var group in groups)
+        {
+            var owner = new DuplicateGroupRow(group, UpdateMergeCount);
+            _groups.Add(owner);
+            foreach (var row in owner.Rows)
+                DuplicateRows.Add(row);
+        }
+        UpdateMergeCount();
+        DuplicatesSummary = groups.Count == 0
+            ? "Дубликатов не найдено."
+            : $"Найдено групп: {groups.Count}. В каждой выберите, какой компонент оставить (по умолчанию — тот, что стоит в сборках " +
+              "библиотеки, иначе самый ранний), остальные будут удалены, а сборки библиотеки перевязаны на оставленный.";
+    });
+
+    private bool CanMerge() => !IsRunning && ToMerge > 0;
+
+    [RelayCommand(CanExecute = nameof(CanMerge))]
+    private async Task MergeAsync()
+    {
+        var chosen = _groups.Where(g => g.Merge).ToList();
+        var lines = new List<ChangeLine>();
+        foreach (var group in chosen)
+        {
+            var keep = group.Kept;
+            foreach (var row in group.Rows.Where(r => r != keep))
+                lines.Add(new ChangeLine($"{row.Designation}\n{row.Path}",
+                    row.UsedIn > 0 ? $"Удалить; перевязать сборок: {row.UsedIn}" : "Удалить",
+                    row.Designation, $"{keep.Designation}\n{keep.Path}"));
+        }
+
+        var confirm = new ConfirmChangesWindow("Обслуживание: объединение дубликатов",
+            $"Будет удалено компонентов: {lines.Count} (групп: {chosen.Count}).",
+            "Сборки библиотеки, где стоит удаляемый компонент, будут перевязаны на оставляемый.",
+            "Сборки проектов не изменяются: при открытии в Inventor ссылка на удалённый файл будет подменена оставленным " +
+            "компонентом — после этого сохраните сборку. Удалённые файлы не восстанавливаются.",
+            "Объединить", ("Удаляется", "Действие", "Было", "Вместо него — оставляемый"), lines);
+        if (!Ask(confirm))
+            return;
+
+        var failed = new List<string>();
+        await RunAsync("Объединение", async (progress, ct) =>
+        {
+            for (var i = 0; i < chosen.Count; i++)
+            {
+                var group = chosen[i];
+                progress.Report((i, chosen.Count, group.Kept.Designation));
+                try
+                {
+                    await _service.MergeDuplicatesAsync(group.Kept.Entry.Item.Id,
+                        group.Rows.Where(r => r != group.Kept).Select(r => r.Entry.Item.Id).ToList(), ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    failed.Add($"{group.Kept.Designation}: {ex.Message}");
+                }
+            }
+        });
+        Changed = true;
+        if (failed.Count > 0)
+            UiMessages.Error("Не удалось объединить:\n" + string.Join("\n", failed));
+        else
+            UiMessages.Info($"Объединено групп: {chosen.Count}.");
+        await FindDuplicatesAsync();
+    }
+
+    private void UpdateMergeCount() => ToMerge = _groups.Count(g => g.Merge);
+
+    // ---------- Общее ----------
 
     private bool CanStop() => IsRunning;
 
@@ -115,24 +245,29 @@ public sealed partial class MaintenanceViewModel(
         }
         catch (OperationCanceledException)
         {
-            Summary = $"{title}: остановлено.";
+            ProgressText = $"{title}: остановлено.";
         }
         catch (Exception ex)
         {
-            Summary = $"{title}: ошибка — {ex.Message}";
+            UiMessages.Error($"{title}: ошибка.", ex);
         }
         finally
         {
             IsRunning = false;
-            ProgressText = "";
+            Progress = 0;
+            if (!ProgressText.EndsWith("остановлено."))
+                ProgressText = "";
             _cts.Dispose();
             _cts = null;
         }
     }
 
-    private void UpdateCount() => ToApply = Rows.Count(r => r.Apply);
+    private static string Show(string? value) => string.IsNullOrEmpty(value) ? "(нет)" : value;
+
+    private static string Files(int count) => count % 10 == 1 && count % 100 != 11 ? $"{count} файле" : $"{count} файлах";
 }
 
+/// <summary>Файл компонента: отметка «обновить».</summary>
 public sealed partial class DiffRow : ObservableObject
 {
     private readonly Action _changed;
@@ -154,11 +289,62 @@ public sealed partial class DiffRow : ObservableObject
     public string Designation => Diff.Designation;
     public string Path => Diff.RelativePath;
     public string Icon => Diff.Error is null ? IconKeys.Warning : IconKeys.Error;
+    public string CountText => Diff.Error is null ? $"изменений: {Diff.Changes.Count}" : "не прочитан";
+}
 
-    /// <summary>«Свойство: было → станет», по строке на свойство.</summary>
-    public string ChangesText => Diff.Error is not null
-        ? $"Не прочитан: {Diff.Error}"
-        : string.Join("\n", Diff.Changes.Select(c => $"{c.Property}: {Show(c.Current)} → {Show(c.Expected)}"));
+/// <summary>Одно изменение свойства в файле.</summary>
+public sealed record ChangeRow(DiffRow Owner, string Property, string Current, string Expected);
 
-    private static string Show(string? value) => string.IsNullOrEmpty(value) ? "(нет)" : $"«{value}»";
+/// <summary>Группа дубликатов: отметка «объединить» и выбор оставляемого.</summary>
+public sealed partial class DuplicateGroupRow : ObservableObject
+{
+    private readonly Action _changed;
+
+    public DuplicateGroupRow(DuplicateGroup group, Action changed)
+    {
+        Group = group;
+        _changed = changed;
+        Rows = group.Items.Select(e => new DuplicateRow(this, e)).ToList();
+        // Оставить по умолчанию: стоит в сборках библиотеки, иначе самый ранний.
+        var keep = Rows.OrderByDescending(r => r.UsedIn).ThenBy(r => r.Entry.CreatedAt).First();
+        keep.Keep = true;
+    }
+
+    public DuplicateGroup Group { get; }
+    public IReadOnlyList<DuplicateRow> Rows { get; }
+    public string Reason => Group.Reason;
+    public DuplicateRow Kept => Rows.Single(r => r.Keep);
+
+    [ObservableProperty] private bool _merge = true;
+
+    partial void OnMergeChanged(bool value) => _changed();
+
+    internal void Choose(DuplicateRow row)
+    {
+        foreach (var other in Rows.Where(r => r != row))
+            other.Keep = false;
+    }
+}
+
+/// <summary>Компонент в группе дубликатов.</summary>
+public sealed partial class DuplicateRow(DuplicateGroupRow owner, DuplicateEntry entry) : ObservableObject
+{
+    public DuplicateGroupRow Owner => owner;
+    public DuplicateEntry Entry => entry;
+    public string Designation => entry.Item.Designation;
+    public string Path => entry.Item.RelativePath;
+    public int UsedIn => entry.UsedIn;
+    public string Created => entry.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
+    public string GroupName => owner.GetHashCode().ToString();
+
+    [ObservableProperty] private bool _keep;
+
+    partial void OnKeepChanged(bool value)
+    {
+        if (value)
+            owner.Choose(this);
+        OnPropertyChanged(nameof(Action));
+    }
+
+    public string Action => Keep ? "Оставить" : "Удалить";
 }

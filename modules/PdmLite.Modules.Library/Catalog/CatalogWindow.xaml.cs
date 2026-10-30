@@ -45,6 +45,18 @@ public partial class CatalogWindow : Window
             await _viewModel.OnEditedAsync();
     }
 
+    private async void Duplicate_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is not { Selected: { } row, Catalog: { } catalog })
+        {
+            UiMessages.Info("Выделите компонент, который нужно скопировать.");
+            return;
+        }
+        var editor = new EditItemWindow(new EditItemViewModel(_viewModel.Service, catalog, row.Item, duplicate: true)) { Owner = this };
+        if (editor.ShowDialog() == true)
+            await _viewModel.OnEditedAsync();
+    }
+
     private async void Delete_OnClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel.Selected is { } row)

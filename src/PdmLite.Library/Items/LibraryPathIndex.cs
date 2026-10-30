@@ -73,17 +73,29 @@ public sealed class LibraryPathIndex
             : null;
     }
 
-    /// <summary>Старые пути из журнала изменений (<c>edit</c>: before.RelativePath).</summary>
+    /// <summary>
+    /// Старые пути из журнала: изменение (<c>edit</c>: before.RelativePath) и объединение
+    /// дубликатов (<c>merge</c>: путь удалённого → оставленный компонент).
+    /// </summary>
     public static IEnumerable<(string OldPath, Guid Id)> MovesFromLog(IEnumerable<LibraryLogEntry> log)
     {
-        foreach (var entry in log.Where(e => e is { Action: "edit", ItemId: not null, Details: not null }).OrderBy(e => e.At))
+        foreach (var entry in log.Where(e => e is { Action: "edit" or "merge", ItemId: not null, Details: not null }).OrderBy(e => e.At))
         {
             string? before = null, after = null;
             try
             {
                 using var json = JsonDocument.Parse(entry.Details!);
-                before = Read(json.RootElement, "before");
-                after = Read(json.RootElement, "after");
+                if (entry.Action == "merge")
+                {
+                    before = json.RootElement.TryGetProperty("RelativePath", out var removed) && removed.ValueKind == JsonValueKind.String
+                        ? removed.GetString()
+                        : null;
+                }
+                else
+                {
+                    before = Read(json.RootElement, "before");
+                    after = Read(json.RootElement, "after");
+                }
             }
             catch (JsonException)
             {

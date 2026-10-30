@@ -40,6 +40,13 @@ public sealed record PropertyDiff(Guid ItemId, string Designation, string Relati
 /// <summary>Итог обновления свойств: проверено, записано, уже в порядке, ошибки.</summary>
 public sealed record RewriteResult(int Checked, int Updated, int UpToDate, IReadOnlyList<string> Failed);
 
+/// <summary>Компонент в группе возможных дубликатов.</summary>
+/// <param name="UsedIn">В скольких сборках библиотеки он стоит.</param>
+public sealed record DuplicateEntry(LibraryItemSummary Item, int UsedIn, DateTime CreatedAt);
+
+/// <summary>Компоненты, которые, вероятно, одно и то же.</summary>
+public sealed record DuplicateGroup(string Reason, IReadOnlyList<DuplicateEntry> Items);
+
 /// <summary>Новые значения карточки компонента.</summary>
 /// <param name="ManualStandard">Стандарт вручную; <c>null</c> — распознаётся из обозначения.</param>
 public sealed record LibraryItemEdit(string Designation, LibraryItemKind Kind, string? Manufacturer, int? CategoryId, string? ManualStandard = null);
@@ -75,8 +82,7 @@ public sealed class LibraryItemService(
         await using var db = database.CreateContext();
         var items = (await db.LibraryItems.AsNoTracking().ToListAsync(ct).ConfigureAwait(false))
             .OrderBy(i => i.Designation, NaturalComparer.Instance).ToList();
-        return items.Select(i => new LibraryItemSummary(i.Id, i.Designation, i.Kind, i.DocumentType, i.Standard, i.Manufacturer,
-            i.CategoryId, catalog.Get(i.CategoryId)?.Path ?? "?", i.RelativePath, i.Version, i.ModifiedAt, i.ModifiedBy, i.StandardIsManual)).ToList();
+        return items.Select(i => Summary(i, catalog)).ToList();
     }
 
     /// <summary>Текущие и прежние пути компонентов — для подстановки ненайденных ссылок в сборках.</summary>
@@ -85,7 +91,7 @@ public sealed class LibraryItemService(
         await using var db = database.CreateContext();
         var items = await db.LibraryItems.AsNoTracking().Select(i => new { i.Id, i.RelativePath, i.Designation })
             .ToListAsync(ct).ConfigureAwait(false);
-        var edits = await db.LibraryLog.AsNoTracking().Where(e => e.Action == "edit" && e.ItemId != null)
+        var edits = await db.LibraryLog.AsNoTracking().Where(e => (e.Action == "edit" || e.Action == "merge") && e.ItemId != null)
             .ToListAsync(ct).ConfigureAwait(false);
         return new LibraryPathIndex(items.Select(i => (i.Id, i.RelativePath, i.Designation)), LibraryPathIndex.MovesFromLog(edits));
     }
@@ -395,6 +401,240 @@ public sealed class LibraryItemService(
             TryDelete(backup);
         }
     }
+
+    // ---------- Дублирование ----------
+
+    /// <summary>Проверка копии компонента с новыми значениями (обозначение должно отличаться).</summary>
+    public async Task<LibraryItemEditCheck> CheckDuplicateAsync(LibraryCatalog catalog, Guid sourceId, LibraryItemEdit edit, CancellationToken ct = default)
+    {
+        await using var db = database.CreateContext();
+        var source = await db.LibraryItems.AsNoTracking().SingleAsync(i => i.Id == sourceId, ct).ConfigureAwait(false);
+        var storage = storageFactory();
+        var placement = LibraryRules.Place(catalog, storage, edit.Designation, edit.Kind, edit.Manufacturer, edit.CategoryId,
+            Path.GetExtension(source.RelativePath), edit.ManualStandard);
+
+        var issues = new List<ImportIssue>();
+        if (!properties.IsAvailable)
+            issues.Add(new ImportIssue(ImportSeverity.Error, $"Нет доступа к свойствам файлов Inventor: {properties.UnavailableReason}"));
+        issues.AddRange(placement.Issues);
+        if (placement.Designation.Length > 0)
+        {
+            var key = DesignationNormalizer.ToKey(placement.Designation);
+            var other = await db.LibraryItems.AsNoTracking().Where(i => i.DesignationKey == key)
+                .Select(i => i.Designation).FirstOrDefaultAsync(ct).ConfigureAwait(false);
+            if (other is not null)
+                issues.Add(new ImportIssue(ImportSeverity.Error,
+                    key == source.DesignationKey ? "Измените обозначение: у копии оно должно быть своё." : $"В библиотеке уже есть «{other}»."));
+        }
+        if (placement.RelativePath is { } path && File.Exists(storage.GetFullPath(path)))
+            issues.Add(new ImportIssue(ImportSeverity.Error, $"В папке библиотеки уже есть файл {path}."));
+        if (!File.Exists(storage.GetFullPath(source.RelativePath)))
+            issues.Add(new ImportIssue(ImportSeverity.Error, $"Нет файла исходного компонента: {source.RelativePath}."));
+
+        return new LibraryItemEditCheck(issues, placement.RelativePath, placement.Designation, placement.Standard);
+    }
+
+    /// <summary>
+    /// Копия компонента (тот же файл — те же размеры) с новым обозначением и свойствами, например
+    /// с другим покрытием. Возвращает Id нового компонента.
+    /// </summary>
+    public async Task<Guid> DuplicateAsync(LibraryCatalog catalog, Guid sourceId, LibraryItemEdit edit, CancellationToken ct = default)
+    {
+        var check = await CheckDuplicateAsync(catalog, sourceId, edit, ct).ConfigureAwait(false);
+        if (check.HasErrors)
+            throw new InvalidOperationException(string.Join(" ", check.Issues.Where(i => i.Severity == ImportSeverity.Error).Select(i => i.Message)));
+
+        var storage = storageFactory();
+        var user = Environment.UserName;
+        var category = catalog.Get(edit.CategoryId)!;
+        var manufacturer = string.IsNullOrWhiteSpace(edit.Manufacturer) ? null : edit.Manufacturer.Trim();
+
+        await using var db = database.CreateContext();
+        var source = await db.LibraryItems.AsNoTracking().SingleAsync(i => i.Id == sourceId, ct).ConfigureAwait(false);
+        var componentIds = await db.LibraryItemReferences.Where(r => r.AssemblyId == sourceId).Select(r => r.ComponentId)
+            .ToListAsync(ct).ConfigureAwait(false);
+
+        var id = Guid.NewGuid();
+        var copied = storage.CopyIn(storage.GetFullPath(source.RelativePath), check.NewRelativePath!);
+        try
+        {
+            LibraryStorage.ClearReadOnly(copied);
+            await properties.WriteAsync(copied, LibraryProperties.For(check.CanonicalDesignation, edit.Kind, check.Standard, manufacturer, category.Path, id), ct)
+                .ConfigureAwait(false);
+            LibraryStorage.MakeReadOnly(copied);
+            var (hash, size) = await LibraryStorage.HashAsync(copied, ct).ConfigureAwait(false);
+            var now = DateTime.UtcNow;
+
+            db.LibraryItems.Add(new LibraryItem
+            {
+                Id = id,
+                CategoryId = category.Id,
+                Kind = edit.Kind,
+                DocumentType = source.DocumentType,
+                Designation = check.CanonicalDesignation,
+                DesignationKey = DesignationNormalizer.ToKey(check.CanonicalDesignation),
+                Standard = check.Standard,
+                StandardIsManual = edit.Kind == LibraryItemKind.Standard && LibraryRules.NormalizeStandard(edit.ManualStandard) is not null,
+                Manufacturer = manufacturer,
+                RelativePath = check.NewRelativePath!,
+                FileHash = hash,
+                FileSize = size,
+                Version = 1,
+                CreatedAt = now,
+                CreatedBy = user,
+                ModifiedAt = now,
+                ModifiedBy = user,
+                Versions =
+                [
+                    new LibraryItemVersion
+                    {
+                        Version = 1, RelativePath = check.NewRelativePath!, FileHash = hash, FileSize = size,
+                        CreatedAt = now, CreatedBy = user, Comment = $"Копия «{source.Designation}»",
+                    },
+                ],
+                References = componentIds.Select(cid => new LibraryItemReference { AssemblyId = id, ComponentId = cid }).ToList(),
+            });
+            db.LibraryLog.Add(new LibraryLogEntry
+            {
+                At = now,
+                User = user,
+                Action = "duplicate",
+                ItemId = id,
+                Details = JsonSerializer.Serialize(new { from = source.Designation, fromId = source.Id, designation = check.CanonicalDesignation, path = check.NewRelativePath }),
+            });
+            await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            logger.LogInformation("Компонент скопирован: {From} → {To}", source.Designation, check.CanonicalDesignation);
+            return id;
+        }
+        catch
+        {
+            TryDelete(copied);
+            throw;
+        }
+    }
+
+    // ---------- Дубликаты ----------
+
+    /// <summary>
+    /// Ищет компоненты, которые, вероятно, одно и то же: одинаковый файл или обозначения, отличающиеся
+    /// только пробелами, знаками препинания и регистром. Только чтение.
+    /// </summary>
+    public async Task<IReadOnlyList<DuplicateGroup>> FindDuplicatesAsync(LibraryCatalog catalog, CancellationToken ct = default)
+    {
+        await using var db = database.CreateContext();
+        var items = await db.LibraryItems.AsNoTracking().ToListAsync(ct).ConfigureAwait(false);
+        var usedIn = (await db.LibraryItemReferences.AsNoTracking().ToListAsync(ct).ConfigureAwait(false))
+            .GroupBy(r => r.ComponentId).ToDictionary(g => g.Key, g => g.Count());
+
+        // Объединение в группы по любому из признаков (система непересекающихся множеств).
+        var parent = items.ToDictionary(i => i.Id, i => i.Id);
+        Guid Root(Guid id) => parent[id] == id ? id : parent[id] = Root(parent[id]);
+        var reasons = new Dictionary<Guid, HashSet<string>>();
+        void Join(IEnumerable<LibraryItem> same, string reason)
+        {
+            var list = same.ToList();
+            if (list.Count < 2)
+                return;
+            foreach (var other in list.Skip(1))
+                parent[Root(other.Id)] = Root(list[0].Id);
+            foreach (var item in list)
+                (reasons.TryGetValue(item.Id, out var r) ? r : reasons[item.Id] = []).Add(reason);
+        }
+
+        foreach (var group in items.GroupBy(i => LooseKey(i.Designation)).Where(g => g.Key.Length > 0))
+            Join(group, "обозначения отличаются только пробелами, знаками или регистром");
+        var byHash = items.SelectMany(i => new[] { i.FileHash, i.SourceHash }.OfType<string>().Distinct().Select(h => (Hash: h, Item: i)))
+            .GroupBy(x => x.Hash);
+        foreach (var group in byHash)
+            Join(group.Select(x => x.Item).DistinctBy(i => i.Id), "одинаковый файл");
+
+        return items.Where(i => reasons.ContainsKey(i.Id))
+            .GroupBy(i => Root(i.Id))
+            .Select(g => new DuplicateGroup(
+                string.Join("; ", g.SelectMany(i => reasons[i.Id]).Distinct()),
+                g.OrderBy(i => i.Designation, NaturalComparer.Instance)
+                    .Select(i => new DuplicateEntry(Summary(i, catalog), usedIn.GetValueOrDefault(i.Id), i.CreatedAt)).ToList()))
+            .OrderBy(g => g.Items[0].Item.Designation, NaturalComparer.Instance)
+            .ToList();
+    }
+
+    /// <summary>Ключ для поиска дубликатов: только буквы и цифры (без пробелов, знаков, регистра).</summary>
+    public static string LooseKey(string designation) =>
+        new(DesignationNormalizer.ToKey(designation).Where(char.IsLetterOrDigit).ToArray());
+
+    /// <summary>
+    /// Объединяет дубликаты: сборки библиотеки перевязываются на оставляемый компонент, лишние
+    /// удаляются (файл и запись). Путь удалённого запоминается — сборки проектов, где он стоял,
+    /// при открытии в Inventor получат оставленный компонент.
+    /// </summary>
+    public async Task MergeDuplicatesAsync(Guid keepId, IReadOnlyCollection<Guid> removeIds, CancellationToken ct = default)
+    {
+        if (removeIds.Contains(keepId))
+            throw new ArgumentException("Оставляемый компонент не может быть в списке удаляемых.", nameof(removeIds));
+
+        var storage = storageFactory();
+        foreach (var removeId in removeIds)
+        {
+            ct.ThrowIfCancellationRequested();
+            await using var db = database.CreateContext();
+            var keep = await db.LibraryItems.SingleAsync(i => i.Id == keepId, ct).ConfigureAwait(false);
+            var remove = await db.LibraryItems.SingleAsync(i => i.Id == removeId, ct).ConfigureAwait(false);
+            if (keep.DocumentType != remove.DocumentType)
+                throw new InvalidOperationException($"«{remove.Designation}» и «{keep.Designation}»: деталь нельзя объединить со сборкой.");
+
+            var keepFull = storage.GetFullPath(keep.RelativePath);
+            var removeFull = storage.GetFullPath(remove.RelativePath);
+            if (!File.Exists(keepFull))
+                throw new InvalidOperationException($"Нет файла оставляемого компонента: {keep.RelativePath}.");
+
+            var backups = new List<(string Path, string Backup)>();
+            try
+            {
+                // Сборки библиотеки: ссылки в файлах и состав в базе — на оставляемый компонент.
+                await RelinkAssembliesAsync(db, storage, removeId, removeFull, keepFull, backups, ct).ConfigureAwait(false);
+                var references = await db.LibraryItemReferences.Where(r => r.ComponentId == removeId).ToListAsync(ct).ConfigureAwait(false);
+                foreach (var reference in references)
+                {
+                    db.LibraryItemReferences.Remove(reference);
+                    if (!await db.LibraryItemReferences.AnyAsync(r => r.AssemblyId == reference.AssemblyId && r.ComponentId == keepId, ct).ConfigureAwait(false))
+                        db.LibraryItemReferences.Add(new LibraryItemReference { AssemblyId = reference.AssemblyId, ComponentId = keepId });
+                }
+
+                db.LibraryItems.Remove(remove);
+                db.LibraryLog.Add(new LibraryLogEntry
+                {
+                    At = DateTime.UtcNow,
+                    User = Environment.UserName,
+                    Action = "merge",
+                    ItemId = keepId,
+                    Details = JsonSerializer.Serialize(new { remove.Designation, remove.RelativePath, mergedId = removeId, into = keep.Designation }),
+                });
+                await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            }
+            catch
+            {
+                foreach (var (path, backup) in backups)
+                    TryRestore(backup, path);
+                throw;
+            }
+            finally
+            {
+                foreach (var (_, backup) in backups)
+                    TryDelete(backup);
+            }
+
+            if (File.Exists(removeFull) && !SamePath(removeFull, keepFull))
+            {
+                LibraryStorage.Delete(removeFull);
+                storage.RemoveEmptyFolders(Path.GetDirectoryName(removeFull)!);
+            }
+            logger.LogInformation("Дубликат {Removed} объединён с {Kept}", remove.Designation, keep.Designation);
+        }
+    }
+
+    private static LibraryItemSummary Summary(LibraryItem i, LibraryCatalog catalog) =>
+        new(i.Id, i.Designation, i.Kind, i.DocumentType, i.Standard, i.Manufacturer, i.CategoryId, catalog.Get(i.CategoryId)?.Path ?? "?",
+            i.RelativePath, i.Version, i.ModifiedAt, i.ModifiedBy, i.StandardIsManual);
 
     /// <summary>Удаляет компонент: файл и запись в базе. Нельзя, если он входит в сборку библиотеки.</summary>
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)

@@ -7,7 +7,7 @@
         xmlns:ui="clr-namespace:PdmLite.UI.Shared;assembly=PdmLite.UI.Shared"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance local:EditItemViewModel}"
-        Title="Изменить компонент библиотеки" Width="640" SizeToContent="Height" ResizeMode="NoResize"
+        Title="{Binding Title}" Width="640" SizeToContent="Height" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
 
     <Window.Resources>
@@ -26,12 +26,12 @@
 
     <DockPanel Margin="12">
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
-            <Button Content="Сохранить" IsDefault="True" Click="Save_OnClick" Margin="0,0,8,0" IsEnabled="{Binding CanSave}" />
+            <Button Content="{Binding SaveText}" IsDefault="True" Click="Save_OnClick" Margin="0,0,8,0" IsEnabled="{Binding CanSave}" />
             <Button Content="Отмена" IsCancel="True" />
         </StackPanel>
 
         <StackPanel>
-            <TextBlock Text="Сейчас" Style="{StaticResource Pdm.Text.Section}" Margin="0,0,0,4" />
+            <TextBlock Text="{Binding CurrentHeader}" Style="{StaticResource Pdm.Text.Section}" Margin="0,0,0,4" />
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="130" />
@@ -47,7 +47,7 @@
                 <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding CurrentPath, Mode=OneWay}" Style="{StaticResource Pdm.Text.Value}" />
             </Grid>
 
-            <TextBlock Text="Новые значения" Style="{StaticResource Pdm.Text.Section}" Margin="0,12,0,6" />
+            <TextBlock Text="{Binding NewHeader}" Style="{StaticResource Pdm.Text.Section}" Margin="0,12,0,6" />
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="130" />
