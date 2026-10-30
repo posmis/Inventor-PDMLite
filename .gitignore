@@ -1,0 +1,31 @@
+# Build
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+publish/
+*.nupkg
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.userprefs
+*.rsuser
+
+# Tests
+TestResults/
+coverage*/
+
+# Logs, local settings
+*.log
+logs/
+appsettings.Local.json
+*.local.json
+
+# OS
+Thumbs.db
+.DS_Store
