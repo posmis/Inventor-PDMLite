@@ -31,10 +31,15 @@ public sealed partial class MainViewModel : ObservableObject
         host.Events.Subscribe<InventorConnectionChanged>(e => ui.Post(() =>
         {
             IsInventorConnected = e.IsConnected;
-            InventorStatus = e.IsConnected ? $"Inventor {e.InventorVersion}" : "Inventor: нет связи";
+            InventorStatus = e.IsConnected ? $"Inventor {e.InventorVersion}: подключён" : "Inventor: нет связи";
+            // Доступность команд модулей зависит от связи с Inventor.
+            System.Windows.Input.CommandManager.InvalidateRequerySuggested();
         }));
         host.Events.Subscribe<ActiveDocumentChanged>(e => ui.Post(() =>
-            ActiveDocument = e.Path is null ? "" : Path.GetFileName(e.Path)));
+        {
+            ActiveDocument = e.Path is null ? "" : Path.GetFileName(e.Path);
+            ActiveDocumentKind = e.Path is null ? DocumentKind.Other : DocumentKinds.FromPath(e.Path);
+        }));
     }
 
     public PdmHost Host => _host;
@@ -45,7 +50,13 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _projectPath = "Проект не открыт";
     [ObservableProperty] private bool _isInventorConnected;
     [ObservableProperty] private string _inventorStatus = "Inventor: нет связи";
-    [ObservableProperty] private string _activeDocument = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveDocument))]
+    private string _activeDocument = "";
+
+    [ObservableProperty] private DocumentKind _activeDocumentKind = DocumentKind.Other;
+
+    public bool HasActiveDocument => ActiveDocument.Length > 0;
 
     [RelayCommand]
     private Task OpenFolderAsync()

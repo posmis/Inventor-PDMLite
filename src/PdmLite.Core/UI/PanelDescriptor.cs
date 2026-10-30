@@ -17,9 +17,11 @@ public enum PanelPlacement
 /// тип не указан, чтобы ядро не зависело от WPF.
 /// </param>
 /// <param name="Order">Порядок среди панелей одного места.</param>
+/// <param name="Icon">Ключ иконки из <see cref="IconKeys"/> (для заголовка вкладки).</param>
 public sealed record PanelDescriptor(
     string Id,
     string Title,
     PanelPlacement Placement,
     Func<IServiceProvider, object> CreateView,
-    int Order = 0);
+    int Order = 0,
+    string? Icon = null);

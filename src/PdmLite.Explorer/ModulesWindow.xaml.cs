@@ -1,4 +1,5 @@
 using System.Windows;
+using PdmLite.Core.UI;
 using PdmLite.Hosting;
 
 namespace PdmLite.Explorer;
@@ -8,8 +9,16 @@ public partial class ModulesWindow : Window
     public ModulesWindow(IEnumerable<ModuleStatus> modules)
     {
         InitializeComponent();
-        List.ItemsSource = modules.Select(m => new { m.Info, StateText = Describe(m) }).ToList();
+        List.ItemsSource = modules.Select(m => new { m.Info, Icon = IconFor(m.State), StateText = Describe(m) }).ToList();
     }
+
+    private static string IconFor(ModuleState state) => state switch
+    {
+        ModuleState.Loaded => IconKeys.Online,
+        ModuleState.Disabled => IconKeys.Offline,
+        ModuleState.Failed => IconKeys.Error,
+        _ => IconKeys.Warning,
+    };
 
     private static string Describe(ModuleStatus status) => status.State switch
     {

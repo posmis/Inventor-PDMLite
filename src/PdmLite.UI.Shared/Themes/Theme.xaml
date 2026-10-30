@@ -1,0 +1,12 @@
+<!--
+  Единая тема PdmLite: подключается одной строкой в любом корневом элементе.
+    <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Theme.xaml" />
+  Содержит палитру (Colors.xaml), иконки (Icons.xaml) и стили (Controls.xaml).
+  Описание правил оформления — docs/STYLE.md.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Controls.xaml" />
+    </ResourceDictionary.MergedDictionaries>
+</ResourceDictionary>

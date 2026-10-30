@@ -21,10 +21,7 @@ public sealed partial class TreeNodeViewModel : ObservableObject
     public DocumentKind Kind => Item.Kind;
     public bool IsFolder => Item.IsFolder;
 
-    /// <summary>Короткая метка типа: расширение файла.</summary>
-    public string Badge => IsFolder ? "" : System.IO.Path.GetExtension(Item.Path).TrimStart('.').ToUpperInvariant();
-
-    public string ToolTip => $"{DocumentKinds.DisplayName(Kind)}\n{Item.Path}";
+    public string KindName => DocumentKinds.DisplayName(Kind);
 
     [ObservableProperty] private bool _isExpanded;
     [ObservableProperty] private bool _isSelected;

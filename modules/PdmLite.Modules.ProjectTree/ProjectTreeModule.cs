@@ -30,7 +30,8 @@ public sealed class ProjectTreeModule : IPdmModule
 
         context.Ui.RegisterPanel(new PanelDescriptor(
             "ProjectTree.Panel", "Проект", PanelPlacement.Navigator,
-            sp => new ProjectTreeView { DataContext = sp.GetRequiredService<ProjectTreeViewModel>() }));
+            sp => new ProjectTreeView { DataContext = sp.GetRequiredService<ProjectTreeViewModel>() },
+            Icon: IconKeys.ProjectTree));
 
         var launcher = context.Services.GetRequiredService<IDocumentLauncher>();
         var session = context.Services.GetRequiredService<IProjectSession>();
@@ -39,7 +40,7 @@ public sealed class ProjectTreeModule : IPdmModule
             "ProjectTree.Open", "Открыть", CommandPlacement.ContextMenu,
             ctx => launcher.OpenAsync(ctx.Single!.Path),
             ctx => ctx.Single is { IsFolder: false },
-            Order: 0, Group: "0-open", IsDefault: true));
+            Order: 0, Group: "0-open", IsDefault: true, Icon: IconKeys.Open));
 
         context.Ui.RegisterCommand(new CommandDescriptor(
             "ProjectTree.ShowInExplorer", "Показать в проводнике Windows", CommandPlacement.ContextMenu,
@@ -51,7 +52,7 @@ public sealed class ProjectTreeModule : IPdmModule
                 return Task.CompletedTask;
             },
             ctx => ctx.Single is not null,
-            Order: 10, Group: "1-file"));
+            Order: 10, Group: "1-file", Icon: IconKeys.ShowInWindows));
 
         context.Ui.RegisterCommand(new CommandDescriptor(
             "ProjectTree.CopyPath", "Копировать путь", CommandPlacement.ContextMenu,
@@ -61,13 +62,13 @@ public sealed class ProjectTreeModule : IPdmModule
                 return Task.CompletedTask;
             },
             ctx => ctx.Selection.Count > 0,
-            Order: 20, Group: "1-file"));
+            Order: 20, Group: "1-file", Icon: IconKeys.CopyPath));
 
         context.Ui.RegisterCommand(new CommandDescriptor(
             "ProjectTree.Refresh", "Обновить дерево проекта", CommandPlacement.ContextMenu,
             _ => session.RefreshAsync(),
             _ => session.Project is not null,
-            Order: 0, Group: "9-view"));
+            Order: 0, Group: "9-view", Icon: IconKeys.Refresh));
     }
 
     public void Shutdown() => _viewModel?.Detach();

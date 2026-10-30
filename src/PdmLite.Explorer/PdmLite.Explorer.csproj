@@ -5,6 +5,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <AssemblyName>PdmLite.Explorer</AssemblyName>
+    <ApplicationIcon>Assets\PdmLite.ico</ApplicationIcon>
     <Description>PdmLite Explorer — просмотр проекта без запуска Inventor.</Description>
   </PropertyGroup>
 
@@ -37,6 +38,7 @@
 
   <ItemGroup>
     <None Update="modules.json" CopyToOutputDirectory="PreserveNewest" />
+    <Resource Include="Assets\PdmLite.ico" />
   </ItemGroup>
 
 </Project>

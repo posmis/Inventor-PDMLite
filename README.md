@@ -60,7 +60,7 @@ src/
   PdmLite.Core         ядро: домен, контракты, шина событий, правила имён (без Inventor и WPF)
   PdmLite.Link         связь плагин ⇄ Explorer (именованные каналы, JSON)
   PdmLite.Hosting      загрузка модулей, DI, журналы, настройки
-  PdmLite.UI.Shared    общие WPF-компоненты
+  PdmLite.UI.Shared    общие WPF-компоненты, тема оформления и иконки
   PdmLite.AddIn        хост: плагин Inventor
   PdmLite.Explorer     хост: внешнее приложение
 modules/
@@ -69,6 +69,7 @@ modules/
   PdmLite.Modules.InventorLink   связь Explorer с Inventor
 tests/
   PdmLite.Core.Tests
+tools/icons/           источник иконок и генератор (Icons.xaml, .ico, предпросмотр)
 deploy/                манифест плагина, установка
 ```
 
@@ -88,4 +89,5 @@ deploy/                манифест плагина, установка
 ## Документация
 
 - [Архитектура](docs/ARCHITECTURE.md)
+- [Стиль оформления и иконки](docs/STYLE.md)
 - [Принятые решения и открытые вопросы](docs/DECISIONS.md)

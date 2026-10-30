@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:PdmLite.Modules.Properties"
+             xmlns:ui="clr-namespace:PdmLite.UI.Shared;assembly=PdmLite.UI.Shared"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance local:DocumentCardViewModel}"
              d:DesignWidth="320" d:DesignHeight="400">
@@ -11,17 +12,22 @@
     <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Shared.xaml" />
+                <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Theme.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+            <ui:DocumentKindToIconConverter x:Key="KindToIcon" />
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <Grid Margin="10">
-        <TextBlock Text="Выберите документ в дереве проекта" Foreground="{StaticResource Pdm.Brush.Muted}"
-                   HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap">
-            <TextBlock.Style>
-                <Style TargetType="TextBlock">
+    <UserControl.Style>
+        <StaticResource ResourceKey="Pdm.Panel" />
+    </UserControl.Style>
+
+    <Grid>
+        <!-- Пустое состояние -->
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16">
+            <StackPanel.Style>
+                <Style TargetType="StackPanel">
                     <Setter Property="Visibility" Value="Collapsed" />
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding HasItem}" Value="False">
@@ -29,43 +35,54 @@
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
-            </TextBlock.Style>
-        </TextBlock>
+            </StackPanel.Style>
+            <Image Source="{StaticResource Pdm.Icon.Doc.Unknown}" Style="{StaticResource Pdm.Icon32}" Opacity="0.5" Margin="0,0,0,8" />
+            <TextBlock Text="Выберите документ в дереве проекта" Style="{StaticResource Pdm.Text.Hint}" TextAlignment="Center" />
+        </StackPanel>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto"
                       Visibility="{Binding HasItem, Converter={StaticResource BoolToVisibility}}">
-            <StackPanel>
-                <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,10" />
-
-                <TextBlock Text="Файл" Style="{StaticResource Pdm.SectionHeader}" />
-                <Grid Margin="0,0,0,14">
+            <StackPanel Margin="0,0,0,10">
+                <!-- Заголовок: тип и имя документа -->
+                <Grid Margin="10,10,10,4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Image Source="{Binding Kind, Converter={StaticResource KindToIcon}}" Style="{StaticResource Pdm.Icon32}"
+                           VerticalAlignment="Top" Margin="0,0,10,0" />
+                    <StackPanel Grid.Column="1">
+                        <TextBox Text="{Binding Name, Mode=OneWay}" Style="{StaticResource Pdm.Text.Value}"
+                                 FontSize="{StaticResource Pdm.FontSize.Title}" FontWeight="SemiBold" Margin="0" />
+                        <TextBlock Text="{Binding KindName}" Style="{StaticResource Pdm.Text.Hint}" />
+                    </StackPanel>
+                </Grid>
+
+                <TextBlock Text="Файл" Style="{StaticResource Pdm.Text.Section}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" MinWidth="90" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock Grid.Row="0" Text="Тип" Style="{StaticResource Pdm.Label}" />
-                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding KindName, Mode=OneWay}" Style="{StaticResource Pdm.Value}" />
+                    <TextBlock Grid.Row="0" Text="Папка" Style="{StaticResource Pdm.Text.Label}" />
+                    <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding Folder, Mode=OneWay}" Style="{StaticResource Pdm.Text.Value}" />
 
-                    <TextBlock Grid.Row="1" Text="Папка" Style="{StaticResource Pdm.Label}" />
-                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Folder, Mode=OneWay}" Style="{StaticResource Pdm.Value}" />
+                    <TextBlock Grid.Row="1" Text="Размер" Style="{StaticResource Pdm.Text.Label}" />
+                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding SizeText, Mode=OneWay}" Style="{StaticResource Pdm.Text.Value}" />
 
-                    <TextBlock Grid.Row="2" Text="Размер" Style="{StaticResource Pdm.Label}" />
-                    <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding SizeText, Mode=OneWay}" Style="{StaticResource Pdm.Value}" />
-
-                    <TextBlock Grid.Row="3" Text="Изменён" Style="{StaticResource Pdm.Label}" />
-                    <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding ModifiedText, Mode=OneWay}" Style="{StaticResource Pdm.Value}" />
+                    <TextBlock Grid.Row="2" Text="Изменён" Style="{StaticResource Pdm.Text.Label}" />
+                    <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding ModifiedText, Mode=OneWay}" Style="{StaticResource Pdm.Text.Value}" />
                 </Grid>
 
-                <TextBlock Text="Свойства документа" Style="{StaticResource Pdm.SectionHeader}" />
-                <TextBlock Text="Обозначение, наименование и другие iProperties появятся на следующем шаге (чтение через Inventor / Apprentice)."
-                           Foreground="{StaticResource Pdm.Brush.Muted}" TextWrapping="Wrap" />
+                <TextBlock Text="Свойства документа" Style="{StaticResource Pdm.Text.Section}" />
+                <TextBlock Margin="6,2,6,0" Style="{StaticResource Pdm.Text.Hint}"
+                           Text="Обозначение, наименование и другие iProperties появятся на следующем шаге." />
             </StackPanel>
         </ScrollViewer>
     </Grid>

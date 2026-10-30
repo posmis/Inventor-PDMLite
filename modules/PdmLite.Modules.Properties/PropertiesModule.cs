@@ -22,7 +22,8 @@ public sealed class PropertiesModule : IPdmModule
 
         context.Ui.RegisterPanel(new PanelDescriptor(
             "Properties.Card", "Свойства", PanelPlacement.Details,
-            sp => new DocumentCardView { DataContext = sp.GetRequiredService<DocumentCardViewModel>() }));
+            sp => new DocumentCardView { DataContext = sp.GetRequiredService<DocumentCardViewModel>() },
+            Icon: IconKeys.Info));
     }
 
     public void Shutdown() => _viewModel?.Detach();

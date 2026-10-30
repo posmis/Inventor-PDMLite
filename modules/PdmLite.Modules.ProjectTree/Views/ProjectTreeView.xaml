@@ -4,7 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:PdmLite.Modules.ProjectTree.ViewModels"
-             xmlns:domain="clr-namespace:PdmLite.Core.Domain;assembly=PdmLite.Core"
+             xmlns:ui="clr-namespace:PdmLite.UI.Shared;assembly=PdmLite.UI.Shared"
              mc:Ignorable="d"
              d:DataContext="{d:DesignInstance vm:ProjectTreeViewModel}"
              d:DesignWidth="320" d:DesignHeight="500">
@@ -12,113 +12,96 @@
     <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Shared.xaml" />
+                <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Theme.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+            <ui:DocumentKindToIconConverter x:Key="KindToIcon" />
 
             <HierarchicalDataTemplate DataType="{x:Type vm:TreeNodeViewModel}" ItemsSource="{Binding Children}">
-                <StackPanel Orientation="Horizontal" ToolTip="{Binding ToolTip}">
-                    <!-- Папка -->
-                    <TextBlock x:Name="FolderIcon" Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="14"
-                               Foreground="{StaticResource Pdm.Brush.Folder}" VerticalAlignment="Center"
-                               Margin="0,0,5,0" Visibility="Collapsed" />
-                    <!-- Метка типа документа -->
-                    <Border x:Name="Badge" CornerRadius="2" Padding="3,0" Margin="0,1,5,1" MinWidth="30"
-                            Background="{StaticResource Pdm.Brush.Project}" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding Badge}" Foreground="White" FontSize="9" FontWeight="SemiBold"
-                                   HorizontalAlignment="Center" />
-                    </Border>
+                <StackPanel Orientation="Horizontal">
+                    <StackPanel.ToolTip>
+                        <StackPanel>
+                            <TextBlock Text="{Binding KindName}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding Item.Path}" />
+                        </StackPanel>
+                    </StackPanel.ToolTip>
+                    <!-- Метка документа, активного в Inventor -->
+                    <Rectangle x:Name="ActiveMark" Width="3" Height="14" Margin="0,0,3,0"
+                               Fill="{StaticResource Pdm.Brush.Accent}" Visibility="Hidden" />
+                    <Image x:Name="KindIcon" Source="{Binding Kind, Converter={StaticResource KindToIcon}}"
+                           Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
                     <TextBlock x:Name="Title" Text="{Binding Name}" VerticalAlignment="Center" />
                 </StackPanel>
                 <HierarchicalDataTemplate.Triggers>
-                    <DataTrigger Binding="{Binding IsFolder}" Value="True">
-                        <Setter TargetName="FolderIcon" Property="Visibility" Value="Visible" />
-                        <Setter TargetName="Badge" Property="Visibility" Value="Collapsed" />
-                    </DataTrigger>
-                    <DataTrigger Binding="{Binding Kind}" Value="{x:Static domain:DocumentKind.Part}">
-                        <Setter TargetName="Badge" Property="Background" Value="{StaticResource Pdm.Brush.Part}" />
-                    </DataTrigger>
-                    <DataTrigger Binding="{Binding Kind}" Value="{x:Static domain:DocumentKind.Assembly}">
-                        <Setter TargetName="Badge" Property="Background" Value="{StaticResource Pdm.Brush.Assembly}" />
-                    </DataTrigger>
-                    <DataTrigger Binding="{Binding Kind}" Value="{x:Static domain:DocumentKind.Drawing}">
-                        <Setter TargetName="Badge" Property="Background" Value="{StaticResource Pdm.Brush.Drawing}" />
-                    </DataTrigger>
-                    <DataTrigger Binding="{Binding Kind}" Value="{x:Static domain:DocumentKind.Presentation}">
-                        <Setter TargetName="Badge" Property="Background" Value="{StaticResource Pdm.Brush.Presentation}" />
-                    </DataTrigger>
-                    <!-- Документ, активный в Inventor -->
                     <DataTrigger Binding="{Binding IsActive}" Value="True">
+                        <Setter TargetName="ActiveMark" Property="Visibility" Value="Visible" />
                         <Setter TargetName="Title" Property="FontWeight" Value="Bold" />
                     </DataTrigger>
+                    <MultiDataTrigger>
+                        <MultiDataTrigger.Conditions>
+                            <Condition Binding="{Binding IsFolder}" Value="True" />
+                            <Condition Binding="{Binding IsExpanded}" Value="True" />
+                        </MultiDataTrigger.Conditions>
+                        <Setter TargetName="KindIcon" Property="Source" Value="{StaticResource Pdm.Icon.Folder.Open}" />
+                    </MultiDataTrigger>
                 </HierarchicalDataTemplate.Triggers>
             </HierarchicalDataTemplate>
         </ResourceDictionary>
     </UserControl.Resources>
 
+    <UserControl.Style>
+        <StaticResource ResourceKey="Pdm.Panel" />
+    </UserControl.Style>
+
     <DockPanel>
         <!-- Панель инструментов: поиск и действия -->
-        <DockPanel DockPanel.Dock="Top" Margin="4">
-            <Button DockPanel.Dock="Right" Command="{Binding RefreshCommand}" ToolTip="Обновить (F5)"
-                    Padding="6,2" Margin="4,0,0,0">
-                <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" />
-            </Button>
-            <Button DockPanel.Dock="Right" Command="{Binding CollapseAllCommand}" ToolTip="Свернуть всё"
-                    Padding="6,2" Margin="4,0,0,0">
-                <TextBlock Text="&#xE8C5;" FontFamily="Segoe MDL2 Assets" />
-            </Button>
-            <ToggleButton DockPanel.Dock="Right" IsChecked="{Binding FollowActiveDocument}"
-                          ToolTip="Выделять документ, активный в Inventor" Padding="6,2" Margin="4,0,0,0">
-                <TextBlock Text="&#xE71B;" FontFamily="Segoe MDL2 Assets" />
-            </ToggleButton>
-            <Grid>
-                <TextBox x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Delay=250}"
-                         VerticalContentAlignment="Center" Padding="2,2" />
-                <TextBlock Text="Поиск по имени файла" Foreground="{StaticResource Pdm.Brush.Muted}"
-                           Margin="6,0" VerticalAlignment="Center" IsHitTestVisible="False">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding Text, ElementName=SearchBox}" Value="">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBlock.Style>
-                </TextBlock>
-            </Grid>
-        </DockPanel>
+        <Border DockPanel.Dock="Top" Style="{StaticResource Pdm.Toolbar}">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="4,0,0,0">
+                    <ToggleButton Style="{StaticResource Pdm.ToolButton}" IsChecked="{Binding FollowActiveDocument}"
+                                  ToolTip="Выделять документ, активный в Inventor">
+                        <Image Source="{StaticResource Pdm.Icon.Cmd.FollowActive}" Style="{StaticResource Pdm.Icon16}" />
+                    </ToggleButton>
+                    <Button Style="{StaticResource Pdm.ToolButton}" Command="{Binding CollapseAllCommand}" ToolTip="Свернуть всё">
+                        <Image Source="{StaticResource Pdm.Icon.Cmd.CollapseAll}" Style="{StaticResource Pdm.Icon16}" />
+                    </Button>
+                    <Button Style="{StaticResource Pdm.ToolButton}" Command="{Binding RefreshCommand}" ToolTip="Обновить (F5)">
+                        <Image Source="{StaticResource Pdm.Icon.Cmd.Refresh}" Style="{StaticResource Pdm.Icon16}" />
+                    </Button>
+                </StackPanel>
+                <TextBox Style="{StaticResource Pdm.SearchBox}" Tag="Поиск по имени файла"
+                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged, Delay=250}" />
+            </DockPanel>
+        </Border>
 
-        <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusText}" Margin="6,3"
-                   Foreground="{StaticResource Pdm.Brush.Muted}" TextTrimming="CharacterEllipsis" />
+        <!-- Строка состояния панели -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource Pdm.Brush.Toolbar}"
+                BorderBrush="{StaticResource Pdm.Brush.Divider}" BorderThickness="0,1,0,0" Padding="6,3">
+            <TextBlock Text="{Binding StatusText}" Style="{StaticResource Pdm.Text.Hint}" TextWrapping="NoWrap"
+                       TextTrimming="CharacterEllipsis" />
+        </Border>
 
         <Grid>
-            <TreeView x:Name="Tree" ItemsSource="{Binding Nodes}" BorderThickness="0"
+            <TreeView x:Name="Tree" ItemsSource="{Binding Nodes}"
                       SelectedItemChanged="Tree_OnSelectedItemChanged"
                       ContextMenuOpening="Tree_OnContextMenuOpening">
                 <TreeView.ContextMenu>
                     <ContextMenu />
                 </TreeView.ContextMenu>
                 <TreeView.ItemContainerStyle>
-                    <Style TargetType="TreeViewItem">
+                    <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
                         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
                         <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
                         <Setter Property="Visibility" Value="{Binding IsVisible, Converter={StaticResource BoolToVisibility}}" />
                         <EventSetter Event="Selected" Handler="TreeItem_OnSelected" />
                         <EventSetter Event="MouseDoubleClick" Handler="TreeItem_OnMouseDoubleClick" />
                         <EventSetter Event="PreviewMouseRightButtonDown" Handler="TreeItem_OnPreviewMouseRightButtonDown" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                <Setter Property="Background" Value="{StaticResource Pdm.Brush.Active}" />
-                            </DataTrigger>
-                        </Style.Triggers>
                     </Style>
                 </TreeView.ItemContainerStyle>
             </TreeView>
 
-            <ProgressBar IsIndeterminate="True" Height="3" VerticalAlignment="Top"
+            <ProgressBar IsIndeterminate="True" Height="2" VerticalAlignment="Top"
                          Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
         </Grid>
     </DockPanel>

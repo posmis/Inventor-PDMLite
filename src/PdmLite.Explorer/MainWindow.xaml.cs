@@ -22,10 +22,18 @@ public partial class MainWindow : Window
         if (details is null)
         {
             Splitter.Visibility = Visibility.Collapsed;
+            DetailsBorder.Visibility = Visibility.Collapsed;
             DetailsColumn.Width = new GridLength(0);
             DetailsColumn.MinWidth = 0;
         }
         DetailsHost.Content = details;
+
+        // Команды модулей на панели инструментов.
+        var moduleButtons = CommandMenuBuilder.BuildToolbar(host.Ui, CommandPlacement.Toolbar, () => CommandContext.Empty);
+        if (moduleButtons.Count > 0)
+            Toolbar.Children.Add(CommandMenuBuilder.ToolSeparator());
+        foreach (var button in moduleButtons)
+            Toolbar.Children.Add(button);
     }
 
     /// <summary>Показывает окно поверх остальных (по запросу из Inventor).</summary>

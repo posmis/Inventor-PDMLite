@@ -42,9 +42,12 @@ internal sealed class AddInUi : IDisposable
     {
         CreateWindow(firstTime);
 
-        var toggle = AddButton("Дерево проекта", "PdmLite.ToggleWindow", "Показать или скрыть окно PdmLite", ToggleWindow);
-        var reveal = AddButton("Показать в Explorer", "PdmLite.RevealInExplorer", "Открыть активный документ в PdmLite Explorer", RevealInExplorer);
-        var refresh = AddButton("Обновить проект", "PdmLite.RefreshProject", "Перечитать дерево проекта", RefreshProject);
+        var toggle = AddButton("Дерево проекта", "PdmLite.ToggleWindow", "Показать или скрыть окно PdmLite",
+            IconKeys.ProjectTree, ToggleWindow);
+        var reveal = AddButton("Показать в Explorer", "PdmLite.RevealInExplorer", "Открыть активный документ в PdmLite Explorer",
+            IconKeys.RevealInExplorer, RevealInExplorer);
+        var refresh = AddButton("Обновить проект", "PdmLite.RefreshProject", "Перечитать дерево проекта",
+            IconKeys.Refresh, RefreshProject);
 
         foreach (var ribbonName in Ribbons)
         {
@@ -80,7 +83,10 @@ internal sealed class AddInUi : IDisposable
         }
     }
 
-    /// <summary>Сверху — панели навигации, снизу — сведения о документе.</summary>
+    /// <summary>
+    /// Сверху — панели навигации, снизу — сведения о документе. Внутри Inventor нет
+    /// WPF-приложения с общими ресурсами, поэтому тема подключается к корню окна.
+    /// </summary>
     private Wpf.FrameworkElement BuildContent()
     {
         var navigator = PanelHost.Create(_host.Ui, PanelPlacement.Navigator, _host.Services);
@@ -108,18 +114,36 @@ internal sealed class AddInUi : IDisposable
             grid.Children.Add(details);
         }
 
-        return grid;
+        var root = new WpfControls.Border { Child = grid };
+        root.Resources.MergedDictionaries.Add(ThemeResources.Create());
+        root.SetResourceReference(Wpf.FrameworkElement.StyleProperty, "Pdm.Root");
+        return root;
     }
 
-    private Inv.ButtonDefinition AddButton(string title, string internalName, string description, Func<Task> action)
+    private Inv.ButtonDefinition AddButton(string title, string internalName, string description, string icon, Func<Task> action)
     {
         var definitions = _inventor.CommandManager.ControlDefinitions;
         var button = definitions.AddButtonDefinition(
-            title, internalName, Inv.CommandTypesEnum.kQueryOnlyCmdType, _clientId, description, description);
+            title, internalName, Inv.CommandTypesEnum.kQueryOnlyCmdType, _clientId, description, description,
+            Icon(icon, 16), Icon(icon, 32));
 
         button.OnExecute += _ => Run(title, action);
         _buttons.Add(button);
         return button;
+    }
+
+    private object? Icon(string key, int size)
+    {
+        try
+        {
+            return RibbonIcons.Create(key, size);
+        }
+        catch (Exception ex)
+        {
+            // Без иконки кнопка всё равно работает (показывается текст).
+            _logger.LogWarning(ex, "Не удалось создать иконку {Icon}", key);
+            return null;
+        }
     }
 
     private async void Run(string title, Func<Task> action)

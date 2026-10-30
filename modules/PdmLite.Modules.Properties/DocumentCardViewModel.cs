@@ -14,11 +14,12 @@ public sealed partial class DocumentCardViewModel(IEventBus events, IUiDispatche
     private IDisposable? _subscription;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasItem), nameof(Name), nameof(KindName), nameof(FullPath), nameof(Folder), nameof(SizeText), nameof(ModifiedText))]
+    [NotifyPropertyChangedFor(nameof(HasItem), nameof(Name), nameof(Kind), nameof(KindName), nameof(FullPath), nameof(Folder), nameof(SizeText), nameof(ModifiedText))]
     private ProjectItem? _item;
 
     public bool HasItem => Item is not null;
     public string Name => Item?.Name ?? "";
+    public DocumentKind Kind => Item?.Kind ?? DocumentKind.Other;
     public string KindName => Item is null ? "" : DocumentKinds.DisplayName(Item.Kind);
     public string FullPath => Item?.Path ?? "";
     public string Folder => Item is null ? "" : System.IO.Path.GetDirectoryName(Item.Path) ?? "";

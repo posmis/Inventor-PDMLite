@@ -1,0 +1,478 @@
+<!--
+  Стили элементов управления PdmLite. Подключается через Theme.xaml.
+  Принципы: плоские элементы, тонкие серые рамки, один синий акцент,
+  выделение — светло-голубой фон, как в браузере модели Inventor.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Colors.xaml" />
+        <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Icons.xaml" />
+    </ResourceDictionary.MergedDictionaries>
+
+    <!-- ===================== Корневые элементы ===================== -->
+
+    <!-- Окно приложения. Неявный стиль Window не действует на наследников, поэтому стиль явный. -->
+    <Style x:Key="Pdm.Window" TargetType="Window">
+        <Setter Property="Background" Value="{StaticResource Pdm.Brush.Window}" />
+        <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.Text}" />
+        <Setter Property="FontFamily" Value="{StaticResource Pdm.FontFamily}" />
+        <Setter Property="FontSize" Value="{StaticResource Pdm.FontSize}" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
+        <Setter Property="UseLayoutRounding" Value="True" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <!-- Корень панели модуля (UserControl). Внутри Inventor нет окна WPF — шрифт задаётся здесь. -->
+    <Style x:Key="Pdm.Panel" TargetType="UserControl">
+        <Setter Property="Background" Value="{StaticResource Pdm.Brush.Panel}" />
+        <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.Text}" />
+        <Setter Property="FontFamily" Value="{StaticResource Pdm.FontFamily}" />
+        <Setter Property="FontSize" Value="{StaticResource Pdm.FontSize}" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
+        <Setter Property="UseLayoutRounding" Value="True" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <!-- Корень произвольного содержимого (например, окна плагина в Inventor). -->
+    <Style x:Key="Pdm.Root" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource Pdm.Brush.Panel}" />
+        <Setter Property="TextElement.Foreground" Value="{StaticResource Pdm.Brush.Text}" />
+        <Setter Property="TextElement.FontFamily" Value="{StaticResource Pdm.FontFamily}" />
+        <Setter Property="TextElement.FontSize" Value="{StaticResource Pdm.FontSize}" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
+        <Setter Property="UseLayoutRounding" Value="True" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <!-- Панель инструментов: полоса над рабочей областью. -->
+    <Style x:Key="Pdm.Toolbar" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource Pdm.Brush.Toolbar}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Pdm.Brush.Divider}" />
+        <Setter Property="BorderThickness" Value="0,0,0,1" />
+        <Setter Property="Padding" Value="4,3" />
+    </Style>
+
+    <!-- ===================== Текст ===================== -->
+
+    <Style x:Key="Pdm.Text.Title" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="{StaticResource Pdm.FontSize.Title}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <!-- Заголовок раздела: серая полоса на всю ширину, как в диалогах Inventor. -->
+    <Style x:Key="Pdm.Text.Section" TargetType="TextBlock">
+        <Setter Property="Background" Value="{StaticResource Pdm.Brush.SectionHeader}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Padding" Value="6,3" />
+        <Setter Property="Margin" Value="0,10,0,4" />
+    </Style>
+
+    <!-- Подпись поля (слева от значения). -->
+    <Style x:Key="Pdm.Text.Label" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.TextSecondary}" />
+        <Setter Property="Margin" Value="6,3,12,3" />
+        <Setter Property="VerticalAlignment" Value="Top" />
+    </Style>
+
+    <!-- Пояснение, пустое состояние, служебная строка. -->
+    <Style x:Key="Pdm.Text.Hint" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.TextSecondary}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <!-- Значение поля: только чтение, но выделяется и копируется. -->
+    <Style x:Key="Pdm.Text.Value" TargetType="TextBox">
+        <Setter Property="IsReadOnly" Value="True" />
+        <Setter Property="IsReadOnlyCaretVisible" Value="False" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.Text}" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Margin" Value="0,3,6,3" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                                  HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== Иконки ===================== -->
+
+    <Style x:Key="Pdm.Icon16" TargetType="Image">
+        <Setter Property="Width" Value="16" />
+        <Setter Property="Height" Value="16" />
+        <Setter Property="Stretch" Value="Uniform" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Opacity" Value="0.4" />
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="Pdm.Icon32" TargetType="Image" BasedOn="{StaticResource Pdm.Icon16}">
+        <Setter Property="Width" Value="32" />
+        <Setter Property="Height" Value="32" />
+    </Style>
+
+    <!-- ===================== Кнопки ===================== -->
+
+    <Style TargetType="Button">
+        <Setter Property="Background" Value="#FDFDFD" />
+        <Setter Property="BorderBrush" Value="#ADADAD" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.Text}" />
+        <Setter Property="Padding" Value="12,3" />
+        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="MinWidth" Value="75" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}" RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsDefault" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Pdm.Brush.Accent}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Pdm.Brush.Accent}" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource Pdm.Brush.Hover}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Pdm.Brush.Accent}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource Pdm.Brush.Pressed}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Pdm.Brush.AccentPressed}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.TextDisabled}" />
+                            <Setter TargetName="Bd" Property="Background" Value="#F4F4F4" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="#D5D5D5" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Плоская кнопка панели инструментов: иконка или иконка с подписью. -->
+    <Style x:Key="Pdm.ToolButton" TargetType="ButtonBase">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.Text}" />
+        <Setter Property="Padding" Value="4,3" />
+        <Setter Property="MinWidth" Value="24" />
+        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="Margin" Value="1,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="ToolTipService.ShowOnDisabled" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ButtonBase">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource Pdm.Brush.Hover}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Pdm.Brush.HoverBorder}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Pdm.Brush.Accent}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource Pdm.Brush.Pressed}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Pdm.Brush.SelectedBorder}" />
+                        </Trigger>
+                        <Trigger Property="ToggleButton.IsChecked" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource Pdm.Brush.Selected}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Pdm.Brush.SelectedBorder}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.TextDisabled}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Вертикальный разделитель групп на панели инструментов. -->
+    <Style x:Key="Pdm.ToolSeparator" TargetType="Rectangle">
+        <Setter Property="Width" Value="1" />
+        <Setter Property="Margin" Value="4,3" />
+        <Setter Property="Fill" Value="{StaticResource Pdm.Brush.Border}" />
+    </Style>
+
+    <!-- ===================== Поля ввода ===================== -->
+
+    <Style TargetType="TextBox">
+        <Setter Property="Background" Value="{StaticResource Pdm.Brush.Panel}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Pdm.Brush.InputBorder}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.Text}" />
+        <Setter Property="Padding" Value="3,2" />
+        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+                        <ScrollViewer x:Name="PART_ContentHost" Focusable="False" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                      HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Pdm.Brush.HoverBorder}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Pdm.Brush.Accent}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Background" Value="#F4F4F4" />
+                            <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.TextDisabled}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Поле поиска: иконка-лупа и подсказка (задаётся в Tag). -->
+    <Style x:Key="Pdm.SearchBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+        <Setter Property="Padding" Value="2,2" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="Bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Image Source="{StaticResource Pdm.Icon.Cmd.Search}" Style="{StaticResource Pdm.Icon16}" Margin="2,0,4,0" Opacity="0.75" />
+                            <TextBlock x:Name="Placeholder" Grid.Column="1" Text="{TemplateBinding Tag}" Margin="2,0"
+                                       Foreground="{StaticResource Pdm.Brush.TextSecondary}" VerticalAlignment="Center"
+                                       IsHitTestVisible="False" Visibility="Collapsed" />
+                            <ScrollViewer x:Name="PART_ContentHost" Grid.Column="1" Focusable="False" VerticalAlignment="Center"
+                                          HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Text" Value="">
+                            <Setter TargetName="Placeholder" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Pdm.Brush.HoverBorder}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Pdm.Brush.Accent}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== Дерево (как браузер модели Inventor) ===================== -->
+
+    <Style x:Key="Pdm.TreeExpander" TargetType="ToggleButton">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Width" Value="16" />
+        <Setter Property="Height" Value="16" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border Background="Transparent">
+                        <Path x:Name="Chevron" Data="M6,4 L10,8 L6,12" Stroke="#6E6E6E" StrokeThickness="1.3"
+                              StrokeLineJoin="Round" HorizontalAlignment="Center" VerticalAlignment="Center"
+                              RenderTransformOrigin="0.5,0.5">
+                            <Path.RenderTransform>
+                                <RotateTransform Angle="0" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Chevron" Property="RenderTransform">
+                                <Setter.Value>
+                                    <RotateTransform Angle="90" />
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Chevron" Property="Stroke" Value="{StaticResource Pdm.Brush.Accent}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="TreeView">
+        <Setter Property="Background" Value="{StaticResource Pdm.Brush.Panel}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="2" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    </Style>
+
+    <Style TargetType="TreeViewItem">
+        <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.Text}" />
+        <Setter Property="Padding" Value="1,1,4,1" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TreeViewItem">
+                    <StackPanel>
+                        <Border x:Name="Row" Background="Transparent" BorderBrush="Transparent" BorderThickness="1"
+                                Padding="{TemplateBinding Padding}" MinHeight="22">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <ToggleButton x:Name="Expander" Style="{StaticResource Pdm.TreeExpander}" ClickMode="Press"
+                                              IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}" />
+                                <ContentPresenter x:Name="PART_Header" Grid.Column="1" ContentSource="Header" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                        <ItemsPresenter x:Name="ItemsHost" Margin="16,0,0,0" />
+                    </StackPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="False">
+                            <Setter TargetName="ItemsHost" Property="Visibility" Value="Collapsed" />
+                        </Trigger>
+                        <Trigger Property="HasItems" Value="False">
+                            <Setter TargetName="Expander" Property="Visibility" Value="Hidden" />
+                        </Trigger>
+                        <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="{StaticResource Pdm.Brush.Hover}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="{StaticResource Pdm.Brush.Selected}" />
+                            <Setter TargetName="Row" Property="BorderBrush" Value="{StaticResource Pdm.Brush.SelectedBorder}" />
+                        </Trigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsSelected" Value="True" />
+                                <Condition Property="Selector.IsSelectionActive" Value="False" />
+                            </MultiTrigger.Conditions>
+                            <Setter TargetName="Row" Property="Background" Value="{StaticResource Pdm.Brush.SelectedInactive}" />
+                            <Setter TargetName="Row" Property="BorderBrush" Value="Transparent" />
+                        </MultiTrigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.TextDisabled}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== Вкладки ===================== -->
+
+    <Style TargetType="TabControl">
+        <Setter Property="Background" Value="{StaticResource Pdm.Brush.Panel}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabControl">
+                    <DockPanel>
+                        <Border DockPanel.Dock="Top" Background="{StaticResource Pdm.Brush.Toolbar}"
+                                BorderBrush="{StaticResource Pdm.Brush.Divider}" BorderThickness="0,0,0,1">
+                            <TabPanel IsItemsHost="True" Margin="2,2,2,0" />
+                        </Border>
+                        <ContentPresenter ContentSource="SelectedContent" Margin="{TemplateBinding Padding}" />
+                    </DockPanel>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="TabItem">
+        <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.TextSecondary}" />
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabItem">
+                    <Border x:Name="Bd" Background="Transparent" BorderBrush="Transparent" BorderThickness="0,0,0,2"
+                            Padding="{TemplateBinding Padding}" Margin="0,0,1,-1">
+                        <ContentPresenter ContentSource="Header" VerticalAlignment="Center" RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource Pdm.Brush.Hover}" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource Pdm.Brush.Panel}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Pdm.Brush.Accent}" />
+                            <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.Text}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===================== Прочее ===================== -->
+
+    <Style TargetType="Menu">
+        <Setter Property="Background" Value="{StaticResource Pdm.Brush.Window}" />
+        <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.Text}" />
+        <Setter Property="Padding" Value="2,1" />
+    </Style>
+
+    <Style TargetType="StatusBar">
+        <Setter Property="Background" Value="{StaticResource Pdm.Brush.Toolbar}" />
+        <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.Text}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Pdm.Brush.Border}" />
+        <Setter Property="BorderThickness" Value="0,1,0,0" />
+        <Setter Property="Padding" Value="2,0" />
+    </Style>
+
+    <Style TargetType="ToolTip">
+        <Setter Property="Background" Value="{StaticResource Pdm.Brush.Panel}" />
+        <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.Text}" />
+        <Setter Property="BorderBrush" Value="#A0A0A0" />
+        <Setter Property="Padding" Value="6,3" />
+        <Setter Property="MaxWidth" Value="420" />
+    </Style>
+
+    <Style TargetType="GridSplitter">
+        <Setter Property="Background" Value="{StaticResource Pdm.Brush.Window}" />
+    </Style>
+
+    <Style TargetType="ProgressBar">
+        <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.Accent}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <Style TargetType="ListView">
+        <Setter Property="Background" Value="{StaticResource Pdm.Brush.Panel}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Pdm.Brush.Border}" />
+    </Style>
+
+</ResourceDictionary>

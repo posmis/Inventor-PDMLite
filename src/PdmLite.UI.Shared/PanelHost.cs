@@ -23,9 +23,21 @@ public static class PanelHost
             default:
                 var tabs = new TabControl();
                 foreach (var panel in panels)
-                    tabs.Items.Add(new TabItem { Header = panel.Title, Content = CreateView(panel, services) });
+                    tabs.Items.Add(new TabItem { Header = Header(panel), Content = CreateView(panel, services) });
                 return tabs;
         }
+    }
+
+    private static object Header(PanelDescriptor panel)
+    {
+        var header = new StackPanel { Orientation = Orientation.Horizontal };
+        if (PdmIcons.Image(panel.Icon) is { } icon)
+        {
+            icon.Margin = new Thickness(0, 0, 5, 0);
+            header.Children.Add(icon);
+        }
+        header.Children.Add(new TextBlock { Text = panel.Title, VerticalAlignment = VerticalAlignment.Center });
+        return header;
     }
 
     private static FrameworkElement CreateView(PanelDescriptor panel, IServiceProvider services)

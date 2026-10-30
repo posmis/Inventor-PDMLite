@@ -45,7 +45,7 @@ public sealed class InventorLinkModule : IPdmModule
                 await session.OpenAsync(ProjectInfo.FromPath(path));
             },
             _ => connection.IsConnected,
-            Order: 0, Group: "0-inventor"));
+            Order: 0, Group: "0-inventor", Icon: IconKeys.InventorProject));
     }
 
     public void Shutdown()

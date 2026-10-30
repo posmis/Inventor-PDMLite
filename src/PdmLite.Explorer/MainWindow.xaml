@@ -4,10 +4,18 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:PdmLite.Explorer"
+        xmlns:ui="clr-namespace:PdmLite.UI.Shared;assembly=PdmLite.UI.Shared"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance local:MainViewModel}"
-        Title="{Binding Title}" Width="1100" Height="700" MinWidth="600" MinHeight="400"
+        Title="{Binding Title}" Width="1100" Height="700" MinWidth="640" MinHeight="400"
+        Icon="pack://application:,,,/Assets/PdmLite.ico"
+        Style="{StaticResource Pdm.Window}"
         WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        <ui:DocumentKindToIconConverter x:Key="KindToIcon" />
+    </Window.Resources>
 
     <Window.InputBindings>
         <KeyBinding Key="O" Modifiers="Control" Command="{Binding OpenFolderCommand}" />
@@ -15,11 +23,17 @@
     </Window.InputBindings>
 
     <DockPanel>
+        <!-- Главное меню -->
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_Файл">
-                <MenuItem Header="Открыть _папку проекта…" InputGestureText="Ctrl+O" Command="{Binding OpenFolderCommand}" />
-                <MenuItem Header="Открыть _файл проекта (.ipj)…" Command="{Binding OpenProjectFileCommand}" />
+                <MenuItem Header="Открыть _папку проекта…" InputGestureText="Ctrl+O" Command="{Binding OpenFolderCommand}">
+                    <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.OpenFolder}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="Открыть _файл проекта (.ipj)…" Command="{Binding OpenProjectFileCommand}">
+                    <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.OpenProjectFile}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                </MenuItem>
                 <MenuItem x:Name="RecentMenu" Header="_Недавние проекты" ItemsSource="{Binding RecentProjects}">
+                    <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Recent}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
                     <MenuItem.ItemContainerStyle>
                         <Style TargetType="MenuItem">
                             <Setter Property="Header" Value="{Binding}" />
@@ -29,58 +43,102 @@
                     </MenuItem.ItemContainerStyle>
                 </MenuItem>
                 <Separator />
-                <MenuItem Header="_Выход" Click="Exit_OnClick" />
+                <MenuItem Header="_Выход" InputGestureText="Alt+F4" Click="Exit_OnClick" />
             </MenuItem>
             <MenuItem Header="_Вид">
-                <MenuItem Header="_Обновить" InputGestureText="F5" Command="{Binding RefreshCommand}" />
+                <MenuItem Header="_Обновить" InputGestureText="F5" Command="{Binding RefreshCommand}">
+                    <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Refresh}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                </MenuItem>
             </MenuItem>
             <!-- Пункты добавляют модули (команды с размещением Toolbar). -->
             <MenuItem x:Name="ToolsMenu" Header="_Сервис" SubmenuOpened="ToolsMenu_OnSubmenuOpened">
                 <MenuItem Header="(нет команд)" IsEnabled="False" />
             </MenuItem>
             <MenuItem Header="_Справка">
-                <MenuItem Header="_Модули…" Click="Modules_OnClick" />
-                <MenuItem Header="_О программе" Click="About_OnClick" />
+                <MenuItem Header="_Модули…" Click="Modules_OnClick">
+                    <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Modules}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_О программе" Click="About_OnClick">
+                    <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Info}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                </MenuItem>
             </MenuItem>
         </Menu>
 
+        <!-- Панель инструментов: основные действия с подписями -->
+        <Border DockPanel.Dock="Top" Style="{StaticResource Pdm.Toolbar}" BorderBrush="{StaticResource Pdm.Brush.Border}">
+            <StackPanel x:Name="Toolbar" Orientation="Horizontal">
+                <Button Style="{StaticResource Pdm.ToolButton}" Command="{Binding OpenFolderCommand}" ToolTip="Открыть папку проекта (Ctrl+O)">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="{StaticResource Pdm.Icon.Cmd.OpenFolder}" Style="{StaticResource Pdm.Icon16}" />
+                        <TextBlock Text="Открыть папку" Margin="5,0,2,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource Pdm.ToolButton}" Command="{Binding OpenProjectFileCommand}" ToolTip="Открыть файл проекта Inventor (.ipj)">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="{StaticResource Pdm.Icon.Cmd.OpenProjectFile}" Style="{StaticResource Pdm.Icon16}" />
+                        <TextBlock Text="Открыть .ipj" Margin="5,0,2,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <Rectangle Style="{StaticResource Pdm.ToolSeparator}" />
+                <Button Style="{StaticResource Pdm.ToolButton}" Command="{Binding RefreshCommand}" ToolTip="Обновить дерево проекта (F5)">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="{StaticResource Pdm.Icon.Cmd.Refresh}" Style="{StaticResource Pdm.Icon16}" />
+                        <TextBlock Text="Обновить" Margin="5,0,2,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+                <!-- Сюда добавляются команды модулей -->
+            </StackPanel>
+        </Border>
+
+        <!-- Строка состояния: проект | связь с Inventor | активный документ -->
         <StatusBar DockPanel.Dock="Bottom">
             <StatusBarItem>
-                <TextBlock Text="{Binding ProjectPath}" TextTrimming="CharacterEllipsis" MaxWidth="600" />
+                <StackPanel Orientation="Horizontal">
+                    <Image Source="{StaticResource Pdm.Icon.Doc.Project}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
+                    <TextBlock Text="{Binding ProjectPath}" TextTrimming="CharacterEllipsis" MaxWidth="560" />
+                </StackPanel>
             </StatusBarItem>
             <Separator />
             <StatusBarItem>
                 <StackPanel Orientation="Horizontal">
-                    <Ellipse Width="9" Height="9" Margin="0,0,6,0">
-                        <Ellipse.Style>
-                            <Style TargetType="Ellipse">
-                                <Setter Property="Fill" Value="{StaticResource Pdm.Brush.Offline}" />
+                    <Image Margin="0,0,4,0">
+                        <Image.Style>
+                            <Style TargetType="Image" BasedOn="{StaticResource Pdm.Icon16}">
+                                <Setter Property="Source" Value="{StaticResource Pdm.Icon.State.Offline}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsInventorConnected}" Value="True">
-                                        <Setter Property="Fill" Value="{StaticResource Pdm.Brush.Online}" />
+                                        <Setter Property="Source" Value="{StaticResource Pdm.Icon.State.Online}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
-                        </Ellipse.Style>
-                    </Ellipse>
+                        </Image.Style>
+                    </Image>
                     <TextBlock Text="{Binding InventorStatus}" />
                 </StackPanel>
             </StatusBarItem>
-            <StatusBarItem>
-                <TextBlock Text="{Binding ActiveDocument}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+            <Separator Visibility="{Binding HasActiveDocument, Converter={StaticResource BoolToVisibility}}" />
+            <StatusBarItem Visibility="{Binding HasActiveDocument, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel Orientation="Horizontal" ToolTip="Активный документ в Inventor">
+                    <Image Source="{Binding ActiveDocumentKind, Converter={StaticResource KindToIcon}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
+                    <TextBlock Text="{Binding ActiveDocument}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
             </StatusBarItem>
         </StatusBar>
 
         <!-- Панели модулей: слева навигация, справа сведения. -->
-        <Grid x:Name="PanelsGrid">
+        <Grid Margin="4">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="3*" MinWidth="250" />
+                <ColumnDefinition Width="3*" MinWidth="260" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition x:Name="DetailsColumn" Width="2*" MinWidth="200" />
+                <ColumnDefinition x:Name="DetailsColumn" Width="2*" MinWidth="220" />
             </Grid.ColumnDefinitions>
-            <ContentControl x:Name="NavigatorHost" Grid.Column="0" />
-            <GridSplitter x:Name="Splitter" Grid.Column="1" Width="5" HorizontalAlignment="Stretch" />
-            <ContentControl x:Name="DetailsHost" Grid.Column="2" />
+            <Border Grid.Column="0" BorderBrush="{StaticResource Pdm.Brush.Border}" BorderThickness="1" Background="{StaticResource Pdm.Brush.Panel}">
+                <ContentControl x:Name="NavigatorHost" Focusable="False" />
+            </Border>
+            <GridSplitter x:Name="Splitter" Grid.Column="1" Width="4" HorizontalAlignment="Stretch" />
+            <Border x:Name="DetailsBorder" Grid.Column="2" BorderBrush="{StaticResource Pdm.Brush.Border}" BorderThickness="1" Background="{StaticResource Pdm.Brush.Panel}">
+                <ContentControl x:Name="DetailsHost" Focusable="False" />
+            </Border>
         </Grid>
     </DockPanel>
 </Window>

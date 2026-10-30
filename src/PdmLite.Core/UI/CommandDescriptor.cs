@@ -30,6 +30,7 @@ public sealed record CommandContext(IReadOnlyList<ProjectItem> Selection)
 /// <param name="Order">Порядок в меню.</param>
 /// <param name="Group">Группа: между группами в меню ставится разделитель.</param>
 /// <param name="IsDefault">Команда по двойному щелчку (выделяется жирным).</param>
+/// <param name="Icon">Ключ иконки из <see cref="IconKeys"/>.</param>
 public sealed record CommandDescriptor(
     string Id,
     string Title,
@@ -38,7 +39,8 @@ public sealed record CommandDescriptor(
     Func<CommandContext, bool>? CanExecute = null,
     int Order = 0,
     string Group = "",
-    bool IsDefault = false)
+    bool IsDefault = false,
+    string? Icon = null)
 {
     public bool IsAvailable(CommandContext context) => CanExecute?.Invoke(context) ?? true;
 }
