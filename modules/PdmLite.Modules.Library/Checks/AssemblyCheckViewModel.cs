@@ -24,8 +24,19 @@ public sealed partial class AssemblyCheckViewModel(
     [ObservableProperty] private string _summary = "";
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ReplaceCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ReplaceCommand), nameof(FixNamesCommand))]
     private bool _isBusy;
+
+    /// <summary>Файлы компонентов библиотеки в сборке — для проверки имён в обозревателе.</summary>
+    private IReadOnlyList<string> _libraryFiles = [];
+
+    /// <summary>Вхождения со старыми именами (например, оставшимися от Content Center).</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(FixNamesCommand))]
+    private int _namesToFix;
+
+    /// <summary>Показ окна подтверждения (задаёт окно проверки).</summary>
+    public Func<Catalog.ConfirmChangesWindow, bool> Ask { get; set; } = w => w.ShowDialog() == true;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ReplaceCommand))]
@@ -47,10 +58,15 @@ public sealed partial class AssemblyCheckViewModel(
                 Rows.Add(new CheckRow(finding, UpdateCount));
             UpdateCount();
 
+            var root = storage();
+            _libraryFiles = inspection.Components.Select(c => c.Path).Where(root.Contains).ToList();
+            NamesToFix = (await assembly.FixOccurrenceNamesAsync(_libraryFiles, apply: false)).Count;
+
             Header = Path.GetFileName(inspection.AssemblyPath);
-            Summary = result.Findings.Count == 0
-                ? $"Разных компонентов: {result.Total}, из библиотеки: {result.InLibrary}. Замечаний нет."
-                : $"Разных компонентов: {result.Total}, из библиотеки: {result.InLibrary}, замечаний: {result.Findings.Count}.";
+            Summary = (result.Findings.Count == 0
+                          ? $"Разных компонентов: {result.Total}, из библиотеки: {result.InLibrary}. Замечаний нет."
+                          : $"Разных компонентов: {result.Total}, из библиотеки: {result.InLibrary}, замечаний: {result.Findings.Count}.")
+                      + (NamesToFix > 0 ? $" Старых имён в обозревателе: {NamesToFix}." : "");
         }
         catch (Exception ex)
         {
@@ -105,6 +121,46 @@ public sealed partial class AssemblyCheckViewModel(
         else
             UiMessages.Info(text);
 
+        await RunAsync();
+    }
+
+    private bool CanFixNames() => !IsBusy && NamesToFix > 0;
+
+    /// <summary>Имена вхождений компонентов библиотеки — по их файлам: список «было → станет», затем запись.</summary>
+    [RelayCommand(CanExecute = nameof(CanFixNames))]
+    private async Task FixNamesAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            var plan = await assembly.FixOccurrenceNamesAsync(_libraryFiles, apply: false);
+            if (plan.Count == 0)
+            {
+                UiMessages.Info("Имена компонентов библиотеки в обозревателе уже в порядке.");
+                return;
+            }
+
+            var confirm = new Catalog.ConfirmChangesWindow("Имена в обозревателе",
+                $"Будут переименованы вхождения компонентов библиотеки: {plan.Count}.",
+                "Имя вхождения станет как у файла библиотеки: «обозначение:номер».",
+                "Меняются только имена узлов в обозревателе — компоненты, их положение и зависимости не меняются. Сохраните сборку.",
+                "Переименовать", ("Сборка", "Что", "Сейчас", "Станет"),
+                plan.Select(r => new Catalog.ChangeLine(r.Assembly, "Имя в обозревателе", r.OldName, r.NewName)).ToList());
+            if (!Ask(confirm))
+                return;
+
+            var done = await assembly.FixOccurrenceNamesAsync(_libraryFiles, apply: true);
+            UiMessages.Info($"Переименовано вхождений: {done.Count}. Сохраните сборку.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Не удалось обновить имена вхождений");
+            UiMessages.Error("Не удалось обновить имена в обозревателе.", ex);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
         await RunAsync();
     }
 

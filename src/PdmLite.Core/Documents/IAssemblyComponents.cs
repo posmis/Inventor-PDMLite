@@ -39,6 +39,14 @@ public interface IAssemblyComponents
     /// <summary>Компоненты, выделенные в активной сборке. Если активный документ — не сборка, бросает <see cref="InvalidOperationException"/>.</summary>
     Task<ComponentSelection> GetSelectionAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Имена вхождений в обозревателе, которые не соответствуют файлу (остались после замены, например
+    /// из Content Center): для компонентов <paramref name="componentPaths"/> во всех сборках активной сборки.
+    /// </summary>
+    /// <param name="apply"><c>false</c> — только список; <c>true</c> — переименовать (сохраняет пользователь).</param>
+    Task<IReadOnlyList<OccurrenceRename>> FixOccurrenceNamesAsync(IReadOnlyCollection<string> componentPaths, bool apply,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Сохраняет открытые в Inventor документы (по полным путям).</summary>
     Task SaveDocumentsAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken = default);
 }

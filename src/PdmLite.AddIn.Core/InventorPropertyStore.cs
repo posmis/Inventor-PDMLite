@@ -45,6 +45,8 @@ public sealed class InventorPropertyStore(Inv.Application inventor, IUiDispatche
                 replaced++;
             }
             if (replaced > 0)
+                InventorAssemblyComponents.FixNames(assembly, map.Values.ToHashSet(StringComparer.OrdinalIgnoreCase), apply: true, logger);
+            if (replaced > 0)
                 doc.Save(); // без замен файл не трогаем
             return replaced;
         }));

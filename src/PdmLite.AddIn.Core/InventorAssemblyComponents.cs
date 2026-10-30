@@ -67,12 +67,14 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
                     File.Copy(file, Path.Combine(backupFolder, Path.GetFileName(file)), overwrite: true);
                 }
 
+                var newPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var group in direct)
                 {
                     try
                     {
                         // ReplaceAll = true: все вхождения этого файла в этой сборке.
                         group.First().Occurrence.Replace(map[group.Key], true);
+                        newPaths.Add(map[group.Key]);
                         replaced++;
                     }
                     catch (Exception ex)
@@ -81,6 +83,9 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
                         problems.Add($"{Path.GetFileName(file)}: «{Path.GetFileName(group.Key)}» не заменён — {ex.Message}");
                     }
                 }
+
+                // Inventor оставляет старое имя вхождения (например, из Content Center) — даём имя по новому файлу.
+                FixNames(assembly, newPaths, apply: true, logger);
 
                 if (!modified.Contains(file))
                     modified.Add(file);
@@ -120,6 +125,69 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
 
             return new ComponentSelection(selected, components, unsaved);
         });
+
+    public Task<IReadOnlyList<OccurrenceRename>> FixOccurrenceNamesAsync(IReadOnlyCollection<string> componentPaths, bool apply,
+        CancellationToken cancellationToken = default) =>
+        ui.InvokeAsync<IReadOnlyList<OccurrenceRename>>(() =>
+        {
+            var paths = componentPaths.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var result = new List<OccurrenceRename>();
+            foreach (var assembly in AssembliesOf(ActiveAssembly()))
+            {
+                // Сборки библиотеки — только для чтения, их имена не трогаем.
+                var file = assembly.FullFileName;
+                if (File.Exists(file) && File.GetAttributes(file).HasFlag(FileAttributes.ReadOnly))
+                    continue;
+                result.AddRange(FixNames(assembly, paths, apply, logger));
+            }
+            return result;
+        });
+
+    /// <summary>
+    /// Имена вхождений файлов <paramref name="paths"/> в сборке (одного уровня) — по имени документа
+    /// в обозревателе: «Болт M8…:1». Обычные имена не меняются.
+    /// </summary>
+    internal static List<OccurrenceRename> FixNames(Inv.AssemblyDocument assembly, IReadOnlySet<string> paths, bool apply, ILogger logger)
+    {
+        var occurrences = assembly.ComponentDefinition.Occurrences.Cast<Inv.ComponentOccurrence>().ToList();
+        var candidates = occurrences
+            .Select(o => (Occurrence: o, Path: PathOf(o)))
+            .Where(o => o.Path is not null && paths.Contains(o.Path))
+            .Select(o => (o.Occurrence, Current: o.Occurrence.Name, BaseName: BaseName(o.Occurrence, o.Path!)))
+            .ToList();
+        var plan = OccurrenceNaming.Plan(occurrences.Select(o => o.Name), candidates.Select(c => (c.Current, c.BaseName)));
+
+        var result = new List<OccurrenceRename>();
+        foreach (var (oldName, newName) in plan)
+        {
+            result.Add(new OccurrenceRename(Path.GetFileName(assembly.FullFileName), oldName, newName));
+            if (!apply)
+                continue;
+            try
+            {
+                candidates.First(c => c.Current == oldName).Occurrence.Name = newName;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Не удалось переименовать вхождение {Old} → {New}", oldName, newName);
+            }
+        }
+        return result;
+    }
+
+    /// <summary>Имя документа в обозревателе (как его показывает Inventor), иначе — имя файла.</summary>
+    private static string BaseName(Inv.ComponentOccurrence occurrence, string path)
+    {
+        try
+        {
+            if (occurrence.Definition?.Document is Inv._Document { DisplayName: { Length: > 0 } name })
+                return name.EndsWith(Path.GetExtension(path), StringComparison.OrdinalIgnoreCase) ? Path.GetFileNameWithoutExtension(name) : name;
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+        }
+        return Path.GetFileNameWithoutExtension(path);
+    }
 
     public Task SaveDocumentsAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken = default) =>
         ui.InvokeAsync(() =>

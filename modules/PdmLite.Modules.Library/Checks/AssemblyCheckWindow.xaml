@@ -42,6 +42,12 @@
                             <Run Text="Заменить отмеченные (" /><Run Text="{Binding ToReplace, Mode=OneWay}" /><Run Text=")" />
                         </TextBlock>
                     </Button>
+                    <Button Command="{Binding FixNamesCommand}" Margin="0,0,8,0"
+                            ToolTip="Вхождения компонентов библиотеки со старыми именами (например, от Content Center) получат имя по файлу">
+                        <TextBlock>
+                            <Run Text="Обновить имена в обозревателе (" /><Run Text="{Binding NamesToFix, Mode=OneWay}" /><Run Text=")…" />
+                        </TextBlock>
+                    </Button>
                     <Button Content="Проверить заново" Command="{Binding RunCommand}" Margin="0,0,8,0" />
                     <Button Content="Закрыть" IsCancel="True" Click="Close_OnClick" />
                 </StackPanel>
