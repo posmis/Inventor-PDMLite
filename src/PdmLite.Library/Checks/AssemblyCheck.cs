@@ -18,16 +18,24 @@ public enum ComponentFinding
     StandardNotInLibrary,
 }
 
-/// <param name="Replacement">Библиотечный компонент с тем же обозначением, если есть.</param>
-public sealed record ComponentCheck(AssemblyComponentInfo Component, string Designation, ComponentFinding Finding, LibraryItemSummary? Replacement)
+/// <param name="Candidates">Варианты замены из библиотеки, лучшие первыми: точное совпадение обозначения или похожие.</param>
+public sealed record ComponentCheck(AssemblyComponentInfo Component, string Designation, ComponentFinding Finding, IReadOnlyList<LibraryMatch> Candidates)
 {
-    public bool CanReplace => Replacement is not null;
+    /// <summary>Предлагаемая замена — лучший вариант.</summary>
+    public LibraryItemSummary? Replacement => Candidates.Count > 0 ? Candidates[0].Item : null;
+
+    public bool CanReplace => Candidates.Count > 0;
+
+    /// <summary>Обозначение совпадает точно — замена надёжная.</summary>
+    public bool IsExact => Candidates is [{ Exact: true }, ..];
 
     public string Message => Finding switch
     {
-        ComponentFinding.ContentCenter when CanReplace => "Из Content Center — в библиотеке есть такой же компонент.",
+        ComponentFinding.ContentCenter when IsExact => "Из Content Center — в библиотеке есть такой же компонент.",
+        ComponentFinding.ContentCenter when CanReplace => "Из Content Center — в библиотеке есть похожие: проверьте выбранный вариант.",
         ComponentFinding.ContentCenter => "Из Content Center — в библиотеке такого компонента нет. Добавьте его в библиотеку.",
         ComponentFinding.CopyOfLibraryItem => "Копия библиотечного компонента вне библиотеки.",
+        _ when CanReplace => "Стандартное изделие не из библиотеки — в библиотеке есть похожие: проверьте выбранный вариант.",
         _ => "Стандартное изделие не из библиотеки. Добавьте его в библиотеку.",
     };
 }
@@ -36,16 +44,13 @@ public sealed record AssemblyCheckResult(int InLibrary, int Total, IReadOnlyList
 
 /// <summary>
 /// Проверка сборки: какие стандартные компоненты взяты не из библиотеки и чем их заменить.
-/// Сопоставление — по обозначению (без учёта похожих букв, пробелов и регистра).
+/// Сопоставление — по обозначению: точное (без учёта похожих букв, пробелов и регистра) или похожее (<see cref="LibraryMatcher"/>).
 /// </summary>
 public static class AssemblyCheck
 {
     public static AssemblyCheckResult Run(IEnumerable<AssemblyComponentInfo> components, IEnumerable<LibraryItemSummary> library, LibraryStorage storage)
     {
-        var byKey = new Dictionary<string, LibraryItemSummary>();
-        foreach (var item in library)
-            byKey.TryAdd(DesignationNormalizer.ToKey(item.Designation), item);
-
+        var matcher = new LibraryMatcher(library);
         var findings = new List<ComponentCheck>();
         var inLibrary = 0;
         var total = 0;
@@ -60,14 +65,15 @@ public static class AssemblyCheck
 
             var designation = DesignationNormalizer.ToCanonical(
                 !string.IsNullOrWhiteSpace(component.PartNumber) ? component.PartNumber! : FileNameWithoutExtension(component.Path));
-            var match = byKey.GetValueOrDefault(DesignationNormalizer.ToKey(designation));
+            var candidates = matcher.Find(designation);
+            var exact = candidates is [{ Exact: true }, ..];
 
             if (component.IsContentCenter)
-                findings.Add(new ComponentCheck(component, designation, ComponentFinding.ContentCenter, match));
-            else if (match is not null)
-                findings.Add(new ComponentCheck(component, designation, ComponentFinding.CopyOfLibraryItem, match));
+                findings.Add(new ComponentCheck(component, designation, ComponentFinding.ContentCenter, candidates));
+            else if (exact)
+                findings.Add(new ComponentCheck(component, designation, ComponentFinding.CopyOfLibraryItem, candidates));
             else if (StandardParser.Find(designation) is not null)
-                findings.Add(new ComponentCheck(component, designation, ComponentFinding.StandardNotInLibrary, null));
+                findings.Add(new ComponentCheck(component, designation, ComponentFinding.StandardNotInLibrary, candidates));
             // Остальное — собственные детали проекта: не проверяем.
         }
 

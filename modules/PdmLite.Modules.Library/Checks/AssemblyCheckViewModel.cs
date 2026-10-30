@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using PdmLite.Core.Documents;
 using PdmLite.Core.UI;
 using PdmLite.Library.Checks;
+using PdmLite.Library.Designations;
 using PdmLite.Library.Items;
 using PdmLite.Library.Storage;
 using PdmLite.UI.Shared;
@@ -19,6 +20,9 @@ public sealed partial class AssemblyCheckViewModel(
     ILogger<AssemblyCheckViewModel> logger) : ObservableObject
 {
     public ObservableCollection<CheckRow> Rows { get; } = [];
+
+    /// <summary>Вся библиотека — для ручного выбора замены.</summary>
+    public IReadOnlyList<LibraryItemSummary> Library { get; private set; } = [];
 
     [ObservableProperty] private string _header = "";
     [ObservableProperty] private string _summary = "";
@@ -51,6 +55,7 @@ public sealed partial class AssemblyCheckViewModel(
             var inspection = await assembly.InspectActiveAsync();
             var catalog = await items.LoadCatalogAsync();
             var library = await items.ListAsync(catalog);
+            Library = library;
             var result = AssemblyCheck.Run(inspection.Components, library, storage());
 
             Rows.Clear();
@@ -87,8 +92,8 @@ public sealed partial class AssemblyCheckViewModel(
     private async Task ReplaceAsync()
     {
         var root = storage();
-        var replacements = Rows.Where(r => r.Replace && r.Check.Replacement is not null)
-            .Select(r => new ComponentReplacement(r.Check.Component.Path, root.GetFullPath(r.Check.Replacement!.RelativePath)))
+        var replacements = Rows.Where(r => r.Replace && r.SelectedCandidate is not null)
+            .Select(r => new ComponentReplacement(r.Check.Component.Path, root.GetFullPath(r.SelectedCandidate!.Item.RelativePath)))
             .ToList();
 
         IsBusy = true;
@@ -175,8 +180,52 @@ public sealed partial class CheckRow : ObservableObject
     {
         Check = check;
         _changed = changed;
-        _replace = check.CanReplace;
+        Candidates = new ObservableCollection<CandidateOption>(check.Candidates.Select(c => new CandidateOption(c)));
+        _selectedCandidate = Candidates.FirstOrDefault();
+        // Отмечаем сразу точное совпадение или единственный лучший похожий; при равных вариантах выбирает пользователь.
+        _replace = check.IsExact
+                   || (check.Candidates.Count > 0 && check.Candidates.Count(c => c.Extra == check.Candidates[0].Extra) == 1);
     }
+
+    /// <summary>Варианты замены для выпадающего списка (найденные и выбранные вручную).</summary>
+    public ObservableCollection<CandidateOption> Candidates { get; }
+
+    /// <summary>Замена, выбранная вручную в библиотеке: становится вариантом строки и отмечается.</summary>
+    public void Choose(LibraryItemSummary item)
+    {
+        var option = Candidates.FirstOrDefault(c => c.Item.Id == item.Id);
+        if (option is null)
+        {
+            option = new CandidateOption(new LibraryMatch(item, false, 0), Manual: true);
+            Candidates.Insert(0, option);
+        }
+        SelectedCandidate = option;
+        Replace = true;
+        OnPropertyChanged(nameof(HasChoice));
+        OnPropertyChanged(nameof(ReplacementText));
+        OnPropertyChanged(nameof(CanReplace));
+    }
+
+    /// <summary>Начальный поиск для ручного выбора: наименование и размер из обозначения (без стандарта).</summary>
+    public string SearchHint
+    {
+        get
+        {
+            var words = DesignationNormalizer.LeadingWords(Check.Designation);
+            return words.Count > 0 ? string.Join(' ', words) : "";
+        }
+    }
+
+    [ObservableProperty] private CandidateOption? _selectedCandidate;
+
+    partial void OnSelectedCandidateChanged(CandidateOption? value)
+    {
+        OnPropertyChanged(nameof(ReplacementText));
+        if (value is not null && !Replace)
+            Replace = true; // выбрал вариант — значит, хочет заменить
+    }
+
+    public bool HasChoice => Candidates.Count > 1;
 
     public ComponentCheck Check { get; }
 
@@ -184,12 +233,12 @@ public sealed partial class CheckRow : ObservableObject
 
     partial void OnReplaceChanged(bool value) => _changed();
 
-    public bool CanReplace => Check.CanReplace;
+    public bool CanReplace => Candidates.Count > 0;
     public string Designation => Check.Designation;
     public string FilePath => Check.Component.Path;
     public string FileName => System.IO.Path.GetFileName(Check.Component.Path);
     public int Count => Check.Component.Count;
-    public string ReplacementText => Check.Replacement?.Designation ?? "—";
+    public string ReplacementText => SelectedCandidate?.Text ?? "—";
     public string Message => Check.Message;
 
     public string FindingText => Check.Finding switch
@@ -200,4 +249,14 @@ public sealed partial class CheckRow : ObservableObject
     };
 
     public string Icon => Check.Finding == ComponentFinding.ContentCenter ? IconKeys.Warning : IconKeys.StateInfo;
+}
+
+/// <summary>Вариант замены в списке: обозначение и пометка, точное ли совпадение.</summary>
+public sealed record CandidateOption(LibraryMatch Match, bool Manual = false)
+{
+    public LibraryItemSummary Item => Match.Item;
+    public string Text => Manual ? $"{Match.Item.Designation}  (выбран вручную)"
+        : Match.Exact ? Match.Item.Designation
+        : $"{Match.Item.Designation}  (похожий)";
+    public override string ToString() => Text;
 }

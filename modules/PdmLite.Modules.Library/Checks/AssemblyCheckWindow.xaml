@@ -88,7 +88,28 @@
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
                     <DataGridTextColumn Header="Шт." Width="50" Binding="{Binding Count, Mode=OneWay}" IsReadOnly="True" />
-                    <DataGridTextColumn Header="Замена из библиотеки" Width="300" Binding="{Binding ReplacementText, Mode=OneWay}" IsReadOnly="True" />
+                    <DataGridTemplateColumn Header="" Width="34" CanUserResize="False">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="…" Click="Choose_OnClick" Padding="6,0" Margin="2,1"
+                                        ToolTip="Выбрать замену из библиотеки вручную" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Замена из библиотеки" Width="380">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <!-- Один вариант — текст; несколько — выбор из списка -->
+                                    <TextBlock Text="{Binding ReplacementText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                               Visibility="{Binding HasChoice, Converter={x:Static ui:InverseBoolToVisibilityConverter.Instance}}" />
+                                    <ComboBox ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedCandidate, UpdateSourceTrigger=PropertyChanged}"
+                                              DisplayMemberPath="Text" ToolTip="Несколько похожих компонентов — выберите нужный"
+                                              Visibility="{Binding HasChoice, Converter={StaticResource BoolToVisibility}}" />
+                                </Grid>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                     <DataGridTextColumn Header="Пояснение" Width="*" Binding="{Binding Message, Mode=OneWay}" IsReadOnly="True" />
                 </DataGrid.Columns>
             </DataGrid>

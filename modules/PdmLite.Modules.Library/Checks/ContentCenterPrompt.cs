@@ -57,7 +57,9 @@ public sealed class ContentCenterPrompt(
             }
 
             var answer = MessageBox.Show(
-                $"Компонент «{name}» вставлен из Content Center.\n\nВ библиотеке PdmLite есть такой же:\n«{replacement.Designation}».\n\n" +
+                $"Компонент «{name}» вставлен из Content Center.\n\n" +
+                (check.IsExact ? "В библиотеке PdmLite есть такой же" : "В библиотеке PdmLite есть похожий (проверьте обозначение)") +
+                $":\n«{replacement.Designation}».\n\n" +
                 "Заменить на компонент из библиотеки? Будут заменены все вхождения в этой сборке.",
                 UiMessages.Caption, MessageBoxButton.YesNo, MessageBoxImage.Warning);
             if (answer != MessageBoxResult.Yes)
