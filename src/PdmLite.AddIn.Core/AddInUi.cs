@@ -72,7 +72,9 @@ internal sealed class AddInUi : IDisposable
         var windows = _inventor.UserInterfaceManager.DockableWindows;
         _window = FindWindow(windows) ?? windows.Add(_clientId, WindowId, "PdmLite");
 
-        _elementHost = new ElementHost { Dock = System.Windows.Forms.DockStyle.Fill, Child = BuildContent() };
+        var content = BuildContent();
+        DockableWindowHost.EnableKeyboardInput(content, () => _logger.LogInformation("Ввод с клавиатуры в окне PdmLite включён"));
+        _elementHost = new ElementHost { Dock = System.Windows.Forms.DockStyle.Fill, Child = content };
         DockableWindowHost.AddChild(_window, _elementHost.Handle);
 
         // Положение окна Inventor запоминает сам; задаём его только при первой загрузке.
