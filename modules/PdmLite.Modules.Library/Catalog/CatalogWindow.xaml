@@ -1,0 +1,93 @@
+<Window x:Class="PdmLite.Modules.Library.Catalog.CatalogWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:PdmLite.Modules.Library.Catalog"
+        xmlns:ui="clr-namespace:PdmLite.UI.Shared;assembly=PdmLite.UI.Shared"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance local:CatalogViewModel}"
+        Title="Каталог библиотеки" Width="1100" Height="650" MinWidth="700" MinHeight="350"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Theme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <ui:FileIconConverter x:Key="FileIcon" />
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Window.Style>
+        <StaticResource ResourceKey="Pdm.Window" />
+    </Window.Style>
+
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Style="{StaticResource Pdm.Toolbar}" BorderBrush="{StaticResource Pdm.Brush.Border}">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Button Style="{StaticResource Pdm.ToolButton}" Click="Edit_OnClick" ToolTip="Изменить обозначение, тип, производителя или раздел (двойной щелчок)">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Pdm.Icon.Cmd.Settings}" Style="{StaticResource Pdm.Icon16}" />
+                            <TextBlock Text="Изменить…" Margin="5,0,2,0" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource Pdm.ToolButton}" Click="Delete_OnClick" ToolTip="Удалить компонент из библиотеки">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Pdm.Icon.State.Error}" Style="{StaticResource Pdm.Icon16}" />
+                            <TextBlock Text="Удалить" Margin="5,0,2,0" />
+                        </StackPanel>
+                    </Button>
+                    <Rectangle Style="{StaticResource Pdm.ToolSeparator}" />
+                    <Button Style="{StaticResource Pdm.ToolButton}" Click="ShowInWindows_OnClick" ToolTip="Показать файл в проводнике Windows">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Pdm.Icon.Cmd.ShowInWindows}" Style="{StaticResource Pdm.Icon16}" />
+                            <TextBlock Text="Показать файл" Margin="5,0,2,0" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource Pdm.ToolButton}" Command="{Binding LoadCommand}" ToolTip="Обновить список (F5)">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Pdm.Icon.Cmd.Refresh}" Style="{StaticResource Pdm.Icon16}" />
+                            <TextBlock Text="Обновить" Margin="5,0,2,0" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <ComboBox ItemsSource="{Binding CategoryFilters}" SelectedItem="{Binding CategoryFilter}" Width="240" Margin="0,0,8,0" />
+                    <TextBox Style="{StaticResource Pdm.SearchBox}" Tag="Поиск по обозначению" Width="240"
+                             Text="{Binding Search, UpdateSourceTrigger=PropertyChanged, Delay=250}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource Pdm.Brush.Toolbar}" BorderBrush="{StaticResource Pdm.Brush.Border}"
+                BorderThickness="0,1,0,0" Padding="10,6">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="Закрыть" IsCancel="True" Click="Close_OnClick" />
+                <TextBlock Text="{Binding Summary}" VerticalAlignment="Center" />
+            </DockPanel>
+        </Border>
+
+        <DataGrid x:Name="Grid" Margin="6" ItemsSource="{Binding View}" SelectedItem="{Binding Selected}" IsReadOnly="True"
+                  SelectionMode="Single" MouseDoubleClick="Grid_OnMouseDoubleClick">
+            <DataGrid.Columns>
+                <DataGridTemplateColumn Header="Обозначение" Width="360" SortMemberPath="Item.Designation">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" ToolTip="{Binding Path}">
+                                <Image Source="{Binding Path, Converter={StaticResource FileIcon}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
+                                <TextBlock Text="{Binding Item.Designation}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Тип" Width="100" Binding="{Binding KindName}" />
+                <DataGridTextColumn Header="Стандарт" Width="140" Binding="{Binding Item.Standard}" />
+                <DataGridTextColumn Header="Производитель" Width="120" Binding="{Binding Item.Manufacturer}" />
+                <DataGridTextColumn Header="Раздел" Width="220" Binding="{Binding Item.CategoryPath}" />
+                <DataGridTextColumn Header="Изменён" Width="*" Binding="{Binding Modified}" SortMemberPath="Item.ModifiedAt" />
+            </DataGrid.Columns>
+        </DataGrid>
+    </DockPanel>
+</Window>

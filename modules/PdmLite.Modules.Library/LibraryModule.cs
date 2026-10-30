@@ -5,14 +5,16 @@ using PdmLite.Core.Modularity;
 using PdmLite.Core.UI;
 using PdmLite.Hosting;
 using PdmLite.Library.Import;
+using PdmLite.Library.Items;
 using PdmLite.Library.Storage;
+using PdmLite.Modules.Library.Catalog;
 using PdmLite.Modules.Library.Import;
 using PdmLite.Modules.Library.Settings;
 
 namespace PdmLite.Modules.Library;
 
 /// <summary>
-/// Стандартная библиотека. Шаг Б1 — добавление компонентов и настройки; работает в Explorer
+/// Стандартная библиотека. Шаг Б1 — добавление, каталог (изменение, удаление) и настройки; работает в Explorer
 /// (свойства файлов читаются через Apprentice). Каталог и вставка в Inventor — следующие шаги.
 /// </summary>
 public sealed class LibraryModule : IPdmModule
@@ -28,7 +30,9 @@ public sealed class LibraryModule : IPdmModule
             return () => new LibraryStorage(settings.Value.RootFolder);
         });
         services.AddSingleton<LibraryImportService>();
+        services.AddSingleton<LibraryItemService>();
         services.AddTransient<ImportViewModel>();
+        services.AddTransient<CatalogViewModel>();
         services.AddTransient<LibrarySettingsViewModel>();
     }
 
@@ -44,6 +48,15 @@ public sealed class LibraryModule : IPdmModule
                 return Task.CompletedTask;
             },
             Order: 0, Group: "1-library", Icon: IconKeys.LibraryAdd));
+
+        context.Ui.RegisterCommand(new CommandDescriptor(
+            "Library.Catalog", "Каталог библиотеки…", CommandPlacement.Toolbar,
+            _ =>
+            {
+                new CatalogWindow(services.GetRequiredService<CatalogViewModel>(), services) { Owner = Application.Current?.MainWindow }.Show();
+                return Task.CompletedTask;
+            },
+            Order: 5, Group: "1-library", Icon: IconKeys.Library));
 
         context.Ui.RegisterCommand(new CommandDescriptor(
             "Library.Settings", "Настройки библиотеки…", CommandPlacement.Toolbar,
