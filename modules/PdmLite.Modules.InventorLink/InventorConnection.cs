@@ -117,8 +117,14 @@ public sealed class InventorConnection(IEventBus events, ILogger<InventorConnect
         events.Publish(new ActiveDocumentChanged(null));
     }
 
+    private int _disposed;
+
+    /// <summary>Повторный вызов безопасен: модуль останавливает связь, затем контейнер освобождает сервис.</summary>
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
         await _cts.CancelAsync().ConfigureAwait(false);
         if (_loop is not null)
             await _loop.ConfigureAwait(false);

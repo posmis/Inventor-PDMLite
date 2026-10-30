@@ -14,6 +14,18 @@ public class PdmHostTests
         public Task OpenAsync(string path, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
+    /// <summary>Сервис, который умеет освобождаться только асинхронно (как InventorConnection).</summary>
+    private sealed class AsyncOnlyService : IAsyncDisposable
+    {
+        public bool Disposed { get; private set; }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Task.Yield();
+            Disposed = true;
+        }
+    }
+
     /// <summary>Модуль заменяет сервис хоста и регистрирует команду.</summary>
     private sealed class FakeModule : IPdmModule
     {
@@ -21,8 +33,11 @@ public class PdmHostTests
         public bool Stopped { get; private set; }
         public ModuleInfo Info { get; } = new("Fake", "Fake", new Version(1, 0));
 
-        public void ConfigureServices(IServiceCollection services, HostKind host) =>
+        public void ConfigureServices(IServiceCollection services, HostKind host)
+        {
             services.AddSingleton<IDocumentLauncher, FakeLauncher>();
+            services.AddSingleton<AsyncOnlyService>();
+        }
 
         public void Initialize(IModuleContext context)
         {
@@ -37,6 +52,7 @@ public class PdmHostTests
     public void Host_LoadsModules_AndManagesLifecycle()
     {
         var module = new FakeModule();
+        AsyncOnlyService? asyncService;
         var folder = Directory.CreateTempSubdirectory("pdmlite-host-").FullName;
         try
         {
@@ -55,9 +71,11 @@ public class PdmHostTests
                 Assert.NotNull(host.Services.GetRequiredService<IProjectSession>());
                 Assert.Single(host.Ui.GetCommands(CommandPlacement.Toolbar));
                 Assert.Contains(host.Modules, m => m.Info.Id == "Fake" && m.IsLoaded);
+                asyncService = host.Services.GetRequiredService<AsyncOnlyService>();
             }
 
             Assert.True(module.Stopped);
+            Assert.True(asyncService.Disposed);
         }
         finally
         {

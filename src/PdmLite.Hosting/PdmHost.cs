@@ -5,6 +5,7 @@ using PdmLite.Core.Documents;
 using PdmLite.Core.Events;
 using PdmLite.Core.Modularity;
 using PdmLite.Core.Projects;
+using PdmLite.Core.Threading;
 using PdmLite.Core.UI;
 using Serilog;
 
@@ -131,7 +132,10 @@ public sealed class PdmHost : IDisposable
         }
         _initialized.Clear();
         var loggerFactory = _services.GetRequiredService<ILoggerFactory>();
-        _services.Dispose();
+        // Асинхронно: сервисы модулей могут реализовывать только IAsyncDisposable,
+        // и синхронный Dispose контейнера на них падает. Ожидание — не в потоке интерфейса.
+        if (!SyncBridge.Run(() => _services.DisposeAsync().AsTask(), TimeSpan.FromSeconds(5)))
+            _logger.LogWarning("Сервисы не освободились за 5 с");
         loggerFactory.Dispose(); // зарегистрирован экземпляром — контейнер его не освобождает
     }
 
