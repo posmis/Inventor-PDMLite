@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using Microsoft.Extensions.DependencyInjection;
 using PdmLite.Data;
@@ -92,6 +93,56 @@ public partial class CatalogWindow : Window
     {
         if (e.NewValue is CatalogFolder folder)
             _viewModel.Folder = folder;
+    }
+
+    /// <summary>Правый щелчок по невыделенной строке выделяет её — меню относится к ней.</summary>
+    private void Grid_OnPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var row = ItemsControl.ContainerFromElement(Grid, (DependencyObject)e.OriginalSource) as DataGridRow;
+        if (row is null || row.IsSelected)
+            return;
+        Grid.SelectedItems.Clear();
+        row.IsSelected = true;
+        row.Focus();
+    }
+
+    /// <summary>Клавиши: Enter — изменить, Del — удалить, Ctrl+C — копировать обозначение.</summary>
+    private async void Grid_OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Enter:
+                e.Handled = true;
+                await EditSelectedAsync();
+                break;
+            case Key.Delete:
+                e.Handled = true;
+                if (_viewModel.Selected is { } row)
+                    await _viewModel.DeleteAsync(row);
+                break;
+            case Key.C when Keyboard.Modifiers == ModifierKeys.Control:
+                e.Handled = true;
+                CopyDesignation();
+                break;
+        }
+    }
+
+    private void CopyDesignation_OnClick(object sender, RoutedEventArgs e) => CopyDesignation();
+
+    /// <summary>Обозначения выделенных компонентов — по строке на компонент.</summary>
+    private void CopyDesignation()
+    {
+        var designations = Grid.SelectedItems.OfType<CatalogRow>().Select(r => r.Item.Designation).ToList();
+        if (designations.Count == 0)
+            return;
+        try
+        {
+            Clipboard.SetText(string.Join(Environment.NewLine, designations));
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            // Буфер обмена занят другой программой — не критично.
+        }
     }
 
     private void Close_OnClick(object sender, RoutedEventArgs e) => Close();

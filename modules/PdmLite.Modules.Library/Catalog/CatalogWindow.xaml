@@ -112,7 +112,36 @@
             <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" ResizeDirection="Columns" Background="Transparent" />
 
             <DataGrid ui:NaturalSort.IsEnabled="True" x:Name="Grid" Grid.Column="2" ItemsSource="{Binding View}" SelectedItem="{Binding Selected}" IsReadOnly="True"
-                      SelectionMode="Extended" MouseDoubleClick="Grid_OnMouseDoubleClick">
+                      SelectionMode="Extended" MouseDoubleClick="Grid_OnMouseDoubleClick"
+                      PreviewMouseRightButtonDown="Grid_OnPreviewMouseRightButtonDown" PreviewKeyDown="Grid_OnPreviewKeyDown">
+                <!-- Команды по правой кнопке — те же, что на панели инструментов -->
+                <DataGrid.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Изменить…" InputGestureText="Enter" Click="Edit_OnClick" FontWeight="SemiBold">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Settings}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Дублировать…" Click="Duplicate_OnClick">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.LibraryAdd}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Показать файл" Click="ShowInWindows_OnClick">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.ShowInWindows}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Копировать обозначение" InputGestureText="Ctrl+C" Click="CopyDesignation_OnClick">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.CopyPath}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <Separator />
+                        <MenuItem Header="Обслуживание выделенных…" Click="Maintenance_OnClick">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Database}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Обновить список" InputGestureText="F5" Command="{Binding LoadCommand}">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Refresh}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <Separator />
+                        <MenuItem Header="Удалить" InputGestureText="Del" Click="Delete_OnClick">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.State.Error}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                    </ContextMenu>
+                </DataGrid.ContextMenu>
                 <DataGrid.Columns>
                     <DataGridTemplateColumn Header="Обозначение" Width="360" SortMemberPath="Item.Designation">
                         <DataGridTemplateColumn.CellTemplate>
