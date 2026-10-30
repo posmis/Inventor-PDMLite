@@ -71,8 +71,9 @@ powershell -ExecutionPolicy Bypass -File deploy\install.ps1
 если задана переменная `PDMLITE_TEST_PG` (подключение с правом создавать базы, например
 `Host=localhost;Username=postgres;Password=...`), иначе пропускаются.
 
-Миграции базы: `dotnet tool restore`, затем в `src/PdmLite.Data`:
-`dotnet ef migrations add <Имя> -o Migrations` (строка подключения — переменная `PDMLITE_DB`).
+Миграции базы (из корня репозитория; строка подключения — переменная `PDMLITE_DB`):
+`dotnet tool restore`, затем
+`dotnet ef migrations add <Имя> -p src/PdmLite.Data -s tools/PdmLite.Data.Design -o Migrations`.
 
 ## Структура
 

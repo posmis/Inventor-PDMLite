@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Только для инструмента миграций (dotnet ef). Пакет EF Core Design подключён здесь, а не
+    в PdmLite.Data, чтобы его зависимости никак не влияли на сборку приложений.
+
+    Новая миграция (из корня репозитория):
+      dotnet tool restore
+      dotnet ef migrations add <Имя> -p src/PdmLite.Data -s tools/PdmLite.Data.Design -o Migrations
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PdmLite.Data\PdmLite.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>
