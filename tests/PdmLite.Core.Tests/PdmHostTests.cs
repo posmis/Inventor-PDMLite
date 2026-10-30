@@ -69,6 +69,7 @@ public class PdmHostTests
                 Assert.True(module.Initialized);
                 Assert.IsType<FakeLauncher>(host.Services.GetRequiredService<IDocumentLauncher>());
                 Assert.NotNull(host.Services.GetRequiredService<IProjectSession>());
+                Assert.False(host.Services.GetRequiredService<IComponentPlacer>().CanPlace); // по умолчанию вставки нет
                 Assert.Single(host.Ui.GetCommands(CommandPlacement.Toolbar));
                 Assert.Contains(host.Modules, m => m.Info.Id == "Fake" && m.IsLoaded);
                 asyncService = host.Services.GetRequiredService<AsyncOnlyService>();

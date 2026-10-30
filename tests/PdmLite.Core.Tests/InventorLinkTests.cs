@@ -63,6 +63,14 @@ public class InventorLinkTests
             Opened.Add(path);
             return Task.CompletedTask;
         }
+
+        public List<string> Placed { get; } = [];
+
+        public Task PlaceComponentAsync(string path, CancellationToken cancellationToken = default)
+        {
+            Placed.Add(path);
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]
@@ -71,5 +79,45 @@ public class InventorLinkTests
         var connection = new FakeConnection(true);
         await new LinkedDocumentLauncher(connection, NullLogger<LinkedDocumentLauncher>.Instance).OpenAsync(@"C:\П\Рама.iam");
         Assert.Equal([@"C:\П\Рама.iam"], connection.Opened);
+    }
+
+    [Fact]
+    public async Task ComponentPlacer_ForwardsToInventor_OnlyWhenConnected()
+    {
+        var connected = new FakeConnection(true);
+        var placer = new LinkedComponentPlacer(connected);
+        Assert.True(placer.CanPlace);
+        await placer.PlaceAsync(@"C:\Lib\Болт.ipt");
+        Assert.Equal([@"C:\Lib\Болт.ipt"], connected.Placed);
+
+        var offline = new LinkedComponentPlacer(new FakeConnection(false));
+        Assert.False(offline.CanPlace);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => offline.PlaceAsync(@"C:\Lib\Болт.ipt"));
+    }
+
+    [Fact]
+    public async Task PlaceComponent_ReachesPlugin_AndPluginErrorsComeBack()
+    {
+        var endpoint = "Test" + Guid.NewGuid().ToString("N")[..8];
+        var placed = new ConcurrentQueue<string?>();
+        await using var server = FakeInventor(endpoint, null);
+        server.Handle<DocumentArgs>(LinkProtocol.Requests.PlaceComponent, (args, _) =>
+            args.Path!.EndsWith(".ipt") ? Enqueue(placed, args.Path) : throw new InvalidOperationException("Активный документ — не сборка."));
+
+        await using var link = new InventorConnection(new EventBus(NullLogger<EventBus>.Instance), NullLogger<InventorConnection>.Instance,
+            endpoint, TimeSpan.FromMilliseconds(100));
+        link.Start();
+        await LinkMoreTests.WaitUntil(() => link.IsConnected);
+
+        await link.PlaceComponentAsync(@"C:\Lib\Гайка.ipt");
+        Assert.Equal([@"C:\Lib\Гайка.ipt"], placed.ToArray());
+        var error = await Assert.ThrowsAsync<LinkRemoteException>(() => link.PlaceComponentAsync(@"C:\Lib\Сборка.iam"));
+        Assert.Contains("не сборка", error.Message);
+    }
+
+    private static Task<object?> Enqueue(ConcurrentQueue<string?> queue, string? value)
+    {
+        queue.Enqueue(value);
+        return Task.FromResult<object?>(null);
     }
 }

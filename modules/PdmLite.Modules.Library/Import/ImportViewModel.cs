@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using PdmLite.Core.Documents;
+using PdmLite.Core.Events;
 using PdmLite.Library.Catalog;
 using PdmLite.Library.Import;
 using PdmLite.UI.Shared;
@@ -17,13 +18,15 @@ public sealed partial class ImportViewModel : ObservableObject
 
     private readonly LibraryImportService _service;
     private readonly ILogger<ImportViewModel> _logger;
+    private readonly IEventBus _events;
     private ImportSession? _session;
     private bool _revalidating;
 
-    public ImportViewModel(LibraryImportService service, IDocumentPropertyStore store, ILogger<ImportViewModel> logger)
+    public ImportViewModel(LibraryImportService service, IDocumentPropertyStore store, IEventBus events, ILogger<ImportViewModel> logger)
     {
         _service = service;
         _logger = logger;
+        _events = events;
         View = CollectionViewSource.GetDefaultView(Rows);
         View.Filter = o => Matches((ImportRowViewModel)o);
         if (!store.IsAvailable)
@@ -155,6 +158,8 @@ public sealed partial class ImportViewModel : ObservableObject
         await RunAsync("Внесение в библиотеку", async progress => result = await _service.CommitAsync(_session, progress));
         if (result is null)
             return;
+        if (result.Added > 0)
+            _events.Publish(new LibraryChanged());
 
         // Внесённые убираем из списка; неудачные остаются с причиной.
         var failed = result.Failed.ToDictionary(f => f.Candidate, f => f.Error);

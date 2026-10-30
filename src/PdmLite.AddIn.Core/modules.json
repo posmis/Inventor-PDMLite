@@ -2,6 +2,7 @@
   // Включение и отключение модулей плагина. Модули, которых нет в списке, включены.
   "Modules": [
     { "Id": "ProjectTree", "Enabled": true },
-    { "Id": "Properties", "Enabled": true }
+    { "Id": "Properties", "Enabled": true },
+    { "Id": "Library", "Enabled": true }
   ]
 }

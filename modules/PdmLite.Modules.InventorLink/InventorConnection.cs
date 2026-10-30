@@ -11,6 +11,8 @@ public interface IInventorConnection
 
     Task<InventorStatus?> GetStatusAsync(CancellationToken cancellationToken = default);
     Task OpenDocumentAsync(string path, CancellationToken cancellationToken = default);
+
+    Task PlaceComponentAsync(string path, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -58,6 +60,15 @@ public sealed class InventorConnection : IInventorConnection, IAsyncDisposable
         _client is { IsConnected: true } client
             ? client.RequestAsync(LinkProtocol.Requests.OpenDocument, new DocumentArgs(path), TimeSpan.FromMinutes(5), cancellationToken)
             : throw new InvalidOperationException("Нет связи с Inventor.");
+
+    public Task PlaceComponentAsync(string path, CancellationToken cancellationToken = default)
+    {
+        if (_client is not { IsConnected: true } client)
+            throw new InvalidOperationException("Нет связи с Inventor.");
+        // Разрешаем плагину вывести окно Inventor на передний план: пользователь сразу указывает место вставки.
+        ForegroundPermission.AllowAny();
+        return client.RequestAsync(LinkProtocol.Requests.PlaceComponent, new DocumentArgs(path), TimeSpan.FromMinutes(1), cancellationToken);
+    }
 
     private async Task RunAsync(CancellationToken ct)
     {

@@ -42,7 +42,7 @@ public partial class CatalogWindow : Window
             return;
         var editor = new EditItemWindow(new EditItemViewModel(_viewModel.Service, catalog, row.Item)) { Owner = this };
         if (editor.ShowDialog() == true)
-            await _viewModel.LoadAsync();
+            await _viewModel.OnEditedAsync();
     }
 
     private async void Delete_OnClick(object sender, RoutedEventArgs e)

@@ -5,7 +5,8 @@
 
 > Статус: каркас (дерево проекта, карточка файла, связь плагина и Explorer) работает в
 > Inventor 2025. **Стандартная библиотека, шаг Б1:** база PostgreSQL, хранилище и добавление
-> компонентов с проверками, каталог с изменением и удалением в Explorer — см. [docs/LIBRARY.md](docs/LIBRARY.md).
+> компонентов с проверками, каталог с изменением и удалением; панель библиотеки и вставка
+> компонента в сборку в Inventor — см. [docs/LIBRARY.md](docs/LIBRARY.md).
 
 ## Что реализовано
 
@@ -93,7 +94,7 @@ modules/
   PdmLite.Modules.ProjectTree    дерево проекта
   PdmLite.Modules.Properties     карточка документа
   PdmLite.Modules.InventorLink   связь Explorer с Inventor
-  PdmLite.Modules.Library        стандартная библиотека: добавление, каталог, настройки
+  PdmLite.Modules.Library        стандартная библиотека: панель, вставка, добавление, каталог, настройки
 tests/
   PdmLite.Core.Tests
   PdmLite.Library.Tests   (с PostgreSQL: переменная PDMLITE_TEST_PG)

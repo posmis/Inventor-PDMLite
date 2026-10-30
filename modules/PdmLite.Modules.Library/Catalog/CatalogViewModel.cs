@@ -4,6 +4,7 @@ using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using PdmLite.Core.Events;
 using PdmLite.Data.Library;
 using PdmLite.Library.Catalog;
 using PdmLite.Library.Items;
@@ -17,11 +18,13 @@ public sealed partial class CatalogViewModel : ObservableObject
 
     private readonly LibraryItemService _service;
     private readonly ILogger<CatalogViewModel> _logger;
+    private readonly IEventBus _events;
 
-    public CatalogViewModel(LibraryItemService service, ILogger<CatalogViewModel> logger)
+    public CatalogViewModel(LibraryItemService service, IEventBus events, ILogger<CatalogViewModel> logger)
     {
         _service = service;
         _logger = logger;
+        _events = events;
         View = CollectionViewSource.GetDefaultView(Items);
         View.Filter = o => Matches((CatalogRow)o);
     }
@@ -87,12 +90,20 @@ public sealed partial class CatalogViewModel : ObservableObject
         try
         {
             await _service.DeleteAsync(row.Item.Id);
+            _events.Publish(new LibraryChanged());
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Не удалось удалить {Designation}", row.Item.Designation);
             UiMessages.Error("Не удалось удалить компонент.", ex);
         }
+        await LoadAsync();
+    }
+
+    /// <summary>Карточка изменена — перечитать список и сообщить панелям библиотеки.</summary>
+    public async Task OnEditedAsync()
+    {
+        _events.Publish(new LibraryChanged());
         await LoadAsync();
     }
 

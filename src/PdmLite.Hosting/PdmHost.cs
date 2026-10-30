@@ -83,6 +83,8 @@ public sealed class PdmHost : IDisposable
         // Если хост не дал способа читать свойства файлов Inventor — модули получат понятный отказ.
         services.TryAddSingleton<IDocumentPropertyStore>(
             new UnavailablePropertyStore("в этом приложении чтение свойств файлов Inventor не подключено."));
+        services.TryAddSingleton<IComponentPlacer>(
+            new UnavailableComponentPlacer("Вставка в сборку недоступна: нет связи с Inventor."));
 
         var loaded = new List<IPdmModule>();
         var finalStatuses = statuses.ToList();

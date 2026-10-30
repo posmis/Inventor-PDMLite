@@ -25,6 +25,7 @@ public sealed class InventorLinkModule : IPdmModule
         services.AddSingleton<IInventorConnection>(sp => sp.GetRequiredService<InventorConnection>());
         // Двойной щелчок в дереве открывает документ в уже запущенном Inventor.
         services.Replace(ServiceDescriptor.Singleton<IDocumentLauncher, LinkedDocumentLauncher>());
+        services.Replace(ServiceDescriptor.Singleton<IComponentPlacer, LinkedComponentPlacer>());
     }
 
     public void Initialize(IModuleContext context)

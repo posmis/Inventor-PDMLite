@@ -22,6 +22,7 @@ public sealed class InventorLinkServer : IAsyncDisposable
         var ui = services.GetRequiredService<IUiDispatcher>();
         var projects = services.GetRequiredService<InventorProjects>();
         var launcher = services.GetRequiredService<IDocumentLauncher>();
+        var placer = services.GetRequiredService<IComponentPlacer>();
         var version = ui.InvokeAsync(() => inventor.SoftwareVersion.DisplayVersion).GetAwaiter().GetResult();
 
         _server = new LinkServer(LinkEndpoints.Inventor, logger);
@@ -41,6 +42,14 @@ public sealed class InventorLinkServer : IAsyncDisposable
             if (string.IsNullOrWhiteSpace(args.Path))
                 throw new ArgumentException("Не указан путь к документу.");
             await launcher.OpenAsync(args.Path, ct);
+            return null;
+        });
+
+        _server.Handle<DocumentArgs>(LinkProtocol.Requests.PlaceComponent, async (args, ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(args.Path))
+                throw new ArgumentException("Не указан путь к компоненту.");
+            await placer.PlaceAsync(args.Path, ct);
             return null;
         });
     }

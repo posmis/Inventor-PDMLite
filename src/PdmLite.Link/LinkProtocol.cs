@@ -19,6 +19,9 @@ public static class LinkProtocol
         /// <summary>Открыть документ в Inventor (<see cref="DocumentArgs"/>).</summary>
         public const string OpenDocument = "openDocument";
 
+        /// <summary>Вставить компонент в активную сборку Inventor (<see cref="DocumentArgs"/>).</summary>
+        public const string PlaceComponent = "placeComponent";
+
         // --- Explorer ---
 
         /// <summary>Открыть проект в Explorer (<see cref="ProjectArgs"/>).</summary>

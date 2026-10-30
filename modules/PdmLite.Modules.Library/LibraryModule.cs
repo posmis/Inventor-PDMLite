@@ -9,17 +9,20 @@ using PdmLite.Library.Items;
 using PdmLite.Library.Storage;
 using PdmLite.Modules.Library.Catalog;
 using PdmLite.Modules.Library.Import;
+using PdmLite.Modules.Library.Panel;
 using PdmLite.Modules.Library.Settings;
 
 namespace PdmLite.Modules.Library;
 
 /// <summary>
-/// Стандартная библиотека. Шаг Б1 — добавление, каталог (изменение, удаление) и настройки; работает в Explorer
-/// (свойства файлов читаются через Apprentice). Каталог и вставка в Inventor — следующие шаги.
+/// Стандартная библиотека: панель с деревом компонентов и вставкой в сборку (Inventor и Explorer);
+/// добавление, каталог (изменение, удаление) и настройки — в Explorer (свойства файлов — через Apprentice).
 /// </summary>
 public sealed class LibraryModule : IPdmModule
 {
-    public ModuleInfo Info { get; } = new("Library", "Стандартная библиотека", new Version(0, 1, 0), HostKind.Explorer);
+    public ModuleInfo Info { get; } = new("Library", "Стандартная библиотека", new Version(0, 2, 0));
+
+    private LibraryPanelViewModel? _panel;
 
     public void ConfigureServices(IServiceCollection services, HostKind host)
     {
@@ -31,6 +34,7 @@ public sealed class LibraryModule : IPdmModule
         });
         services.AddSingleton<LibraryImportService>();
         services.AddSingleton<LibraryItemService>();
+        services.AddSingleton<LibraryPanelViewModel>();
         services.AddTransient<ImportViewModel>();
         services.AddTransient<CatalogViewModel>();
         services.AddTransient<LibrarySettingsViewModel>();
@@ -39,6 +43,18 @@ public sealed class LibraryModule : IPdmModule
     public void Initialize(IModuleContext context)
     {
         var services = context.Services;
+
+        // Панель «Библиотека» — в обоих хостах: вкладка рядом с деревом проекта.
+        _panel = services.GetRequiredService<LibraryPanelViewModel>();
+        _panel.Attach();
+        context.Ui.RegisterPanel(new PanelDescriptor(
+            "Library.Panel", "Библиотека", PanelPlacement.Navigator,
+            sp => new LibraryPanelView { DataContext = sp.GetRequiredService<LibraryPanelViewModel>() },
+            Order: 10, Icon: IconKeys.Library));
+
+        // Добавление, каталог и настройки — только в Explorer (свойства файлов читаются через Apprentice).
+        if (context.Host != HostKind.Explorer)
+            return;
 
         context.Ui.RegisterCommand(new CommandDescriptor(
             "Library.Import", "Добавить в библиотеку…", CommandPlacement.Toolbar,
@@ -68,7 +84,5 @@ public sealed class LibraryModule : IPdmModule
             Order: 10, Group: "1-library", Icon: IconKeys.Settings));
     }
 
-    public void Shutdown()
-    {
-    }
+    public void Shutdown() => _panel?.Detach();
 }
