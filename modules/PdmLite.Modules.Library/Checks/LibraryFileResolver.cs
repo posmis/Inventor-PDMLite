@@ -11,8 +11,8 @@ namespace PdmLite.Modules.Library.Checks;
 
 /// <summary>
 /// Находит компонент библиотеки, на который ссылается сборка, если файла нет по старому пути
-/// (изменили обозначение, стандарт или раздел; перенесли папку библиотеки). Индекс путей держится
-/// в памяти и обновляется после изменений библиотеки.
+/// (изменили обозначение, стандарт или раздел; объединили дубликаты; перенесли папку библиотеки).
+/// Индекс путей держится в памяти и обновляется после изменений библиотеки.
 /// </summary>
 public sealed class LibraryFileResolver(
     LibraryItemService items,
@@ -23,10 +23,18 @@ public sealed class LibraryFileResolver(
 {
     /// <summary>Каталог могли изменить в Explorer (другой процесс) — при промахе индекс старше этого перечитывается.</summary>
     private static readonly TimeSpan MaxAge = TimeSpan.FromSeconds(20);
+
+    /// <summary>
+    /// Не удалось загрузить (база недоступна) — следующая попытка не раньше чем через это время.
+    /// Иначе открытие сборки ждало бы загрузку на каждом файле.
+    /// </summary>
+    private static readonly TimeSpan RetryAfter = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan LoadTimeout = TimeSpan.FromSeconds(3);
 
-    private volatile LibraryPathIndex? _index;
-    private DateTime _loadedAt;
+    private readonly object _gate = new();
+    private LibraryPathIndex? _index;
+    private DateTime _loadedAt = DateTime.MinValue;
+    private DateTime _failedAt = DateTime.MinValue;
     private IDisposable? _subscription;
 
     public void Attach()
@@ -40,44 +48,45 @@ public sealed class LibraryFileResolver(
         if (!database.IsConfigured)
             return null;
 
-        var library = storage();
-        bool missing;
-        if (libraryName is not null)
-        {
-            // Ссылка внутри библиотеки проекта. Наша — проверим, есть ли файл; чужая — не знаем.
-            var ours = string.Equals(libraryName, LibraryPanelViewModel.InventorLibraryName, StringComparison.OrdinalIgnoreCase);
-            if (ours && File.Exists(library.GetFullPath(reference)))
-                return null;
-            missing = ours;
-        }
-        else if (Path.IsPathRooted(reference))
-        {
-            if (File.Exists(reference))
-                return null;
-            missing = true;
-        }
-        else
-        {
-            missing = false; // путь относительно проекта — проверить не можем, ищем только по старым путям
-        }
-
-        var relative = Index(reload: false)?.Find(reference, missing);
-        if (relative is null && missing && DateTime.UtcNow - _loadedAt > MaxAge)
-            relative = Index(reload: true)?.Find(reference, missing);
-        if (relative is null)
+        var root = storage().Root;
+        var ours = LibraryPanelViewModel.InventorLibraryName;
+        var index = Index(reload: false);
+        if (index is null)
             return null;
 
-        var full = library.GetFullPath(relative);
-        return File.Exists(full) ? full : null;
+        var found = LibraryReferenceResolver.Resolve(index, root, reference, libraryName, ours, File.Exists);
+        if (found is null && LibraryReferenceResolver.ShouldReload(reference, libraryName, ours) && Age > MaxAge
+            && Index(reload: true) is { } fresh && !ReferenceEquals(fresh, index))
+            found = LibraryReferenceResolver.Resolve(fresh, root, reference, libraryName, ours, File.Exists);
+        return found;
     }
 
+    private TimeSpan Age
+    {
+        get
+        {
+            lock (_gate)
+                return DateTime.UtcNow - _loadedAt;
+        }
+    }
+
+    /// <summary>Индекс; при необходимости загружается синхронно (вызов из события Inventor — ждём недолго).</summary>
     private LibraryPathIndex? Index(bool reload)
     {
-        if (_index is { } index && !reload)
-            return index;
-        // Вызов из события Inventor — ждём недолго; не успели — Inventor покажет своё окно.
-        SyncBridge.Run(RefreshAsync, LoadTimeout);
-        return _index;
+        lock (_gate)
+        {
+            if (_index is { } index && !reload)
+                return index;
+            if (DateTime.UtcNow - _failedAt < RetryAfter)
+                return _index;
+        }
+        var completed = SyncBridge.Run(RefreshAsync, LoadTimeout);
+        lock (_gate)
+        {
+            if (!completed)
+                _failedAt = DateTime.UtcNow; // не дождались — загрузка продолжится в фоне, остальные файлы не ждут
+            return _index;
+        }
     }
 
     private async Task RefreshAsync()
@@ -86,11 +95,18 @@ public sealed class LibraryFileResolver(
             return;
         try
         {
-            _index = await items.LoadPathIndexAsync().ConfigureAwait(false);
-            _loadedAt = DateTime.UtcNow;
+            var index = await items.LoadPathIndexAsync().ConfigureAwait(false);
+            lock (_gate)
+            {
+                _index = index;
+                _loadedAt = DateTime.UtcNow;
+                _failedAt = DateTime.MinValue;
+            }
         }
         catch (Exception ex)
         {
+            lock (_gate)
+                _failedAt = DateTime.UtcNow;
             logger.LogWarning(ex, "Не удалось загрузить пути компонентов библиотеки");
         }
     }

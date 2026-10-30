@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PdmLite.Core.Documents;
@@ -215,18 +216,21 @@ public sealed class LibraryImportService(
     {
         var text = c.SourceText(source) ?? "";
         var (replaced, applied) = session.Rules.ApplyReplacements(DesignationNormalizer.ToCanonical(text));
-        var designation = DesignationNormalizer.ToCanonical(replaced);
-        var standard = c.ManualStandard ?? StandardParser.Find(designation);
-        var categoryUntouched = c.CategoryId == c.SuggestedCategoryId;
-        var suggested = session.Catalog.Suggest(designation, standard);
-
         c.Source = source;
         c.OriginalDesignation = text;
         c.AppliedRules = applied;
-        c.Designation = designation;
-        c.Standard = standard;
+        c.Designation = DesignationNormalizer.ToCanonical(replaced);
+        Suggest(c, session);
         if (resetKind && !c.KindFromFile)
-            c.Kind = standard is not null ? LibraryItemKind.Standard : LibraryItemKind.Purchased;
+            c.Kind = c.Standard is not null ? LibraryItemKind.Standard : LibraryItemKind.Purchased;
+    }
+
+    /// <summary>Стандарт по обозначению (или ручной) и предлагаемый раздел — если раздел не менял пользователь.</summary>
+    private static void Suggest(ImportCandidate c, ImportSession session)
+    {
+        var categoryUntouched = c.CategoryId == c.SuggestedCategoryId;
+        c.Standard = c.ManualStandard ?? StandardParser.Find(c.Designation);
+        var suggested = session.Catalog.Suggest(c.Designation, c.Standard);
         if (categoryUntouched)
             c.CategoryId = suggested?.Id;
         c.SuggestedCategoryId = suggested?.Id;
@@ -271,14 +275,22 @@ public sealed class LibraryImportService(
     {
         if (string.IsNullOrEmpty(find))
             throw new ArgumentException("Не указано, что искать.", nameof(find));
-        var regex = isRegex
-            ? new System.Text.RegularExpressions.Regex(find, System.Text.RegularExpressions.RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250))
-            : null;
+        var regex = isRegex ? new Regex(find, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250)) : null;
 
         var changed = 0;
         foreach (var c in candidates)
         {
-            var next = DesignationNormalizer.ToCanonical(regex is null ? c.Designation.Replace(find, replace, StringComparison.Ordinal) : regex.Replace(c.Designation, replace));
+            string replaced;
+            try
+            {
+                replaced = regex is null ? c.Designation.Replace(find, replace, StringComparison.Ordinal) : regex.Replace(c.Designation, replace);
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                continue; // выражение «зависло» на этой строке — её не меняем
+            }
+
+            var next = DesignationNormalizer.ToCanonical(replaced);
             if (next == c.Designation)
                 continue;
             c.Designation = next;
@@ -340,13 +352,16 @@ public sealed class LibraryImportService(
                 continue; // файл теперь в папке библиотеки и т.п. — причина уже в «Пропущенных»
 
             c.Include = entry.Include;
+            // Ручной стандарт — до подготовки обозначения: от стандарта зависит предлагаемый раздел.
+            c.ManualStandard = LibraryRules.NormalizeStandard(entry.ManualStandard);
             if (entry.Source == DesignationSource.Manual)
             {
-                c.Designation = entry.Designation;
+                c.Designation = DesignationNormalizer.ToCanonical(entry.Designation);
                 c.Source = DesignationSource.Manual;
                 c.AppliedRules = [];
+                Suggest(c, session);
             }
-            else if (entry.Source != c.Source && c.SourceText(entry.Source) is not null)
+            else if (c.SourceText(entry.Source) is not null && (entry.Source != c.Source || c.ManualStandard is not null))
             {
                 Prepare(c, session, entry.Source, resetKind: true);
             }
@@ -354,7 +369,6 @@ public sealed class LibraryImportService(
             if (!c.KindFromFile)
                 c.Kind = entry.Kind;
             c.Manufacturer = entry.Manufacturer;
-            c.ManualStandard = entry.ManualStandard;
             if (entry.CategoryChosen && entry.CategoryPath is not null && session.Catalog.FindByPath(entry.CategoryPath) is { } category)
                 c.CategoryId = category.Id;
         }

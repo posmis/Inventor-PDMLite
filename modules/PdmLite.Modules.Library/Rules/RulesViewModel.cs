@@ -46,8 +46,14 @@ public sealed partial class RulesViewModel : ObservableObject
         _service = service;
         Rows.CollectionChanged += (_, e) =>
         {
-            foreach (var row in e.NewItems?.OfType<RuleRowViewModel>() ?? [])
-                row.PropertyChanged += OnRowChanged;
+            // Перемещение строки — не добавление: подписку не дублируем; удалённые отписываем.
+            if (e.Action != System.Collections.Specialized.NotifyCollectionChangedAction.Move)
+            {
+                foreach (var row in e.OldItems?.OfType<RuleRowViewModel>() ?? [])
+                    row.PropertyChanged -= OnRowChanged;
+                foreach (var row in e.NewItems?.OfType<RuleRowViewModel>() ?? [])
+                    row.PropertyChanged += OnRowChanged;
+            }
             UpdateTest();
         };
     }
@@ -77,7 +83,6 @@ public sealed partial class RulesViewModel : ObservableObject
             return;
         Rows.Move(index, target);
         Selected = row;
-        UpdateTest();
     }
 
     partial void OnTestInputChanged(string value) => UpdateTest();

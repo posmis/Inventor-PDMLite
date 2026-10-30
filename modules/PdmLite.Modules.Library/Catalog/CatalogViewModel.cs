@@ -5,7 +5,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using PdmLite.Core.Events;
-using PdmLite.Core.Naming;
 using PdmLite.Data.Library;
 using PdmLite.Library.Catalog;
 using PdmLite.Library.Items;
@@ -135,9 +134,23 @@ public sealed partial class CatalogViewModel : ObservableObject
                 node = node.GetOrAdd(part);
         }
 
+        // Число компонентов: каждый считается в своей папке и во всех родительских.
+        var counts = new Dictionary<string, int>();
+        foreach (var row in rows)
+        {
+            var path = row.Folder;
+            while (true)
+            {
+                counts[path] = counts.GetValueOrDefault(path) + 1;
+                var slash = path.LastIndexOf('/');
+                if (slash < 0)
+                    break;
+                path = path[..slash];
+            }
+        }
         foreach (var folder in root.Descendants())
         {
-            folder.Count = Items.Count(r => folder.Contains(r.Folder));
+            folder.Count = folder.Path.Length == 0 ? Items.Count : counts.GetValueOrDefault(folder.Path);
             if (expanded.Contains(folder.Path))
                 folder.IsExpanded = true;
         }

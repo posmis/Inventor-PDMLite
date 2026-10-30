@@ -67,8 +67,18 @@ public sealed class AddFromAssembly(IServiceProvider services, IAssemblyComponen
                 return;
             var names = string.Join("\n", known.Select(k => Path.GetFileName(k.Key)));
             if (MessageBox.Show(window, $"Уже есть в библиотеке:\n{names}\n\nЗаменить их в сборке компонентами библиотеки?",
-                    UiMessages.Caption, MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                    UiMessages.Caption, MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+                return;
+            try
+            {
                 UiMessages.Info(await ReplaceAsync(known) ?? "Заменять нечего.");
+            }
+            catch (Exception ex)
+            {
+                // Обработчик async void: без перехвата ошибка закрыла бы Inventor.
+                logger.LogError(ex, "Замена компонентов в сборке: ошибка");
+                UiMessages.Error("Не удалось заменить компоненты в сборке.", ex);
+            }
         };
         window.ShowDialog(); // модально: внутри Inventor так работает ввод с клавиатуры
     }

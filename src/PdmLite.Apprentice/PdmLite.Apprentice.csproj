@@ -13,6 +13,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Общий код iProperties для Apprentice и Inventor API -->
+    <Compile Include="..\Shared\InventorPropertySets.cs" Link="Interop\InventorPropertySets.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\PdmLite.Core\PdmLite.Core.csproj" />
   </ItemGroup>
 
