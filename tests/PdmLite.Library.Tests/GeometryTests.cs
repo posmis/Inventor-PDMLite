@@ -68,7 +68,7 @@ public class GeometryTests
         await import.CommitAsync(await import.AnalyzeAsync([folders.AddFile("Гайка M8-6H.10 ГОСТ 5915-70.ipt", "n")]));
         var catalog = await items.LoadCatalogAsync();
         var item = Assert.Single(await items.ListAsync(catalog));
-        var full = Path.Combine(folders.Library, item.RelativePath);
+        var full = folders.InLibrary(item.RelativePath);
         store.Files[full] = store.Files[full] with { Volume = 3, Area = 20 }; // как будто прочиталось только теперь
 
         await items.DiagnosePropertiesAsync(catalog, null);

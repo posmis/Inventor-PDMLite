@@ -129,7 +129,7 @@ public class ItemTests
         Assert.Equal("DIN 471", item.Standard);
         Assert.True(item.StandardIsManual);
         Assert.EndsWith("/DIN 471/Стопорное кольцо 15x1 DIN 471-1.ipt", item.RelativePath);
-        var full = Path.Combine(folders.Library, item.RelativePath);
+        var full = folders.InLibrary(item.RelativePath);
         Assert.Equal("DIN 471", store.Written[full].Custom[LibraryProperties.Standard]);
         Assert.Equal("StandardProducts", store.Written[full].Custom[LibraryProperties.SpecSection]);
 
@@ -137,7 +137,7 @@ public class ItemTests
         await items.ApplyEditAsync(catalog, item.Id, new LibraryItemEdit(item.Designation, LibraryItemKind.Purchased, "Seeger", item.CategoryId));
         item = Assert.Single(await items.ListAsync(catalog));
         Assert.False(item.StandardIsManual);
-        full = Path.Combine(folders.Library, item.RelativePath);
+        full = folders.InLibrary(item.RelativePath);
         Assert.Equal("OtherProducts", store.Written[full].Custom[LibraryProperties.SpecSection]);
         Assert.Equal("OtherProducts", store.Files[full].Custom[LibraryProperties.SpecSection]);
     }

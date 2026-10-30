@@ -40,9 +40,9 @@ public class DuplicatesTests
         Assert.Equal(2, all.Count);
         var copy = all.Single(i => i.Id == id);
         Assert.Equal("ГОСТ 7798-70", copy.Standard);
-        var full = Path.Combine(folders.Library, copy.RelativePath);
+        var full = folders.InLibrary(copy.RelativePath);
         Assert.True(File.Exists(full));
-        Assert.True(File.Exists(Path.Combine(folders.Library, source.RelativePath)));
+        Assert.True(File.Exists(folders.InLibrary(source.RelativePath)));
         Assert.Equal("Болт M8-6gx20.109.40X.019 ГОСТ 7798-70", store.Written[full].PartNumber);
         Assert.Equal(id.ToString(), store.Written[full].Custom[LibraryProperties.LibraryId]);
         await using var context = db.Database.CreateContext();
@@ -88,15 +88,15 @@ public class DuplicatesTests
 
         var all = await items.ListAsync(catalog);
         Assert.Equal(2, all.Count);
-        Assert.False(File.Exists(Path.Combine(folders.Library, used.RelativePath)));
+        Assert.False(File.Exists(folders.InLibrary(used.RelativePath)));
         var asmItem = all.Single(i => i.DocumentType == LibraryDocumentType.Assembly);
-        var asmFull = Path.Combine(folders.Library, asmItem.RelativePath);
-        Assert.Equal(Path.Combine(folders.Library, keep.RelativePath), store.Relinked[asmFull].Values.Last());
+        var asmFull = folders.InLibrary(asmItem.RelativePath);
+        Assert.Equal(folders.InLibrary(keep.RelativePath), store.Relinked[asmFull].Values.Last());
         Assert.Equal([asmItem.Designation], await items.UsedInAsync(keep.Id));
         Assert.Empty(await items.FindDuplicatesAsync(catalog));
 
         // Сборки проектов со старым путём получат оставленный компонент.
         var index = await items.LoadPathIndexAsync();
-        Assert.Equal(keep.RelativePath, index.Find(Path.Combine(folders.Library, used.RelativePath), missing: true));
+        Assert.Equal(keep.RelativePath, index.Find(folders.InLibrary(used.RelativePath), missing: true));
     }
 }

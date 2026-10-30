@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using PdmLite.Core.Documents;
 using PdmLite.Data;
+using PdmLite.Library.Storage;
 
 namespace PdmLite.Library.Tests;
 
@@ -64,9 +65,9 @@ public sealed class TestDatabase : IAsyncDisposable
 /// <summary>Свойства файлов в памяти вместо Apprentice. Запись дописывает байт в файл (меняется хеш).</summary>
 public sealed class FakePropertyStore : IDocumentPropertyStore
 {
-    public Dictionary<string, DocumentProperties> Files { get; } = new(StringComparer.OrdinalIgnoreCase);
-    public Dictionary<string, DocumentPropertyChanges> Written { get; } = new(StringComparer.OrdinalIgnoreCase);
-    public Dictionary<string, IReadOnlyDictionary<string, string>> Relinked { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, DocumentProperties> Files { get; } = new(PathComparer.Instance);
+    public Dictionary<string, DocumentPropertyChanges> Written { get; } = new(PathComparer.Instance);
+    public Dictionary<string, IReadOnlyDictionary<string, string>> Relinked { get; } = new(PathComparer.Instance);
     public string? FailWriteFor { get; set; }
     public int WriteCount { get; private set; }
 
@@ -106,6 +107,22 @@ public sealed class FakePropertyStore : IDocumentPropertyStore
     }
 }
 
+/// <summary>
+/// Сравнение путей как в Windows: без учёта регистра и вида разделителя («a/b» = «a\b»),
+/// чтобы тесты одинаково шли в Windows и Linux.
+/// </summary>
+public sealed class PathComparer : IEqualityComparer<string>
+{
+    public static PathComparer Instance { get; } = new();
+
+    private static string Normalize(string path) => path.Replace('\\', '/');
+
+    public bool Equals(string? x, string? y) =>
+        string.Equals(x is null ? null : Normalize(x), y is null ? null : Normalize(y), StringComparison.OrdinalIgnoreCase);
+
+    public int GetHashCode(string obj) => StringComparer.OrdinalIgnoreCase.GetHashCode(Normalize(obj));
+}
+
 /// <summary>Временная папка с исходными файлами и папкой библиотеки.</summary>
 public sealed class TempFolders : IDisposable
 {
@@ -115,11 +132,15 @@ public sealed class TempFolders : IDisposable
 
     public string AddFile(string relative, string content)
     {
-        var path = Path.Combine(Source, relative);
+        // Полный путь в том же виде, что у программы: в Windows «a/b» превращается в «a\b».
+        var path = Path.GetFullPath(Path.Combine(Source, relative));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, content);
         return path;
     }
+
+    /// <summary>Полный путь файла в библиотеке по пути из базы («Крепёж/Болты/…»), как его строит хранилище.</summary>
+    public string InLibrary(string relativePath) => new LibraryStorage(Library).GetFullPath(relativePath);
 
     public void Dispose()
     {
