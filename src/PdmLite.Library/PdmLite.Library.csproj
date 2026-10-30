@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Description>Стандартная библиотека PdmLite: обозначения, классификатор, хранилище, добавление компонентов. Без UI и без Inventor.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PdmLite.Core\PdmLite.Core.csproj" />
+    <ProjectReference Include="..\PdmLite.Data\PdmLite.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PdmLite.Library.Tests" />
+  </ItemGroup>
+
+</Project>
