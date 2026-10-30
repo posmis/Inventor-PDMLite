@@ -4,9 +4,10 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:PdmLite.Modules.Library.Catalog"
+        xmlns:ui="clr-namespace:PdmLite.UI.Shared;assembly=PdmLite.UI.Shared"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance local:MaintenanceViewModel}"
-        Title="Обслуживание библиотеки" Width="620" Height="460" MinHeight="360"
+        Title="Обслуживание библиотеки: свойства в файлах" Width="1000" Height="620" MinWidth="700" MinHeight="420"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
 
     <Window.Resources>
@@ -14,7 +15,7 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Theme.xaml" />
             </ResourceDictionary.MergedDictionaries>
-            <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+            <ui:IconKeyConverter x:Key="IconKey" />
         </ResourceDictionary>
     </Window.Resources>
 
@@ -23,37 +24,75 @@
     </Window.Style>
 
     <DockPanel Margin="12">
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-            <Button Content="Начать" Command="{Binding StartCommand}" Margin="0,0,8,0" />
-            <Button Content="Остановить" Command="{Binding StopCommand}" Margin="0,0,8,0" />
-            <Button Content="Закрыть" IsCancel="True" Click="Close_OnClick" />
-        </StackPanel>
-
+        <!-- Охват и шаг 1 -->
         <StackPanel DockPanel.Dock="Top">
-            <TextBlock Text="Обновить свойства PdmLite в файлах" Style="{StaticResource Pdm.Text.Section}" Margin="0,0,0,6" />
             <TextBlock Style="{StaticResource Pdm.Text.Hint}" Margin="0,0,0,8"
-                       Text="Записывает в файлы компонентов свойства по данным библиотеки: обозначение, SPEC_Section (стандартное или прочее изделие), стандарт, производитель, раздел. Нужно, когда добавилось новое свойство или свойства в файлах изменили вручную." />
-            <RadioButton IsChecked="{Binding OnlySelected}" IsEnabled="{Binding HasSelection}" Margin="0,2">
-                <TextBlock>
-                    <Run Text="Выделенные в каталоге: " /><Run Text="{Binding SelectedCount, Mode=OneWay}" />
-                </TextBlock>
-            </RadioButton>
-            <RadioButton Margin="0,2">
-                <RadioButton.Style>
-                    <Style TargetType="RadioButton">
-                        <Setter Property="IsChecked" Value="{Binding OnlySelected, Converter={x:Static local:InverseBool.Instance}, Mode=TwoWay}" />
-                    </Style>
-                </RadioButton.Style>
-                <TextBlock>
-                    <Run Text="Вся библиотека: " /><Run Text="{Binding TotalCount, Mode=OneWay}" />
-                </TextBlock>
-            </RadioButton>
-            <ProgressBar Height="6" Margin="0,12,0,4" Value="{Binding Progress}" Maximum="100" Foreground="{StaticResource Pdm.Brush.Accent}"
-                         Background="{StaticResource Pdm.Brush.Divider}" />
+                       Text="Сверяет свойства PdmLite в файлах компонентов с библиотекой: обозначение, SPEC_Section, стандарт, производитель, раздел, метка Content Center. Сначала — только проверка; файлы меняются лишь после «Применить к отмеченным»." />
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Command="{Binding CheckCommand}" MinWidth="120">
+                    <StackPanel Orientation="Horizontal">
+                        <Image Source="{StaticResource Pdm.Icon.Cmd.Check}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,6,0" />
+                        <TextBlock Text="Проверить" />
+                    </StackPanel>
+                </Button>
+                <StackPanel>
+                    <RadioButton IsChecked="{Binding OnlySelected}" IsEnabled="{Binding HasSelection}" Margin="0,2">
+                        <TextBlock><Run Text="Выделенные в каталоге: " /><Run Text="{Binding SelectedCount, Mode=OneWay}" /></TextBlock>
+                    </RadioButton>
+                    <RadioButton IsChecked="{Binding OnlySelected, Converter={x:Static local:InverseBool.Instance}}" Margin="0,2">
+                        <TextBlock><Run Text="Вся библиотека: " /><Run Text="{Binding TotalCount, Mode=OneWay}" /></TextBlock>
+                    </RadioButton>
+                </StackPanel>
+            </DockPanel>
+            <ProgressBar Height="4" Margin="0,10,0,2" Value="{Binding Progress}" Maximum="100" />
             <TextBlock Text="{Binding ProgressText}" Style="{StaticResource Pdm.Text.Hint}" TextTrimming="CharacterEllipsis" />
-            <TextBlock Text="{Binding Result}" TextWrapping="Wrap" Margin="0,6,0,6" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" Margin="0,4,0,8" FontWeight="SemiBold" />
         </StackPanel>
 
-        <ListBox ItemsSource="{Binding Failures}" BorderBrush="{StaticResource Pdm.Brush.Border}" />
+        <!-- Шаг 2 -->
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="False">
+            <Button DockPanel.Dock="Right" Content="Закрыть" IsCancel="True" Click="Close_OnClick" />
+            <Button DockPanel.Dock="Right" Content="Остановить" Command="{Binding StopCommand}" Margin="0,0,8,0" />
+            <Button DockPanel.Dock="Right" Command="{Binding ApplyCommand}" Margin="0,0,8,0" MinWidth="200">
+                <TextBlock><Run Text="Применить к отмеченным (" /><Run Text="{Binding ToApply, Mode=OneWay}" /><Run Text=")" /></TextBlock>
+            </Button>
+        </DockPanel>
+
+        <!-- Диагностика: что изменится -->
+        <DataGrid ItemsSource="{Binding Rows}">
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+                    <Setter Property="Height" Value="NaN" />
+                    <Setter Property="MinHeight" Value="24" />
+                </Style>
+            </DataGrid.RowStyle>
+            <DataGrid.Columns>
+                <DataGridTemplateColumn Header="" Width="28" CanUserResize="False">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox IsChecked="{Binding Apply, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanApply}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,4,0,0" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Компонент" Width="340" SortMemberPath="Designation">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" ToolTip="{Binding Path}" VerticalAlignment="Top" Margin="0,4">
+                                <Image Source="{Binding Icon, Converter={StaticResource IconKey}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
+                                <TextBlock Text="{Binding Designation}" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Что изменится в файле (свойство: сейчас → станет)" Width="*">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding ChangesText}" TextWrapping="Wrap" Margin="0,4" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
     </DockPanel>
 </Window>

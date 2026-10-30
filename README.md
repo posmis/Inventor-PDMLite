@@ -52,6 +52,9 @@ powershell -ExecutionPolicy Bypass -File deploy\install.ps1
 `%LOCALAPPDATA%\PdmLite\Explorer\PdmLite.Explorer.exe`.
 Журналы: `%LOCALAPPDATA%\PdmLite\logs`. Удаление: `deploy\uninstall.ps1`.
 
+Ярлык «PdmLite Explorer» на рабочем столе и в меню «Пуск» создаёт `install.ps1`; отдельно
+(например, на сборку из Visual Studio): `powershell -ExecutionPolicy Bypass -File deploy\create-shortcut.ps1`.
+
 ### Разработка в Visual Studio
 
 1. Откройте `PdmLite.sln` (Visual Studio 2022 17.8+, Inventor 2025 закрыт).

@@ -66,7 +66,7 @@ public class ImportEdgeTests
     }
 
     [PostgresFact]
-    public async Task Validate_ContentCenterAndPropertyMismatch_AreWarningsOnly()
+    public async Task Validate_ContentCenterIsInfo_AndPropertyMismatchIsWarning()
     {
         await using var db = await TestDatabase.CreateAsync();
         using var folders = new TempFolders();
@@ -82,8 +82,8 @@ public class ImportEdgeTests
         var c = Assert.Single((await Service(db, store, folders).AnalyzeAsync([file])).Candidates);
 
         Assert.Equal("Заклепка 2 2x4 ГОСТ 12641-80", c.Designation); // обозначение — из свойств, не из имени файла
-        Assert.Equal(ImportStatus.Warning, c.Status);
-        Assert.Contains(c.Issues, i => i.Message.Contains("Content Center"));
+        Assert.Equal(ImportStatus.Ready, c.Status); // метка Content Center снимется при внесении — это справка
+        Assert.Contains(c.Issues, i => i.Severity == ImportSeverity.Info && i.Message.Contains("Content Center"));
         Assert.Contains(c.Issues, i => i.Severity == ImportSeverity.Info && i.Message.Contains("Имя файла"));
     }
 
@@ -199,5 +199,23 @@ public class ImportEdgeTests
         var plainCandidate = session.Candidates.Single(c => c.SourcePath == plain);
         Assert.Equal(LibraryItemKind.Standard, plainCandidate.Kind); // свойства нет — тип по стандарту в обозначении
         Assert.False(plainCandidate.KindFromFile);
+    }
+
+    [PostgresFact]
+    public async Task Commit_RemovesContentCenterLink()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        using var folders = new TempFolders();
+        var store = new FakePropertyStore();
+        var service = Service(db, store, folders);
+        var bolt = folders.AddFile("Болт M6-6gx20.88.016 ГОСТ 7798-70.ipt", "cc");
+        store.Files[bolt] = new DocumentProperties { PartNumber = "Болт M6-6gx20.88.016 ГОСТ 7798-70", IsContentCenter = true };
+
+        Assert.Equal(1, (await service.CommitAsync(await service.AnalyzeAsync([bolt]))).Added);
+
+        var target = store.Written.Keys.Single();
+        Assert.True(store.Written[target].RemoveContentCenterLink);
+        Assert.False(store.Files[target].IsContentCenter);
+        Assert.True(store.Files[bolt].IsContentCenter); // исходный файл не меняется
     }
 }

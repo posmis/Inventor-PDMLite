@@ -80,6 +80,19 @@ public sealed class ApprenticePropertyStore : IDocumentPropertyStore, IDisposabl
             if (changes.Title is not null)
                 SetValue(sets, SummarySet, "Title", changes.Title);
 
+            // Метку Content Center снимаем удалением её набора свойств.
+            if (changes.RemoveContentCenterLink && FindSet(sets, ContentCenterSet) is { } contentCenter)
+            {
+                try
+                {
+                    contentCenter.Delete();
+                }
+                catch (COMException ex)
+                {
+                    throw new InvalidOperationException($"Не удалось снять метку Content Center: {ex.Message}", ex);
+                }
+            }
+
             if (changes.Custom.Count > 0)
             {
                 var user = FindSet(sets, UserDefinedSet) ?? throw new InvalidOperationException("Нет набора пользовательских свойств.");

@@ -26,6 +26,15 @@ public sealed record LibraryItemSummary(
     DateTime ModifiedAt,
     string ModifiedBy);
 
+/// <summary>Расхождение одного свойства: сейчас в файле и как должно быть.</summary>
+public sealed record PropertyChange(string Property, string? Current, string Expected);
+
+/// <summary>Результат проверки файла компонента: что изменится (пусто — всё правильно) или ошибка чтения.</summary>
+public sealed record PropertyDiff(Guid ItemId, string Designation, string RelativePath, IReadOnlyList<PropertyChange> Changes, string? Error)
+{
+    public bool NeedsUpdate => Error is null && Changes.Count > 0;
+}
+
 /// <summary>Итог обновления свойств: проверено, записано, уже в порядке, ошибки.</summary>
 public sealed record RewriteResult(int Checked, int Updated, int UpToDate, IReadOnlyList<string> Failed);
 
@@ -207,15 +216,52 @@ public sealed class LibraryItemService(
     }
 
     /// <summary>
-    /// Служебная функция: приводит свойства PdmLite в файлах библиотеки в соответствие с базой
-    /// (например, после появления нового свойства — раздела спецификации).
+    /// Шаг 1 обслуживания — только чтение: какие свойства PdmLite в файлах расходятся с базой
+    /// (например, нет раздела спецификации, осталась метка Content Center). Файлы не меняются.
+    /// </summary>
+    /// <param name="ids">Какие компоненты проверить; <c>null</c> — вся библиотека.</param>
+    public async Task<IReadOnlyList<PropertyDiff>> DiagnosePropertiesAsync(LibraryCatalog catalog, IReadOnlyCollection<Guid>? ids,
+        IProgress<(int Done, int Total, string? Current)>? progress = null, CancellationToken ct = default)
+    {
+        if (!properties.IsAvailable)
+            throw new InvalidOperationException($"Нет доступа к свойствам файлов Inventor: {properties.UnavailableReason}");
+
+        var storage = storageFactory();
+        var items = await LoadItemsAsync(ids, ct).ConfigureAwait(false);
+        var result = new List<PropertyDiff>();
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var item = items[i];
+            progress?.Report((i, items.Count, item.Designation));
+            var full = storage.GetFullPath(item.RelativePath);
+            try
+            {
+                if (!File.Exists(full))
+                    throw new FileNotFoundException("Файл не найден в папке библиотеки.", full);
+                var current = await properties.ReadAsync(full, ct).ConfigureAwait(false);
+                result.Add(new PropertyDiff(item.Id, item.Designation, item.RelativePath, Compare(current, Expected(item, catalog)), null));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                result.Add(new PropertyDiff(item.Id, item.Designation, item.RelativePath, [], ex.Message));
+            }
+        }
+
+        progress?.Report((items.Count, items.Count, null));
+        return result;
+    }
+
+    /// <summary>
+    /// Шаг 2 обслуживания — запись свойств PdmLite в указанные файлы библиотеки.
     /// </summary>
     /// <remarks>
-    /// Безопасность на большой библиотеке: сначала свойства читаются, и записываются только файлы,
-    /// где они отличаются; перед записью — резервная копия файла, при ошибке файл восстанавливается;
-    /// база (контрольная сумма) обновляется после каждого файла; остановка — между файлами.
+    /// Безопасность на большой библиотеке: перед записью каждый файл проверяется заново и не
+    /// изменяется, если свойства уже правильные; перед записью — резервная копия файла, при ошибке
+    /// файл восстанавливается, остальные продолжаются; база (контрольная сумма) обновляется после
+    /// каждого файла; остановка — между файлами.
     /// </remarks>
-    /// <param name="ids">Какие компоненты обработать; <c>null</c> — вся библиотека.</param>
     public async Task<RewriteResult> RewritePropertiesAsync(LibraryCatalog catalog, IReadOnlyCollection<Guid>? ids,
         IProgress<(int Done, int Total, string? Current)>? progress = null, CancellationToken ct = default)
     {
@@ -238,13 +284,12 @@ public sealed class LibraryItemService(
                 ct.ThrowIfCancellationRequested();
                 progress?.Report((done, items.Count, item.Designation));
                 var full = storage.GetFullPath(item.RelativePath);
-                var expected = LibraryProperties.For(item.Designation, item.Kind, item.Standard, item.Manufacturer,
-                    catalog.Get(item.CategoryId)?.Path ?? "", item.Id);
+                var expected = Expected(item, catalog);
                 try
                 {
                     if (!File.Exists(full))
                         throw new FileNotFoundException("Файл не найден в папке библиотеки.", full);
-                    if (IsUpToDate(await properties.ReadAsync(full, ct).ConfigureAwait(false), expected))
+                    if (Compare(await properties.ReadAsync(full, ct).ConfigureAwait(false), expected).Count == 0)
                         upToDate++;
                     else
                     {
@@ -282,6 +327,38 @@ public sealed class LibraryItemService(
         return new RewriteResult(items.Count, updated, upToDate, failed);
     }
 
+    private async Task<List<LibraryItem>> LoadItemsAsync(IReadOnlyCollection<Guid>? ids, CancellationToken ct)
+    {
+        await using var db = database.CreateContext();
+        var query = db.LibraryItems.AsNoTracking();
+        if (ids is not null)
+            query = query.Where(i => ids.Contains(i.Id));
+        return await query.OrderBy(i => i.Designation).ToListAsync(ct).ConfigureAwait(false);
+    }
+
+    private static DocumentPropertyChanges Expected(LibraryItem item, LibraryCatalog catalog) =>
+        LibraryProperties.For(item.Designation, item.Kind, item.Standard, item.Manufacturer, catalog.Get(item.CategoryId)?.Path ?? "", item.Id);
+
+    /// <summary>Что изменится в файле: свойство, сейчас, станет. Пусто — свойства уже правильные.</summary>
+    internal static IReadOnlyList<PropertyChange> Compare(DocumentProperties current, DocumentPropertyChanges expected)
+    {
+        var changes = new List<PropertyChange>();
+        void Check(string name, string? now, string? target)
+        {
+            if (target is not null && now != target)
+                changes.Add(new PropertyChange(name, now, target));
+        }
+
+        Check("Обозначение", current.PartNumber, expected.PartNumber);
+        Check("Описание", current.Description, expected.Description);
+        Check("Наименование", current.Title, expected.Title);
+        foreach (var (name, value) in expected.Custom)
+            Check(name, current.Custom.TryGetValue(name, out var now) ? now : null, value);
+        if (expected.RemoveContentCenterLink && current.IsContentCenter)
+            changes.Add(new PropertyChange("Метка Content Center", "есть", "снята"));
+        return changes;
+    }
+
     /// <summary>Запись свойств с резервной копией: при ошибке файл возвращается как был.</summary>
     private async Task WriteSafelyAsync(string full, DocumentPropertyChanges changes, CancellationToken ct)
     {
@@ -302,13 +379,6 @@ public sealed class LibraryItemService(
             TryDelete(backup);
         }
     }
-
-    /// <summary>Свойства в файле уже такие, какие записал бы PdmLite.</summary>
-    internal static bool IsUpToDate(DocumentProperties current, DocumentPropertyChanges expected) =>
-        current.PartNumber == expected.PartNumber
-        && current.Description == expected.Description
-        && current.Title == expected.Title
-        && expected.Custom.All(p => current.Custom.TryGetValue(p.Key, out var value) && value == p.Value);
 
     /// <summary>Удаляет компонент: файл и запись в базе. Нельзя, если он входит в сборку библиотеки.</summary>
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)

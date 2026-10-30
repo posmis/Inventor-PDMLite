@@ -54,6 +54,8 @@ public static class LibraryProperties
             Description = designation,
             Title = designation,
             Custom = custom,
+            // Компонент библиотеки — самостоятельная деталь, без связи с Content Center.
+            RemoveContentCenterLink = true,
         };
     }
 }

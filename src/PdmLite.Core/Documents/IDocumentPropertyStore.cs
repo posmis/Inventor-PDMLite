@@ -29,6 +29,12 @@ public sealed record DocumentPropertyChanges
     public string? Description { get; init; }
     public string? Title { get; init; }
     public IReadOnlyDictionary<string, string> Custom { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>
+    /// Снять метку Content Center (удалить набор свойств «Content Library Component Properties»):
+    /// файл становится обычной деталью, Inventor больше не считает его компонентом Content Center.
+    /// </summary>
+    public bool RemoveContentCenterLink { get; init; }
 }
 
 /// <summary>

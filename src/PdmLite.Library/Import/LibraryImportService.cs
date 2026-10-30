@@ -252,7 +252,7 @@ public sealed class LibraryImportService(
                          + string.Join(", ", fields.Select(f => $"{f.Item1} «{f.Item2}»"))
                          + ". При внесении во все три свойства запишется обозначение.");
                 if (p.IsContentCenter)
-                    Warn("Файл создан из Content Center. В библиотеку он попадёт как самостоятельный компонент.");
+                    Info("Файл создан из Content Center — при внесении метка Content Center будет снята, компонент станет самостоятельным.");
             }
 
             if (c.KindFromFile)

@@ -94,6 +94,7 @@ public sealed class FakePropertyStore : IDocumentPropertyStore
             Description = changes.Description ?? current.Description,
             Title = changes.Title ?? current.Title,
             Custom = custom,
+            IsContentCenter = current.IsContentCenter && !changes.RemoveContentCenterLink,
         };
         return Task.CompletedTask;
     }

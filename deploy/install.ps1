@@ -49,6 +49,8 @@ $assembly = Join-Path $addinOut "PdmLite.AddIn.dll"
 $manifest = (Get-Content "$PSScriptRoot\PdmLite.addin.template" -Raw -Encoding UTF8).Replace("{ASSEMBLY_PATH}", $assembly)
 [System.IO.File]::WriteAllText((Join-Path $manifestDir "PdmLite.addin"), $manifest, (New-Object System.Text.UTF8Encoding $false))
 
+& "$PSScriptRoot\create-shortcut.ps1" -Target (Join-Path $explorerOut "PdmLite.Explorer.exe")
+
 Write-Host ""
 Write-Host "Готово." -ForegroundColor Green
 Write-Host "  Плагин:   $addinOut"

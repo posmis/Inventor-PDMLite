@@ -333,7 +333,7 @@
         <Setter Property="GridLinesVisibility" Value="Horizontal" />
         <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource Pdm.Brush.Divider}" />
         <Setter Property="HeadersVisibility" Value="Column" />
-        <Setter Property="RowHeight" Value="24" />
+        <Setter Property="MinRowHeight" Value="24" />
         <Setter Property="AutoGenerateColumns" Value="False" />
         <Setter Property="CanUserAddRows" Value="False" />
         <Setter Property="CanUserDeleteRows" Value="False" />

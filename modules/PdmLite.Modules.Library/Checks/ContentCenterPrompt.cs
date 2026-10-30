@@ -35,6 +35,9 @@ public sealed class ContentCenterPrompt(
     {
         if (!settings.Value.WarnOnContentCenter || !_asked.Add(placed.AssemblyPath + "|" + placed.ComponentPath))
             return;
+        // Файл из нашей библиотеки — всё правильно, даже если в нём осталась метка Content Center.
+        if (storage().Contains(placed.ComponentPath))
+            return;
 
         try
         {

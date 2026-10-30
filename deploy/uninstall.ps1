@@ -15,4 +15,6 @@ if (Get-Process -Name Inventor -ErrorAction SilentlyContinue) {
 Remove-Item $manifest -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $target "AddIn") -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $target "Explorer") -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item (Join-Path ([Environment]::GetFolderPath("Desktop")) "PdmLite Explorer.lnk") -ErrorAction SilentlyContinue
+Remove-Item (Join-Path ([Environment]::GetFolderPath("Programs")) "PdmLite") -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host "PdmLite удалён." -ForegroundColor Green

@@ -184,4 +184,61 @@ public class ItemEdgeTests
         cancelled.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => items.RewritePropertiesAsync(catalog, null, ct: cancelled.Token));
     }
+
+    [PostgresFact]
+    public async Task RewriteProperties_RemovesLeftoverContentCenterLink()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        using var folders = new TempFolders();
+        var store = new FakePropertyStore();
+        var (items, item) = await ImportOneAsync(db, store, folders, "Болт M6-6gx20.88.016 ГОСТ 7798-70.ipt");
+        var full = Path.Combine(folders.Library, item.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+        store.Files[full] = store.Files[full] with { IsContentCenter = true }; // внесён до появления очистки
+
+        var result = await items.RewritePropertiesAsync(await items.LoadCatalogAsync(), null);
+
+        Assert.Equal(1, result.Updated);
+        Assert.False(store.Files[full].IsContentCenter);
+    }
+
+    [PostgresFact]
+    public async Task DiagnoseProperties_ListsDifferences_WithoutChangingFiles()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        using var folders = new TempFolders();
+        var store = new FakePropertyStore();
+        var (items, item) = await ImportOneAsync(db, store, folders, "Гайка M8-6H.10 ГОСТ 5915-70.ipt");
+        var catalog = await items.LoadCatalogAsync();
+        var full = Path.Combine(folders.Library, item.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+
+        Assert.False(Assert.Single(await items.DiagnosePropertiesAsync(catalog, null)).NeedsUpdate);
+
+        var custom = new Dictionary<string, string>(store.Files[full].Custom);
+        custom.Remove("SPEC_Section");
+        store.Files[full] = store.Files[full] with { Custom = custom, Title = "Гайка", IsContentCenter = true };
+        var writes = store.WriteCount;
+        var content = File.ReadAllText(full);
+
+        var diff = Assert.Single(await items.DiagnosePropertiesAsync(catalog, [item.Id]));
+
+        Assert.True(diff.NeedsUpdate);
+        Assert.Contains(diff.Changes, c => c.Property == "SPEC_Section" && c.Current == null && c.Expected == "StandardProducts");
+        Assert.Contains(diff.Changes, c => c.Property == "Наименование" && c.Current == "Гайка");
+        Assert.Contains(diff.Changes, c => c.Property == "Метка Content Center");
+        Assert.Equal(writes, store.WriteCount);       // ничего не записано
+        Assert.Equal(content, File.ReadAllText(full)); // файл не тронут
+    }
+
+    [PostgresFact]
+    public async Task DiagnoseProperties_MissingFile_IsReportedAsError()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        using var folders = new TempFolders();
+        var (items, item) = await ImportOneAsync(db, new FakePropertyStore(), folders, "Гайка M8-6H.10 ГОСТ 5915-70.ipt");
+        LibraryStorage.Delete(Path.Combine(folders.Library, item.RelativePath.Replace('/', Path.DirectorySeparatorChar)));
+
+        var diff = Assert.Single(await items.DiagnosePropertiesAsync(await items.LoadCatalogAsync(), null));
+        Assert.NotNull(diff.Error);
+        Assert.False(diff.NeedsUpdate);
+    }
 }
