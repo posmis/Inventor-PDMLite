@@ -45,7 +45,8 @@ public sealed record RewriteResult(int Checked, int Updated, int UpToDate, IRead
 public sealed record DuplicateEntry(LibraryItemSummary Item, int UsedIn, DateTime CreatedAt);
 
 /// <summary>Компоненты, которые, вероятно, одно и то же.</summary>
-public sealed record DuplicateGroup(string Reason, IReadOnlyList<DuplicateEntry> Items);
+/// <param name="GeometryOnly">Совпадает только геометрия — возможно, законная копия (другое покрытие, класс прочности).</param>
+public sealed record DuplicateGroup(string Reason, IReadOnlyList<DuplicateEntry> Items, bool GeometryOnly = false);
 
 /// <summary>Новые значения карточки компонента.</summary>
 /// <param name="ManualStandard">Стандарт вручную; <c>null</c> — распознаётся из обозначения.</param>
@@ -263,6 +264,8 @@ public sealed class LibraryItemService(
                 if (!File.Exists(full))
                     throw new FileNotFoundException("Файл не найден в папке библиотеки.", full);
                 var current = await properties.ReadAsync(full, ct).ConfigureAwait(false);
+                if (!LibraryGeometry.Known(item.Volume, item.Area) && LibraryGeometry.Known(current.Volume, current.Area))
+                    await SaveGeometryAsync(item.Id, current.Volume!.Value, current.Area!.Value, ct).ConfigureAwait(false);
                 result.Add(new PropertyDiff(item.Id, item.Designation, item.RelativePath, Compare(current, Expected(item, catalog)), null));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -402,6 +405,16 @@ public sealed class LibraryItemService(
         }
     }
 
+    /// <summary>Запоминает геометрию компонента (файл не меняется) — для поиска дубликатов.</summary>
+    private async Task SaveGeometryAsync(Guid id, double volume, double area, CancellationToken ct)
+    {
+        await using var db = database.CreateContext();
+        var item = await db.LibraryItems.SingleAsync(i => i.Id == id, ct).ConfigureAwait(false);
+        item.Volume = volume;
+        item.Area = area;
+        await db.SaveChangesAsync(ct).ConfigureAwait(false);
+    }
+
     // ---------- Дублирование ----------
 
     /// <summary>Проверка копии компонента с новыми значениями (обозначение должно отличаться).</summary>
@@ -479,6 +492,8 @@ public sealed class LibraryItemService(
                 RelativePath = check.NewRelativePath!,
                 FileHash = hash,
                 FileSize = size,
+                Volume = source.Volume,
+                Area = source.Area,
                 Version = 1,
                 CreatedAt = now,
                 CreatedBy = user,
@@ -548,12 +563,25 @@ public sealed class LibraryItemService(
         foreach (var group in byHash)
             Join(group.Select(x => x.Item).DistinctBy(i => i.Id), "одинаковый файл");
 
+        const string sameShape = "одинаковая геометрия (объём и площадь поверхности)";
+        var shaped = items.Where(i => LibraryGeometry.Known(i.Volume, i.Area)).ToList();
+        for (var a = 0; a < shaped.Count; a++)
+            for (var b = a + 1; b < shaped.Count; b++)
+                if (shaped[a].DocumentType == shaped[b].DocumentType
+                    && LibraryGeometry.Same(shaped[a].Volume, shaped[a].Area, shaped[b].Volume, shaped[b].Area))
+                    Join([shaped[a], shaped[b]], sameShape);
+
         return items.Where(i => reasons.ContainsKey(i.Id))
             .GroupBy(i => Root(i.Id))
-            .Select(g => new DuplicateGroup(
-                string.Join("; ", g.SelectMany(i => reasons[i.Id]).Distinct()),
-                g.OrderBy(i => i.Designation, NaturalComparer.Instance)
-                    .Select(i => new DuplicateEntry(Summary(i, catalog), usedIn.GetValueOrDefault(i.Id), i.CreatedAt)).ToList()))
+            .Select(g =>
+            {
+                var groupReasons = g.SelectMany(i => reasons[i.Id]).Distinct().ToList();
+                return new DuplicateGroup(
+                    string.Join("; ", groupReasons),
+                    g.OrderBy(i => i.Designation, NaturalComparer.Instance)
+                        .Select(i => new DuplicateEntry(Summary(i, catalog), usedIn.GetValueOrDefault(i.Id), i.CreatedAt)).ToList(),
+                    groupReasons is [sameShape]);
+            })
             .OrderBy(g => g.Items[0].Item.Designation, NaturalComparer.Instance)
             .ToList();
     }

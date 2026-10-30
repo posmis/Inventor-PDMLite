@@ -15,7 +15,7 @@ namespace PdmLite.Modules.Library.Import;
 
 public sealed partial class ImportViewModel : ObservableObject
 {
-    public static readonly IReadOnlyList<string> Filters = ["Все", "Готовые", "С замечаниями", "С ошибками", "Исключённые"];
+    public static readonly IReadOnlyList<string> Filters = ["Все", "Готовые", "С замечаниями", "С ошибками", "Есть в библиотеке", "Исключённые"];
 
     private readonly LibraryImportService _service;
     private readonly ILogger<ImportViewModel> _logger;
@@ -83,10 +83,11 @@ public sealed partial class ImportViewModel : ObservableObject
     {
         var byStatus = Filter switch
         {
-            "Готовые" => row.Status == ImportStatus.Ready,
-            "С замечаниями" => row.Status == ImportStatus.Warning,
-            "С ошибками" => row.Status == ImportStatus.Error,
-            "Исключённые" => row.Status == ImportStatus.Excluded,
+            "Готовые" => row.Include && row.Status == ImportStatus.Ready,
+            "С замечаниями" => row.Include && row.Status == ImportStatus.Warning,
+            "С ошибками" => row.Include && row.Status == ImportStatus.Error,
+            "Есть в библиотеке" => row.LibraryMatch.Length > 0,
+            "Исключённые" => !row.Include,
             _ => true,
         };
         return byStatus && (Search.Length == 0

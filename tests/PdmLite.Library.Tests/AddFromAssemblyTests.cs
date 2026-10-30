@@ -52,7 +52,9 @@ public class AddFromAssemblyTests
 
         Assert.Equal(boltInLibrary, Assert.Single(known).Value);
         Assert.False(session.Candidates.Single(c => c.SourcePath == bolt).Include);
-        Assert.Equal(ImportStatus.Excluded, session.Candidates.Single(c => c.SourcePath == bolt).Status);
+        // Исключён, но видно почему: этот файл уже в библиотеке.
+        Assert.Equal(ImportStatus.Error, session.Candidates.Single(c => c.SourcePath == bolt).Status);
+        Assert.StartsWith("Есть:", session.Candidates.Single(c => c.SourcePath == bolt).LibraryMatch);
         // Болт уже в библиотеке — сборку можно вносить вместе с гайкой.
         Assert.True(session.Candidates.Single(c => c.SourcePath == asm).CanImport,
             string.Join("; ", session.Candidates.Single(c => c.SourcePath == asm).Issues.Select(i => i.Message)));

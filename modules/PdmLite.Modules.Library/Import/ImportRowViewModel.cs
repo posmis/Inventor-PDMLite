@@ -87,6 +87,9 @@ public sealed class ImportRowViewModel(ImportCandidate candidate, ImportViewMode
 
     public string? TargetPath => candidate.TargetRelativePath;
 
+    /// <summary>Что уже есть в библиотеке (тот же компонент, файл или геометрия); пусто — нет.</summary>
+    public string LibraryMatch => candidate.LibraryMatch ?? "";
+
     public ImportStatus Status => candidate.Status;
 
     public string StatusIcon => candidate.Status switch
@@ -94,15 +97,14 @@ public sealed class ImportRowViewModel(ImportCandidate candidate, ImportViewMode
         ImportStatus.Ready => IconKeys.StateOk,
         ImportStatus.Warning => IconKeys.Warning,
         ImportStatus.Error => IconKeys.Error,
-        _ => IconKeys.Exclude,
+        _ => IconKeys.Error,
     };
 
     public string StatusText => candidate.Status switch
     {
         ImportStatus.Ready => "Готов",
         ImportStatus.Warning => "Замечания",
-        ImportStatus.Error => "Ошибка",
-        _ => "Исключён",
+        _ => "Ошибка",
     };
 
     /// <summary>Главная проблема — для колонки таблицы; полный список — в нижней панели.</summary>

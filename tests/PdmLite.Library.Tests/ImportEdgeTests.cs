@@ -110,7 +110,7 @@ public class ImportEdgeTests
     }
 
     [PostgresFact]
-    public async Task Validate_ExcludedCandidate_HasNoIssues_AndDoesNotCountAsDuplicate()
+    public async Task Validate_ExcludedCandidate_IsChecked_ButDoesNotCountAsDuplicate()
     {
         await using var db = await TestDatabase.CreateAsync();
         using var folders = new TempFolders();
@@ -122,8 +122,9 @@ public class ImportEdgeTests
         session.Candidates[1].Include = false;
         service.Validate(session);
 
-        Assert.Equal(ImportStatus.Excluded, session.Candidates[1].Status);
-        Assert.Empty(session.Candidates[1].Issues);
+        Assert.False(session.Candidates[1].CanImport);
+        Assert.DoesNotContain(session.Candidates[1].Issues, i => i.Severity == ImportSeverity.Error);
+        Assert.Null(session.Candidates[1].LibraryMatch);
         Assert.True(session.Candidates[0].CanImport);
     }
 

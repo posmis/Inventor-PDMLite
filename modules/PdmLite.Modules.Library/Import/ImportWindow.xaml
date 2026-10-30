@@ -150,6 +150,16 @@
             <DataGrid ui:NaturalSort.IsEnabled="True" x:Name="Grid" ItemsSource="{Binding View}" SelectedItem="{Binding SelectedRow}"
                       HorizontalScrollBarVisibility="Visible" FrozenColumnCount="3"
                       SelectionMode="Extended" IsEnabled="{Binding IsBusy, Converter={x:Static ui:InverseBoolConverter.Instance}}">
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+                        <Style.Triggers>
+                            <!-- Исключённые — бледнее; состояние и «В библиотеке» видны как у остальных -->
+                            <DataTrigger Binding="{Binding Include}" Value="False">
+                                <Setter Property="Opacity" Value="0.55" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
                 <DataGrid.Columns>
                     <DataGridTemplateColumn Header="" Width="28" CanUserResize="False" SortMemberPath="Include">
                         <DataGridTemplateColumn.CellTemplate>
@@ -181,6 +191,17 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
+
+                    <DataGridTextColumn Header="В библиотеке" Width="220" Binding="{Binding LibraryMatch, Mode=OneWay}" IsReadOnly="True">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="#9A5B00" />
+                                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                <Setter Property="ToolTip" Value="{Binding LibraryMatch}" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
 
                     <DataGridTextColumn Header="Обозначение" Width="300" Binding="{Binding Designation}" SortMemberPath="Designation" />
 

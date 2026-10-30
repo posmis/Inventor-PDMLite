@@ -41,9 +41,6 @@ public enum ImportStatus
 
     /// <summary>Нельзя внести, пока не исправлено.</summary>
     Error,
-
-    /// <summary>Исключён пользователем.</summary>
-    Excluded,
 }
 
 /// <summary>Файл-кандидат на добавление в библиотеку. Поля с сеттерами пользователь правит в таблице.</summary>
@@ -114,11 +111,14 @@ public sealed class ImportCandidate
     /// <summary>Путь в библиотеке (вычисляется при проверке).</summary>
     public string? TargetRelativePath { get; set; }
 
+    /// <summary>Что уже есть в библиотеке: тот же компонент, тот же файл или та же геометрия; <c>null</c> — ничего.</summary>
+    public string? LibraryMatch { get; set; }
+
     public List<ImportIssue> Issues { get; } = [];
 
+    /// <summary>Результат проверки — и у исключённых строк (исключение показывается отдельно).</summary>
     public ImportStatus Status =>
-        !Include ? ImportStatus.Excluded
-        : Issues.Any(i => i.Severity == ImportSeverity.Error) ? ImportStatus.Error
+        Issues.Any(i => i.Severity == ImportSeverity.Error) ? ImportStatus.Error
         : Issues.Any(i => i.Severity == ImportSeverity.Warning) ? ImportStatus.Warning
         : ImportStatus.Ready;
 

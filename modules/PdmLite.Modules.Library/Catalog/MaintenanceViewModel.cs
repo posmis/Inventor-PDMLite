@@ -308,6 +308,8 @@ public sealed partial class DuplicateGroupRow : ObservableObject
         // Оставить по умолчанию: стоит в сборках библиотеки, иначе самый ранний.
         var keep = Rows.OrderByDescending(r => r.UsedIn).ThenBy(r => r.Entry.CreatedAt).First();
         keep.Keep = true;
+        // Совпадает только геометрия — возможно, законная копия (другое покрытие): по умолчанию не объединяем.
+        _merge = !group.GeometryOnly;
     }
 
     public DuplicateGroup Group { get; }
@@ -315,7 +317,7 @@ public sealed partial class DuplicateGroupRow : ObservableObject
     public string Reason => Group.Reason;
     public DuplicateRow Kept => Rows.Single(r => r.Keep);
 
-    [ObservableProperty] private bool _merge = true;
+    [ObservableProperty] private bool _merge;
 
     partial void OnMergeChanged(bool value) => _changed();
 

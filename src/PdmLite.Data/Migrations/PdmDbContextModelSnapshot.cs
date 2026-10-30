@@ -148,6 +148,10 @@ namespace PdmLite.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<double?>("Area")
+                        .HasColumnType("double precision")
+                        .HasColumnName("area");
+
                     b.Property<int>("CategoryId")
                         .HasColumnType("integer")
                         .HasColumnName("category_id");
@@ -230,6 +234,10 @@ namespace PdmLite.Data.Migrations
                     b.Property<int>("Version")
                         .HasColumnType("integer")
                         .HasColumnName("version");
+
+                    b.Property<double?>("Volume")
+                        .HasColumnType("double precision")
+                        .HasColumnName("volume");
 
                     b.HasKey("Id")
                         .HasName("pk_items");

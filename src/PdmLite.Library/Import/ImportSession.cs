@@ -40,12 +40,15 @@ public sealed class ImportSession
     /// <summary>Хеш файла (исходного или в библиотеке) → путь компонента в библиотеке.</summary>
     internal IReadOnlyDictionary<string, string> ExistingPaths => _existingPaths;
 
+    /// <summary>Геометрия компонентов библиотеки (у которых она известна) — для предупреждения о дубликатах.</summary>
+    internal List<(string Designation, Data.Library.LibraryDocumentType Type, double Volume, double Area)> ExistingGeometry { get; } = [];
+
     public bool CanWriteProperties { get; }
     public string? PropertiesUnavailableReason { get; }
 
     public int ReadyCount => Candidates.Count(c => c.CanImport);
-    public int ErrorCount => Candidates.Count(c => c.Status == ImportStatus.Error);
-    public int WarningCount => Candidates.Count(c => c.Status == ImportStatus.Warning);
+    public int ErrorCount => Candidates.Count(c => c.Include && c.Status == ImportStatus.Error);
+    public int WarningCount => Candidates.Count(c => c.Include && c.Status == ImportStatus.Warning);
 
     /// <summary>
     /// Запоминает внесённый компонент: повторное внесение того же файла в этом же сеансе

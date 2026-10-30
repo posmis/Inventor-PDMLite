@@ -7,6 +7,7 @@ using PdmLite.Data;
 using PdmLite.Data.Library;
 using PdmLite.Library.Catalog;
 using PdmLite.Library.Designations;
+using PdmLite.Library.Items;
 using PdmLite.Library.Rules;
 using PdmLite.Library.Storage;
 
@@ -60,7 +61,7 @@ public sealed class LibraryImportService(
 
         var catalog = await LibraryCatalog.LoadAsync(db, ct).ConfigureAwait(false);
         var items = await db.LibraryItems.AsNoTracking()
-            .Select(i => new { i.DesignationKey, i.Designation, i.FileHash, i.SourceHash, i.RelativePath })
+            .Select(i => new { i.DesignationKey, i.Designation, i.FileHash, i.SourceHash, i.RelativePath, i.DocumentType, i.Volume, i.Area })
             .ToListAsync(ct).ConfigureAwait(false);
 
         var keys = items.ToDictionary(i => i.DesignationKey, i => i.Designation);
@@ -78,10 +79,13 @@ public sealed class LibraryImportService(
         }
 
         var rules = await db.DesignationRules.AsNoTracking().ToListAsync(ct).ConfigureAwait(false);
-        return new ImportSession(catalog, keys, hashes, paths, properties.IsAvailable, properties.UnavailableReason)
+        var session = new ImportSession(catalog, keys, hashes, paths, properties.IsAvailable, properties.UnavailableReason)
         {
             Rules = new DesignationRuleSet(rules),
         };
+        foreach (var item in items.Where(i => LibraryGeometry.Known(i.Volume, i.Area)))
+            session.ExistingGeometry.Add((item.Designation, item.DocumentType, item.Volume!.Value, item.Area!.Value));
+        return session;
     }
 
     private static List<string> Enumerate(IEnumerable<string> inputs, LibraryStorage storage, List<SkippedFile> skipped)
@@ -376,7 +380,8 @@ public sealed class LibraryImportService(
             c.Designation = placement.Designation;
             c.Standard = placement.Standard;
             c.Issues.Clear();
-            c.TargetRelativePath = c.Include ? placement.RelativePath : null;
+            c.TargetRelativePath = placement.RelativePath;
+            c.LibraryMatch = null;
             placements[c] = placement;
         }
 
@@ -387,8 +392,11 @@ public sealed class LibraryImportService(
         var byTarget = included.Where(c => c.TargetRelativePath is not null)
             .GroupBy(c => c.TargetRelativePath!, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
 
-        foreach (var c in included)
+        // Проверяются и исключённые строки: видно, есть ли компонент в библиотеке и что с ним не так.
+        // Совпадения внутри списка — только между включёнными.
+        foreach (var c in session.Candidates)
         {
+            var inList = c.Include;
             void Error(string m) => c.Issues.Add(new ImportIssue(ImportSeverity.Error, m));
             void Warn(string m) => c.Issues.Add(new ImportIssue(ImportSeverity.Warning, m));
             void Info(string m) => c.Issues.Add(new ImportIssue(ImportSeverity.Info, m));
@@ -430,13 +438,41 @@ public sealed class LibraryImportService(
                 Info("Имя файла не совпадает с обозначением — в библиотеке файл будет назван по обозначению.");
 
             // Дубликаты
+            if (c.Properties is { } geometry && LibraryGeometry.Known(geometry.Volume, geometry.Area))
+            {
+                var sameShape = session.ExistingGeometry
+                    .Where(g => g.Type == c.DocumentType && DesignationNormalizer.ToKey(g.Designation) != key
+                                && LibraryGeometry.Same(g.Volume, g.Area, geometry.Volume, geometry.Area))
+                    .Select(g => $"«{g.Designation}» из библиотеки")
+                    .Concat(included.Where(o => inList && o != c && o.DocumentType == c.DocumentType && o.Properties is { } p2
+                                                && LibraryGeometry.Same(p2.Volume, p2.Area, geometry.Volume, geometry.Area))
+                        .Select(o => $"«{o.Designation}» ({o.FileName}) в списке"))
+                    .ToList();
+                var libraryShape = session.ExistingGeometry.FirstOrDefault(g => g.Type == c.DocumentType
+                    && DesignationNormalizer.ToKey(g.Designation) != key && LibraryGeometry.Same(g.Volume, g.Area, geometry.Volume, geometry.Area));
+                if (libraryShape.Designation is not null)
+                    c.LibraryMatch = $"Похожий (та же геометрия): «{libraryShape.Designation}»";
+                if (sameShape.Count > 0)
+                    Warn("Такая же геометрия (объём и площадь поверхности), как у " + string.Join(", ", sameShape.Take(5))
+                         + (sameShape.Count > 5 ? $" и ещё {sameShape.Count - 5}" : "")
+                         + ". Проверьте, не дубликат ли это. Если отличается только обозначение (класс прочности, покрытие) — всё в порядке.");
+            }
+            string? sameFile = null;
+            if (c.FileHash.Length > 0 && session.ExistingHashes.TryGetValue(c.FileHash, out var fileOwner))
+            {
+                sameFile = fileOwner;
+                c.LibraryMatch = $"Этот файл уже внесён: «{sameFile}»";
+            }
             if (session.ExistingKeys.TryGetValue(key, out var existing))
+            {
                 Error($"В библиотеке уже есть «{existing}».");
-            if (byKey.TryGetValue(key, out var sameKey) && sameKey.Count > 1)
+                c.LibraryMatch = sameFile is not null ? $"Есть: «{existing}» (тот же файл)" : $"Есть: «{existing}»";
+            }
+            if (inList && byKey.TryGetValue(key, out var sameKey) && sameKey.Count > 1)
                 Error("Обозначение повторяется в списке: " + string.Join(", ", sameKey.Where(x => x != c).Select(x => x.FileName)) + ".");
-            if (c.FileHash.Length > 0 && session.ExistingHashes.TryGetValue(c.FileHash, out var sameFile))
+            if (sameFile is not null)
                 Error($"Этот файл уже добавлен в библиотеку как «{sameFile}».");
-            if (c.FileHash.Length > 0 && byHash.TryGetValue(c.FileHash, out var sameHash) && sameHash.Count > 1)
+            if (inList && c.FileHash.Length > 0 && byHash.TryGetValue(c.FileHash, out var sameHash) && sameHash.Count > 1)
                 Error("Такой же файл в списке: " + string.Join(", ", sameHash.Where(x => x != c).Select(x => x.FileName)) + ".");
 
             // Компоненты сборки: в папке библиотеки, в этом же списке или уже внесены из того же файла.
@@ -454,7 +490,7 @@ public sealed class LibraryImportService(
             {
                 if (File.Exists(storage.GetFullPath(target)))
                     Error($"В папке библиотеки уже есть файл {target}.");
-                if (byTarget[target] > 1)
+                if (inList && byTarget.TryGetValue(target, out var sameTarget) && sameTarget > 1)
                     Error($"Совпадает путь в библиотеке с другим файлом списка: {target}.");
             }
         }
@@ -518,6 +554,8 @@ public sealed class LibraryImportService(
                     FileHash = hash,
                     FileSize = size,
                     SourceHash = c.FileHash,
+                    Volume = c.Properties?.Volume,
+                    Area = c.Properties?.Area,
                     Version = 1,
                     CreatedAt = now,
                     CreatedBy = user,
@@ -549,6 +587,8 @@ public sealed class LibraryImportService(
 
                 committed[c.SourcePath] = (id, copied);
                 session.Remember(key, c.Designation, c.TargetRelativePath!, c.FileHash, hash);
+                if (c.Properties is { } shape && LibraryGeometry.Known(shape.Volume, shape.Area))
+                    session.ExistingGeometry.Add((c.Designation, c.DocumentType, shape.Volume!.Value, shape.Area!.Value));
                 logger.LogInformation("В библиотеку добавлен {Designation} ({Path})", c.Designation, c.TargetRelativePath);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

@@ -34,8 +34,11 @@ public sealed class InventorPropertyStore(Inv.Application inventor, IUiDispatche
                 if (!string.IsNullOrEmpty(descriptor.FullFileName))
                     references.Add(descriptor.FullFileName);
 
+            var (volume, area) = Geometry(doc, path);
             return new DocumentProperties
             {
+                Volume = volume,
+                Area = area,
                 PartNumber = GetValue(sets, DesignTrackingSet, "Part Number"),
                 Description = GetValue(sets, DesignTrackingSet, "Description"),
                 Title = GetValue(sets, SummarySet, "Title"),
@@ -139,6 +142,25 @@ public sealed class InventorPropertyStore(Inv.Application inventor, IUiDispatche
             if (string.Equals(document.FullFileName, path, StringComparison.OrdinalIgnoreCase))
                 return document;
         return null;
+    }
+
+    /// <summary>
+    /// Объём и площадь поверхности из масс-свойств (для поиска одинаковой геометрии). Позднее
+    /// связывание: свойство есть у деталей и сборок; не прочиталось — <c>null</c>, проверка пропускается.
+    /// </summary>
+    private (double? Volume, double? Area) Geometry(object document, string path)
+    {
+        try
+        {
+            dynamic doc = document;
+            dynamic mass = doc.ComponentDefinition.MassProperties;
+            return ((double)mass.Volume, (double)mass.Area);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Масс-свойства не прочитаны: {Path}", path);
+            return (null, null);
+        }
     }
 
     private static Inv.PropertySet? FindSet(Inv.PropertySets sets, string name)

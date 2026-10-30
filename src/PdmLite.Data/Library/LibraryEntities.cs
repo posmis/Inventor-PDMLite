@@ -56,6 +56,10 @@ public sealed class LibraryItem
     public required string FileHash { get; set; }
     public long FileSize { get; set; }
 
+    /// <summary>Объём и площадь поверхности (см³, см²) — для поиска одинаковой геометрии; <c>null</c> — неизвестны.</summary>
+    public double? Volume { get; set; }
+    public double? Area { get; set; }
+
     /// <summary>
     /// SHA-256 исходного файла, из которого компонент добавлен. Файл в библиотеке отличается
     /// (в него записаны свойства), а повторное добавление того же исходника нужно распознать.

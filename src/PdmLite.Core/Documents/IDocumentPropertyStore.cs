@@ -20,6 +20,12 @@ public sealed record DocumentProperties
 
     /// <summary>Полные пути файлов, на которые ссылается документ (компоненты сборки).</summary>
     public IReadOnlyList<string> References { get; init; } = [];
+
+    /// <summary>Объём, см³ (масс-свойства Inventor) или <c>null</c>, если не прочитан. Для поиска одинаковой геометрии.</summary>
+    public double? Volume { get; init; }
+
+    /// <summary>Площадь поверхности, см² или <c>null</c>.</summary>
+    public double? Area { get; init; }
 }
 
 /// <summary>Изменения свойств: <c>null</c> — не менять.</summary>
