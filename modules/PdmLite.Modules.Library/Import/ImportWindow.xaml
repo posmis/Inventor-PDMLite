@@ -148,6 +148,7 @@
             </Grid.RowDefinitions>
 
             <DataGrid ui:NaturalSort.IsEnabled="True" x:Name="Grid" ItemsSource="{Binding View}" SelectedItem="{Binding SelectedRow}"
+                      HorizontalScrollBarVisibility="Visible" FrozenColumnCount="3"
                       SelectionMode="Extended" IsEnabled="{Binding IsBusy, Converter={x:Static ui:InverseBoolConverter.Instance}}">
                 <DataGrid.Columns>
                     <DataGridTemplateColumn Header="" Width="28" CanUserResize="False" SortMemberPath="Include">
@@ -222,7 +223,7 @@
                         </DataGridTemplateColumn.CellEditingTemplate>
                     </DataGridTemplateColumn>
 
-                    <DataGridTextColumn Header="Замечание" Width="*" Binding="{Binding Problem, Mode=OneWay}" IsReadOnly="True" />
+                    <DataGridTextColumn Header="Замечание" Width="500" Binding="{Binding Problem, Mode=OneWay}" IsReadOnly="True" />
                 </DataGrid.Columns>
             </DataGrid>
 
