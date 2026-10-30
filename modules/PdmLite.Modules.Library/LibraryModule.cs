@@ -48,6 +48,7 @@ public sealed class LibraryModule : IPdmModule
         services.AddTransient<AssemblyCheckViewModel>();
         services.AddSingleton<ContentCenterPrompt>();
         services.AddSingleton<LibraryFileResolver>();
+        services.AddTransient<AddFromAssembly>();
         services.AddSingleton<IMissingFileResolver>(sp => sp.GetRequiredService<LibraryFileResolver>());
         services.AddTransient<LibrarySettingsViewModel>();
     }
@@ -82,6 +83,11 @@ public sealed class LibraryModule : IPdmModule
                     return Task.CompletedTask;
                 },
                 Order: 0, Group: "1-library", Icon: IconKeys.Check));
+
+            context.Ui.RegisterCommand(new CommandDescriptor(
+                "Library.AddSelected", "Добавить в библиотеку", CommandPlacement.Toolbar,
+                _ => services.GetRequiredService<AddFromAssembly>().RunAsync(),
+                Order: 1, Group: "1-library", Icon: IconKeys.LibraryAdd));
         }
 
         // Добавление, каталог и настройки — только в Explorer (свойства файлов читаются через Apprentice).

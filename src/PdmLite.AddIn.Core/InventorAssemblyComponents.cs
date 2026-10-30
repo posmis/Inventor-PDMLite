@@ -90,6 +90,57 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
             return new ReplacementResult(replaced, modified, backupFolder, problems);
         });
 
+    public Task<ComponentSelection> GetSelectionAsync(CancellationToken cancellationToken = default) =>
+        ui.InvokeAsync(() =>
+        {
+            var assembly = ActiveAssembly();
+            var selected = new List<string>();
+            var components = new List<string>();
+            var unsaved = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void Consider(Inv._Document? document, List<string> target)
+            {
+                if (document is null || string.IsNullOrEmpty(document.FullFileName) || !seen.Add(document.FullFileName))
+                    return;
+                target.Add(document.FullFileName);
+                if (document.Dirty)
+                    unsaved.Add(document.FullFileName);
+            }
+
+            // В браузере и на экране выделяются вхождения (во вложенных сборках — их представители, proxy).
+            foreach (var item in assembly.SelectSet)
+                if (item is Inv.ComponentOccurrence occurrence && occurrence.Definition?.Document is Inv._Document document)
+                    Consider(document, selected);
+
+            foreach (var path in selected.ToList())
+                if (Open(path) is Inv.AssemblyDocument sub)
+                    foreach (Inv._Document child in sub.AllReferencedDocuments)
+                        Consider(child, components);
+
+            return new ComponentSelection(selected, components, unsaved);
+        });
+
+    public Task SaveDocumentsAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken = default) =>
+        ui.InvokeAsync(() =>
+        {
+            foreach (var path in paths)
+                if (Open(path) is { } document)
+                {
+                    document.Save();
+                    logger.LogInformation("Сохранён {Path}", path);
+                }
+        });
+
+    /// <summary>Документ, уже открытый в Inventor (в том числе как компонент сборки), или <c>null</c>.</summary>
+    private Inv._Document? Open(string path)
+    {
+        foreach (Inv._Document document in inventor.Documents)
+            if (string.Equals(document.FullFileName, path, StringComparison.OrdinalIgnoreCase))
+                return document;
+        return null;
+    }
+
     private Inv.AssemblyDocument ActiveAssembly() =>
         inventor.ActiveDocument as Inv.AssemblyDocument
         ?? throw new InvalidOperationException("Активный документ — не сборка. Откройте или активируйте сборку, которую нужно проверить.");

@@ -60,20 +60,25 @@ public sealed class LibraryImportService(
 
         var catalog = await LibraryCatalog.LoadAsync(db, ct).ConfigureAwait(false);
         var items = await db.LibraryItems.AsNoTracking()
-            .Select(i => new { i.DesignationKey, i.Designation, i.FileHash, i.SourceHash })
+            .Select(i => new { i.DesignationKey, i.Designation, i.FileHash, i.SourceHash, i.RelativePath })
             .ToListAsync(ct).ConfigureAwait(false);
 
         var keys = items.ToDictionary(i => i.DesignationKey, i => i.Designation);
         var hashes = new Dictionary<string, string>();
+        var paths = new Dictionary<string, string>();
         foreach (var item in items)
         {
             hashes.TryAdd(item.FileHash, item.Designation);
+            paths.TryAdd(item.FileHash, item.RelativePath);
             if (item.SourceHash is not null)
+            {
                 hashes.TryAdd(item.SourceHash, item.Designation);
+                paths.TryAdd(item.SourceHash, item.RelativePath);
+            }
         }
 
         var rules = await db.DesignationRules.AsNoTracking().ToListAsync(ct).ConfigureAwait(false);
-        return new ImportSession(catalog, keys, hashes, properties.IsAvailable, properties.UnavailableReason)
+        return new ImportSession(catalog, keys, hashes, paths, properties.IsAvailable, properties.UnavailableReason)
         {
             Rules = new DesignationRuleSet(rules),
         };
@@ -279,6 +284,26 @@ public sealed class LibraryImportService(
         }
         Validate(session);
         return changed;
+    }
+
+    /// <summary>
+    /// Исключает строки, файлы которых уже внесены в библиотеку (то же содержимое): например,
+    /// компоненты подсборки, добавленные вместе с ней. Возвращает их источники → файл в библиотеке.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ExcludeAlreadyInLibrary(ImportSession session)
+    {
+        var storage = storageFactory();
+        var known = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var c in session.Candidates.Where(c => c.Include && c.FileHash.Length > 0))
+        {
+            if (session.ExistingPaths.TryGetValue(c.FileHash, out var relative))
+            {
+                c.Include = false;
+                known[c.SourcePath] = storage.GetFullPath(relative);
+            }
+        }
+        Validate(session);
+        return known;
     }
 
     /// <summary>Сохраняет список подготовки с правками пользователя.</summary>
@@ -523,7 +548,7 @@ public sealed class LibraryImportService(
                 await tx.CommitAsync(ct).ConfigureAwait(false);
 
                 committed[c.SourcePath] = (id, copied);
-                session.Remember(key, c.Designation, c.FileHash, hash);
+                session.Remember(key, c.Designation, c.TargetRelativePath!, c.FileHash, hash);
                 logger.LogInformation("В библиотеку добавлен {Designation} ({Path})", c.Designation, c.TargetRelativePath);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -536,7 +561,10 @@ public sealed class LibraryImportService(
         }
 
         progress?.Report(new ImportProgress(queue.Count, queue.Count, null));
-        return new ImportResult(committed.Count, failed);
+        return new ImportResult(committed.Count, failed)
+        {
+            Committed = committed.ToDictionary(c => c.Key, c => c.Value.FullPath, StringComparer.OrdinalIgnoreCase),
+        };
     }
 
     /// <summary>Переводит ссылки скопированной сборки на файлы библиотеки; возвращает Id компонентов.</summary>

@@ -130,4 +130,8 @@ public sealed record SkippedFile(string Path, string Reason);
 
 public sealed record ImportProgress(int Done, int Total, string? Current);
 
-public sealed record ImportResult(int Added, IReadOnlyList<(ImportCandidate Candidate, string Error)> Failed);
+/// <param name="Committed">Внесённые: исходный файл → файл в библиотеке (для замены в сборках).</param>
+public sealed record ImportResult(int Added, IReadOnlyList<(ImportCandidate Candidate, string Error)> Failed)
+{
+    public IReadOnlyDictionary<string, string> Committed { get; init; } = new Dictionary<string, string>();
+}

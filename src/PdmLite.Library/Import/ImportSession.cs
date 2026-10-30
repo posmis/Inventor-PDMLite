@@ -10,13 +10,15 @@ public sealed class ImportSession
 {
     private readonly Dictionary<string, string> _existingKeys;
     private readonly Dictionary<string, string> _existingHashes;
+    private readonly Dictionary<string, string> _existingPaths;
 
     internal ImportSession(LibraryCatalog catalog, Dictionary<string, string> existingKeys,
-        Dictionary<string, string> existingHashes, bool canWriteProperties, string? propertiesUnavailableReason)
+        Dictionary<string, string> existingHashes, Dictionary<string, string> existingPaths, bool canWriteProperties, string? propertiesUnavailableReason)
     {
         Catalog = catalog;
         _existingKeys = existingKeys;
         _existingHashes = existingHashes;
+        _existingPaths = existingPaths;
         CanWriteProperties = canWriteProperties;
         PropertiesUnavailableReason = propertiesUnavailableReason;
     }
@@ -35,6 +37,9 @@ public sealed class ImportSession
     /// <summary>Хеш файла (исходного или в библиотеке) → обозначение компонента.</summary>
     internal IReadOnlyDictionary<string, string> ExistingHashes => _existingHashes;
 
+    /// <summary>Хеш файла (исходного или в библиотеке) → путь компонента в библиотеке.</summary>
+    internal IReadOnlyDictionary<string, string> ExistingPaths => _existingPaths;
+
     public bool CanWriteProperties { get; }
     public string? PropertiesUnavailableReason { get; }
 
@@ -46,10 +51,13 @@ public sealed class ImportSession
     /// Запоминает внесённый компонент: повторное внесение того же файла в этом же сеансе
     /// будет распознано как дубликат.
     /// </summary>
-    internal void Remember(string key, string designation, params string[] hashes)
+    internal void Remember(string key, string designation, string relativePath, params string[] hashes)
     {
         _existingKeys[key] = designation;
         foreach (var hash in hashes)
+        {
             _existingHashes.TryAdd(hash, designation);
+            _existingPaths.TryAdd(hash, relativePath);
+        }
     }
 }

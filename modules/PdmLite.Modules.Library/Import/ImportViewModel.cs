@@ -148,6 +148,22 @@ public sealed partial class ImportViewModel : ObservableObject
 
     public bool HasSession => _session is not null;
 
+    /// <summary>
+    /// Вызывается после внесения (например, замена компонентов в сборке Inventor). Возвращает
+    /// текст для итогового сообщения или <c>null</c>.
+    /// </summary>
+    public Func<ImportResult, Task<string?>>? AfterCommit { get; set; }
+
+    /// <summary>Исключает файлы, уже внесённые в библиотеку; возвращает исходный файл → файл в библиотеке.</summary>
+    public IReadOnlyDictionary<string, string> ExcludeAlreadyInLibrary()
+    {
+        if (_session is null)
+            return new Dictionary<string, string>();
+        var known = _service.ExcludeAlreadyInLibrary(_session);
+        RefreshAll();
+        return known;
+    }
+
     /// <summary>Путь последнего сохранённого или открытого списка подготовки.</summary>
     [ObservableProperty] private string? _listPath;
 
@@ -246,6 +262,20 @@ public sealed partial class ImportViewModel : ObservableObject
         if (result.Added > 0)
             _events.Publish(new LibraryChanged());
 
+        string? extra = null;
+        if (AfterCommit is { } after && result.Added > 0)
+        {
+            try
+            {
+                extra = await after(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Действие после внесения: ошибка");
+                extra = $"Не удалось заменить компоненты в сборке: {ex.Message}";
+            }
+        }
+
         // Внесённые убираем из списка; неудачные остаются с причиной.
         var failed = result.Failed.ToDictionary(f => f.Candidate, f => f.Error);
         foreach (var row in Rows.Where(r => toImport.Contains(r.Candidate) && !failed.ContainsKey(r.Candidate)).ToList())
@@ -258,10 +288,11 @@ public sealed partial class ImportViewModel : ObservableObject
             candidate.Issues.Add(new ImportIssue(ImportSeverity.Error, $"Не внесено: {error}"));
         RefreshAll();
 
+        var tail = extra is null ? "" : "\n\n" + extra;
         if (failed.Count == 0)
-            UiMessages.Info($"Внесено в библиотеку: {result.Added}.");
+            UiMessages.Info($"Внесено в библиотеку: {result.Added}.{tail}");
         else
-            UiMessages.Error($"Внесено: {result.Added}. Не удалось внести: {failed.Count} — причины в списке.");
+            UiMessages.Error($"Внесено: {result.Added}. Не удалось внести: {failed.Count} — причины в списке.{tail}");
     }
 
     private bool CanCommit() => !IsBusy && ReadyCount > 0;

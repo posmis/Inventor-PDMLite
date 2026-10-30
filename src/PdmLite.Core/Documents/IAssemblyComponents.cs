@@ -18,6 +18,12 @@ public sealed record ComponentReplacement(string OldPath, string NewPath);
 /// <param name="Problems">Что заменить не удалось и почему.</param>
 public sealed record ReplacementResult(int Replaced, IReadOnlyList<string> ModifiedAssemblies, string? BackupFolder, IReadOnlyList<string> Problems);
 
+/// <summary>Выделенные в сборке компоненты.</summary>
+/// <param name="Selected">Файлы выделенных компонентов (каждый — один раз).</param>
+/// <param name="Components">Для выделенных подсборок — файлы всех их компонентов, на всех уровнях.</param>
+/// <param name="Unsaved">Из них — открытые с несохранёнными изменениями.</param>
+public sealed record ComponentSelection(IReadOnlyList<string> Selected, IReadOnlyList<string> Components, IReadOnlyList<string> Unsaved);
+
 /// <summary>Состав активной сборки Inventor и замена компонентов в ней. Есть только внутри Inventor.</summary>
 public interface IAssemblyComponents
 {
@@ -29,4 +35,10 @@ public interface IAssemblyComponents
     /// копирует изменяемые сборки в папку резервных копий. Сохраняет пользователь.
     /// </summary>
     Task<ReplacementResult> ReplaceAsync(IReadOnlyList<ComponentReplacement> replacements, CancellationToken cancellationToken = default);
+
+    /// <summary>Компоненты, выделенные в активной сборке. Если активный документ — не сборка, бросает <see cref="InvalidOperationException"/>.</summary>
+    Task<ComponentSelection> GetSelectionAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Сохраняет открытые в Inventor документы (по полным путям).</summary>
+    Task SaveDocumentsAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken = default);
 }
