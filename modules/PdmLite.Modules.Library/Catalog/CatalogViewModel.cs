@@ -13,9 +13,13 @@ using PdmLite.UI.Shared;
 
 namespace PdmLite.Modules.Library.Catalog;
 
+/// <summary>
+/// Каталог библиотеки как проводник: слева дерево (раздел → группа → стандарт или производитель),
+/// справа — компоненты выбранной папки со всеми вложенными.
+/// </summary>
 public sealed partial class CatalogViewModel : ObservableObject
 {
-    public const string AllCategories = "Все разделы";
+    public const string AllFolders = "Вся библиотека";
 
     private readonly LibraryItemService _service;
     private readonly ILogger<CatalogViewModel> _logger;
@@ -35,18 +39,20 @@ public sealed partial class CatalogViewModel : ObservableObject
     public LibraryCatalog? Catalog { get; private set; }
     public LibraryItemService Service => _service;
 
-    [ObservableProperty] private IReadOnlyList<string> _categoryFilters = [AllCategories];
-    [ObservableProperty] private string _categoryFilter = AllCategories;
+    /// <summary>Дерево папок: один корень «Вся библиотека».</summary>
+    public ObservableCollection<CatalogFolder> Folders { get; } = [];
+
+    [ObservableProperty] private CatalogFolder? _folder;
     [ObservableProperty] private string _search = "";
     [ObservableProperty] private CatalogRow? _selected;
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _summary = "";
 
     partial void OnSearchChanged(string value) => RefreshView();
-    partial void OnCategoryFilterChanged(string value) => RefreshView();
+    partial void OnFolderChanged(CatalogFolder? value) => RefreshView();
 
     private bool Matches(CatalogRow row) =>
-        (CategoryFilter == AllCategories || row.Item.CategoryPath == CategoryFilter)
+        (Folder is null || Folder.Contains(row.Folder))
         && (Search.Length == 0
             || row.Item.Designation.Contains(Search, StringComparison.CurrentCultureIgnoreCase)
             || (row.Item.Manufacturer?.Contains(Search, StringComparison.CurrentCultureIgnoreCase) ?? false));
@@ -65,9 +71,7 @@ public sealed partial class CatalogViewModel : ObservableObject
             foreach (var item in items)
                 Items.Add(new CatalogRow(item));
 
-            CategoryFilters = [AllCategories, .. items.Select(i => i.CategoryPath).Distinct().Order(NaturalComparer.Instance)];
-            if (!CategoryFilters.Contains(CategoryFilter))
-                CategoryFilter = AllCategories;
+            BuildFolders(Catalog, Items);
             Selected = Items.FirstOrDefault(r => r.Item.Id == selectedId);
             RefreshView();
         }
@@ -108,16 +112,59 @@ public sealed partial class CatalogViewModel : ObservableObject
         await LoadAsync();
     }
 
+    /// <summary>
+    /// Дерево: все разделы и группы классификатора (и пустые — видно, куда класть), в группах —
+    /// папки стандартов и производителей, как в папке библиотеки. Выбранная папка сохраняется.
+    /// </summary>
+    private void BuildFolders(LibraryCatalog catalog, IEnumerable<CatalogRow> rows)
+    {
+        var selectedPath = Folder?.Path ?? "";
+        var expanded = Folders.SelectMany(f => f.Descendants()).Where(f => f.IsExpanded).Select(f => f.Path).ToHashSet();
+
+        var root = new CatalogFolder(AllFolders, "") { IsExpanded = true };
+        foreach (var category in catalog.Categories)
+        {
+            var node = root;
+            foreach (var part in category.PathParts)
+                node = node.GetOrAdd(part);
+        }
+        foreach (var row in rows)
+        {
+            var node = root;
+            foreach (var part in row.Folder.Split('/'))
+                node = node.GetOrAdd(part);
+        }
+
+        foreach (var folder in root.Descendants())
+        {
+            folder.Count = Items.Count(r => folder.Contains(r.Folder));
+            if (expanded.Contains(folder.Path))
+                folder.IsExpanded = true;
+        }
+
+        Folders.Clear();
+        Folders.Add(root);
+        var selected = root.Descendants().FirstOrDefault(f => f.Path == selectedPath) ?? root;
+        selected.IsSelected = true;
+        Folder = selected;
+    }
+
     private void RefreshView()
     {
         View.Refresh();
         var shown = Items.Count(Matches);
-        Summary = shown == Items.Count ? $"Компонентов: {Items.Count}" : $"Показано: {shown} из {Items.Count}";
+        var where = Folder is null || Folder.Path.Length == 0 ? "" : $"«{Folder.Path}»: ";
+        Summary = shown == Items.Count ? $"Компонентов: {Items.Count}" : $"{where}показано {shown} из {Items.Count}";
     }
 }
 
 public sealed record CatalogRow(LibraryItemSummary Item)
 {
+    /// <summary>Папка компонента в дереве: раздел/группа/стандарт (или производитель).</summary>
+    public string Folder { get; } = $"{Item.CategoryPath}/{(Item.Kind == LibraryItemKind.Standard
+        ? Item.Standard ?? "Без стандарта"
+        : Item.Manufacturer ?? PdmLite.Library.Storage.LibraryStorage.NoManufacturerFolder)}";
+
     public string KindName => Item.Kind == LibraryItemKind.Standard ? "Стандартное" : "Покупное";
     public string Path => Item.RelativePath;
     public string Modified => $"{Item.ModifiedAt.ToLocalTime():g}, {Item.ModifiedBy}";

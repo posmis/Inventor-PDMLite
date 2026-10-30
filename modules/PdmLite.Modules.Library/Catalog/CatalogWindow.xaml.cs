@@ -88,5 +88,11 @@ public partial class CatalogWindow : Window
             await _viewModel.OnEditedAsync();
     }
 
+    private void FolderTree_OnSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        if (e.NewValue is CatalogFolder folder)
+            _viewModel.Folder = folder;
+    }
+
     private void Close_OnClick(object sender, RoutedEventArgs e) => Close();
 }

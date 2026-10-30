@@ -69,8 +69,7 @@
                     </Button>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <ComboBox ItemsSource="{Binding CategoryFilters}" SelectedItem="{Binding CategoryFilter}" Width="240" Margin="0,0,8,0" />
-                    <TextBox Style="{StaticResource Pdm.SearchBox}" Tag="Поиск по обозначению" Width="240"
+                    <TextBox Style="{StaticResource Pdm.SearchBox}" Tag="Поиск в выбранной папке" Width="240"
                              Text="{Binding Search, UpdateSourceTrigger=PropertyChanged, Delay=250}" />
                 </StackPanel>
             </DockPanel>
@@ -84,25 +83,54 @@
             </DockPanel>
         </Border>
 
-        <DataGrid ui:NaturalSort.IsEnabled="True" x:Name="Grid" Margin="6" ItemsSource="{Binding View}" SelectedItem="{Binding Selected}" IsReadOnly="True"
-                  SelectionMode="Extended" MouseDoubleClick="Grid_OnMouseDoubleClick">
-            <DataGrid.Columns>
-                <DataGridTemplateColumn Header="Обозначение" Width="360" SortMemberPath="Item.Designation">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <StackPanel Orientation="Horizontal" ToolTip="{Binding Path}">
-                                <Image Source="{Binding Path, Converter={StaticResource FileIcon}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
-                                <TextBlock Text="{Binding Item.Designation}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-                <DataGridTextColumn Header="Тип" Width="100" Binding="{Binding KindName}" />
-                <DataGridTextColumn Header="Стандарт" Width="140" Binding="{Binding Item.Standard}" />
-                <DataGridTextColumn Header="Производитель" Width="120" Binding="{Binding Item.Manufacturer}" />
-                <DataGridTextColumn Header="Раздел" Width="220" Binding="{Binding Item.CategoryPath}" />
-                <DataGridTextColumn Header="Изменён" Width="*" Binding="{Binding Modified}" SortMemberPath="Item.ModifiedAt" />
-            </DataGrid.Columns>
-        </DataGrid>
+        <Grid Margin="6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300" MinWidth="160" />
+                <ColumnDefinition Width="5" />
+                <ColumnDefinition Width="*" MinWidth="300" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Папки: раздел → группа → стандарт или производитель -->
+            <TreeView x:Name="FolderTree" ItemsSource="{Binding Folders}" SelectedItemChanged="FolderTree_OnSelectedItemChanged">
+                <TreeView.ItemContainerStyle>
+                    <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                        <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+                        <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+                    </Style>
+                </TreeView.ItemContainerStyle>
+                <TreeView.ItemTemplate>
+                    <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                        <StackPanel Orientation="Horizontal" Margin="0,1">
+                            <Image Source="{StaticResource Pdm.Icon.Folder}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
+                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding CountText}" Style="{StaticResource Pdm.Text.Hint}" Margin="5,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </HierarchicalDataTemplate>
+                </TreeView.ItemTemplate>
+            </TreeView>
+
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" ResizeDirection="Columns" Background="Transparent" />
+
+            <DataGrid ui:NaturalSort.IsEnabled="True" x:Name="Grid" Grid.Column="2" ItemsSource="{Binding View}" SelectedItem="{Binding Selected}" IsReadOnly="True"
+                      SelectionMode="Extended" MouseDoubleClick="Grid_OnMouseDoubleClick">
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="Обозначение" Width="360" SortMemberPath="Item.Designation">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" ToolTip="{Binding Path}">
+                                    <Image Source="{Binding Path, Converter={StaticResource FileIcon}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
+                                    <TextBlock Text="{Binding Item.Designation}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Тип" Width="100" Binding="{Binding KindName}" />
+                    <DataGridTextColumn Header="Стандарт" Width="140" Binding="{Binding Item.Standard}" />
+                    <DataGridTextColumn Header="Производитель" Width="120" Binding="{Binding Item.Manufacturer}" />
+                    <DataGridTextColumn Header="Раздел" Width="220" Binding="{Binding Item.CategoryPath}" />
+                    <DataGridTextColumn Header="Изменён" Width="*" Binding="{Binding Modified}" SortMemberPath="Item.ModifiedAt" />
+                </DataGrid.Columns>
+            </DataGrid>
+        </Grid>
     </DockPanel>
 </Window>
