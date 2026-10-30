@@ -5,7 +5,7 @@ using PdmLite.Core.Events;
 using PdmLite.Core.Projects;
 using PdmLite.Link;
 
-namespace PdmLite.AddIn;
+namespace PdmLite.AddIn.Core;
 
 /// <summary>
 /// Переводит события Inventor в события шины PdmLite и рассылает их в Explorer.

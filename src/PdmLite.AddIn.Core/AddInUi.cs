@@ -9,7 +9,7 @@ using PdmLite.UI.Shared;
 using Wpf = System.Windows;
 using WpfControls = System.Windows.Controls;
 
-namespace PdmLite.AddIn;
+namespace PdmLite.AddIn.Core;
 
 /// <summary>Интерфейс плагина в Inventor: вкладка ленты и закрепляемое окно с панелями модулей.</summary>
 internal sealed class AddInUi : IDisposable

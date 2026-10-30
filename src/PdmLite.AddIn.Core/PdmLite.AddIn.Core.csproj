@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <PlatformTarget>x64</PlatformTarget>
+    <!-- Копировать все зависимости и создать .deps.json: по нему загрузчик находит сборки. -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <AssemblyName>PdmLite.AddIn.Core</AssemblyName>
+    <Description>Плагин PdmLite для Inventor: вся логика. Загружается загрузчиком PdmLite.AddIn в изолированный контекст.</Description>
+
+    <!--
+      Сборки плагина лежат в подпапке core загрузчика: ...\PdmLite.AddIn\bin\{Config}\{TFM}\core.
+      Так Inventor не может «случайно» загрузить их в общий контекст.
+    -->
+    <OutDir>$(MSBuildThisFileDirectory)..\PdmLite.AddIn\bin\$(Configuration)\$(TargetFramework)\core\</OutDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PdmLite.Core\PdmLite.Core.csproj" />
+    <ProjectReference Include="..\PdmLite.Hosting\PdmLite.Hosting.csproj" />
+    <ProjectReference Include="..\PdmLite.Link\PdmLite.Link.csproj" />
+    <ProjectReference Include="..\PdmLite.UI.Shared\PdmLite.UI.Shared.csproj" />
+  </ItemGroup>
+
+  <!-- Модули: только для копирования сборок, см. комментарий в PdmLite.Explorer.csproj. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\modules\PdmLite.Modules.ProjectTree\PdmLite.Modules.ProjectTree.csproj" />
+    <ProjectReference Include="..\..\modules\PdmLite.Modules.Properties\PdmLite.Modules.Properties.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="modules.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Import Project="..\..\build\Inventor.targets" />
+
+</Project>

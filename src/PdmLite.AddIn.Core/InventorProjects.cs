@@ -1,6 +1,6 @@
 using PdmLite.Core.Domain;
 
-namespace PdmLite.AddIn;
+namespace PdmLite.AddIn.Core;
 
 /// <summary>Проекты Inventor (.ipj).</summary>
 public sealed class InventorProjects(Inv.Application inventor)

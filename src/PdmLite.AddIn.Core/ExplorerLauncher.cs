@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using PdmLite.Hosting;
 using PdmLite.Link;
 
-namespace PdmLite.AddIn;
+namespace PdmLite.AddIn.Core;
 
 /// <summary>
 /// «Показать в Explorer»: передаёт документ запущенному Explorer
@@ -46,19 +46,20 @@ public sealed class ExplorerLauncher(ILogger<ExplorerLauncher> logger)
 
     private static string? FindExplorer()
     {
+        // Папка загрузчика плагина (сборки самого плагина — в её подпапке core).
+        var addin = new DirectoryInfo(Path.GetDirectoryName(typeof(ExplorerLauncher).Assembly.Location)!).Parent!;
+
         var candidates = new List<string?>
         {
             new JsonSettings<SharedSettings>(SharedSettings.Name).Value.ExplorerPath,
             // Раскладка установки install.ps1: %LocalAppData%\PdmLite\{AddIn,Explorer}
-            Path.Combine(AppContext.BaseDirectory, "..", "Explorer", ExeName),
-            Path.Combine(Path.GetDirectoryName(typeof(ExplorerLauncher).Assembly.Location)!, "..", "Explorer", ExeName),
+            Path.Combine(addin.FullName, "..", "Explorer", ExeName),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PdmLite", "Explorer", ExeName),
         };
 
         // Сборка из Visual Studio: ...\src\PdmLite.AddIn\bin\{Config}\{TFM} → ...\src\PdmLite.Explorer\bin\{Config}\{TFM}
-        var output = new DirectoryInfo(Path.GetDirectoryName(typeof(ExplorerLauncher).Assembly.Location)!);
-        if (output.Parent?.Parent?.Parent?.Parent is { } src)
-            candidates.Add(Path.Combine(src.FullName, "PdmLite.Explorer", "bin", output.Parent.Name, output.Name, ExeName));
+        if (addin.Parent?.Parent?.Parent?.Parent is { } src)
+            candidates.Add(Path.Combine(src.FullName, "PdmLite.Explorer", "bin", addin.Parent.Name, addin.Name, ExeName));
 
         return candidates
             .Where(p => !string.IsNullOrWhiteSpace(p))

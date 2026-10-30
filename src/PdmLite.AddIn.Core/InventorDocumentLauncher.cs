@@ -1,7 +1,7 @@
 using PdmLite.Core.Documents;
 using PdmLite.Core.Threading;
 
-namespace PdmLite.AddIn;
+namespace PdmLite.AddIn.Core;
 
 /// <summary>Открытие документа через Inventor API (в главном потоке Inventor).</summary>
 public sealed class InventorDocumentLauncher(Inv.Application inventor, IUiDispatcher ui) : IDocumentLauncher

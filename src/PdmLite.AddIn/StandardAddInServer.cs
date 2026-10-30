@@ -1,117 +1,50 @@
+using System.Reflection;
 using System.Runtime.InteropServices;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using PdmLite.Core.Documents;
-using PdmLite.Core.Modularity;
-using PdmLite.Core.Projects;
-using PdmLite.Core.Threading;
-using PdmLite.Hosting;
-using PdmLite.UI.Shared;
 
 namespace PdmLite.AddIn;
 
-/// <summary>Точка входа плагина. ClassId/ClientId совпадают с GUID в PdmLite.addin.</summary>
+/// <summary>
+/// Точка входа, которую видит Inventor (ClassId/ClientId — как в PdmLite.addin).
+/// Загружает плагин в изолированный контекст и передаёт ему вызовы Inventor.
+/// </summary>
 [Guid(ClassId)]
 [ComVisible(true)]
 public sealed class StandardAddInServer : Inv.ApplicationAddInServer
 {
     public const string ClassId = "daf7f48d-0f53-40ea-8861-0d3fe0627c14";
-    public const string ClientId = "{" + ClassId + "}";
 
-    private Inv.Application? _inventor;
-    private PdmHost? _host;
-    private ILogger? _logger;
-    private InventorLinkServer? _link;
-    private InventorEventsBridge? _events;
-    private AddInUi? _ui;
+    private const string CoreFolder = "core";
+    private const string CoreAssembly = "PdmLite.AddIn.Core";
+    private const string CoreType = "PdmLite.AddIn.Core.AddInServer";
+
+    private Inv.ApplicationAddInServer? _core;
 
     public void Activate(Inv.ApplicationAddInSite addInSiteObject, bool firstTime)
     {
-        _inventor = addInSiteObject.Application;
-        var inventor = _inventor;
-
         try
         {
-            // Activate вызывается в главном потоке Inventor — запоминаем его диспетчер.
-            var dispatcher = new WpfUiDispatcher();
-            var folder = Path.GetDirectoryName(typeof(StandardAddInServer).Assembly.Location)!;
-
-            _host = PdmHost.Create(new PdmHostOptions
-            {
-                Host = HostKind.Inventor,
-                ModulesFolder = folder,
-                ConfigureServices = services =>
-                {
-                    services.AddSingleton(inventor);
-                    services.AddSingleton<IUiDispatcher>(dispatcher);
-                    services.AddSingleton<IDocumentLauncher, InventorDocumentLauncher>();
-                    services.AddSingleton<InventorProjects>();
-                    services.AddSingleton<ExplorerLauncher>();
-                },
-            });
-            _logger = _host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("PdmLite.AddIn");
-            _logger.LogInformation("Плагин запускается: Inventor {Version}, firstTime={FirstTime}",
-                inventor.SoftwareVersion.DisplayVersion, firstTime);
-
-            _host.Start();
-
-            _link = new InventorLinkServer(_host.Services, _logger);
-            _link.Start();
-
-            _events = new InventorEventsBridge(_host.Services, _link, _logger);
-            _ui = new AddInUi(_host, ClientId, _logger);
-            _ui.Create(firstTime);
-
-            _ = _events.SyncActiveProjectAsync();
+            var folder = Path.Combine(Path.GetDirectoryName(typeof(StandardAddInServer).Assembly.Location)!, CoreFolder);
+            var context = AddInLoadContext.Create(Path.Combine(folder, CoreAssembly + ".dll"));
+            var assembly = context.LoadFromAssemblyName(new AssemblyName(CoreAssembly));
+            var type = assembly.GetType(CoreType, throwOnError: true)!;
+            _core = (Inv.ApplicationAddInServer)Activator.CreateInstance(type)!;
         }
         catch (Exception ex)
         {
-            _logger?.LogCritical(ex, "Ошибка запуска плагина");
-            System.Windows.MessageBox.Show($"PdmLite: ошибка запуска плагина.\n\n{ex.Message}", "PdmLite",
-                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+            NativeMessageBox.Error($"PdmLite: не удалось загрузить плагин.\n\n{ex.GetBaseException().Message}");
+            return;
         }
+
+        _core.Activate(addInSiteObject, firstTime);
     }
 
     public void Deactivate()
     {
-        _logger?.LogInformation("Плагин выгружается");
-
-        Safe(() => _ui?.Dispose());
-        Safe(() => _events?.Dispose());
-        Safe(() => _link?.DisposeAsync().AsTask().GetAwaiter().GetResult());
-        Safe(() => _host?.Dispose());
-
-        _ui = null;
-        _events = null;
-        _link = null;
-        _host = null;
-
-        if (_inventor is not null)
-        {
-            Marshal.ReleaseComObject(_inventor);
-            _inventor = null;
-        }
-
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
+        _core?.Deactivate();
+        _core = null;
     }
 
-    public void ExecuteCommand(int commandID)
-    {
-        // Устаревший механизм Inventor; команды создаются через ControlDefinitions.
-    }
+    public void ExecuteCommand(int commandID) => _core?.ExecuteCommand(commandID);
 
-    public object? Automation => null;
-
-    private void Safe(Action action)
-    {
-        try
-        {
-            action();
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogError(ex, "Ошибка при выгрузке плагина");
-        }
-    }
+    public object? Automation => _core?.Automation;
 }

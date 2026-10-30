@@ -4,7 +4,7 @@ using PdmLite.Core.Documents;
 using PdmLite.Core.Threading;
 using PdmLite.Link;
 
-namespace PdmLite.AddIn;
+namespace PdmLite.AddIn.Core;
 
 /// <summary>
 /// Сервер связи в Inventor: отвечает Explorer на запросы и рассылает события Inventor.

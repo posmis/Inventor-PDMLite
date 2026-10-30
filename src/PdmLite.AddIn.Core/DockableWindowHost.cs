@@ -1,6 +1,6 @@
 using System.Reflection;
 
-namespace PdmLite.AddIn;
+namespace PdmLite.AddIn.Core;
 
 internal static class DockableWindowHost
 {

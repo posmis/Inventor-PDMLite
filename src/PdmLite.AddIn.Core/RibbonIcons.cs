@@ -3,7 +3,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using PdmLite.UI.Shared;
 
-namespace PdmLite.AddIn;
+namespace PdmLite.AddIn.Core;
 
 /// <summary>
 /// Иконки для ленты Inventor. Лента принимает IPictureDisp, поэтому векторная

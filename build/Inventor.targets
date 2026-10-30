@@ -1,0 +1,36 @@
+<!--
+  Общее для проектов, которые ссылаются на Inventor API: ссылка на сборку Inventor
+  и проверки сборки. Подключается в конце .csproj: <Import Project="..\..\build\Inventor.targets" />
+-->
+<Project>
+
+  <PropertyGroup>
+    <!-- Путь к сборке Inventor API. Можно переопределить: dotnet build -p:InventorInteropPath=... -->
+    <InventorInteropPath Condition="'$(InventorInteropPath)' == ''">$(ProgramW6432)\Autodesk\Inventor 2025\Bin\Public Assemblies\Autodesk.Inventor.Interop.dll</InventorInteropPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Autodesk.Inventor.Interop">
+      <HintPath>$(InventorInteropPath)</HintPath>
+      <!-- Сборку предоставляет сам Inventor: в папку плагина не копируем. -->
+      <Private>False</Private>
+      <EmbedInteropTypes>False</EmbedInteropTypes>
+    </Reference>
+    <Using Include="Inventor" Alias="Inv" />
+  </ItemGroup>
+
+  <Target Name="CheckInventorInterop" BeforeTargets="ResolveAssemblyReferences" Condition="!Exists('$(InventorInteropPath)')">
+    <Error Text="Не найдена сборка Inventor API: $(InventorInteropPath). Установите Inventor 2025 или укажите путь: dotnet build -p:InventorInteropPath=..." />
+  </Target>
+
+  <!-- Запущенный Inventor держит DLL плагина: понятная ошибка вместо «файл занят». -->
+  <Target Name="CheckInventorNotRunning" BeforeTargets="CopyFilesToOutputDirectory" Condition="'$(OS)' == 'Windows_NT'">
+    <Exec Command="tasklist /FI &quot;IMAGENAME eq Inventor.exe&quot; /NH | find /I &quot;Inventor.exe&quot; &gt; NUL"
+          IgnoreExitCode="true" StandardOutputImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="_InventorRunningExitCode" />
+    </Exec>
+    <Error Condition="'$(_InventorRunningExitCode)' == '0'"
+           Text="Inventor запущен и держит файлы плагина. Закройте Inventor и соберите снова (или запускайте его из Visual Studio по F5 после сборки)." />
+  </Target>
+
+</Project>
