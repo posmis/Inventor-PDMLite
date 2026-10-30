@@ -79,7 +79,8 @@ public sealed class AddInServer : Inv.ApplicationAddInServer
 
         Safe(() => _ui?.Dispose());
         Safe(() => _events?.Dispose());
-        Safe(() => _link?.DisposeAsync().AsTask().GetAwaiter().GetResult());
+        if (_link is { } link)
+            Safe(() => SyncBridge.Run(() => link.DisposeAsync().AsTask(), TimeSpan.FromSeconds(3)));
         Safe(() => _host?.Dispose());
 
         _ui = null;

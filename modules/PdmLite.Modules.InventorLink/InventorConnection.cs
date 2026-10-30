@@ -119,11 +119,11 @@ public sealed class InventorConnection(IEventBus events, ILogger<InventorConnect
 
     public async ValueTask DisposeAsync()
     {
-        await _cts.CancelAsync();
+        await _cts.CancelAsync().ConfigureAwait(false);
         if (_loop is not null)
-            await _loop;
+            await _loop.ConfigureAwait(false);
         if (_client is not null)
-            await _client.DisposeAsync();
+            await _client.DisposeAsync().ConfigureAwait(false);
         _cts.Dispose();
     }
 }

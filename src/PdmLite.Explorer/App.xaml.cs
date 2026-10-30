@@ -61,7 +61,18 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _linkServer?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        // Страховка: если остановка модуля зависнет, процесс всё равно завершится
+        // и не будет держать файлы (иначе следующая сборка не сможет их перезаписать).
+        var watchdog = new Thread(() =>
+        {
+            Thread.Sleep(TimeSpan.FromSeconds(5));
+            _logger?.LogWarning("Завершение заняло больше 5 с — процесс завершается принудительно");
+            Environment.Exit(e.ApplicationExitCode);
+        }) { IsBackground = true, Name = "PdmLite exit watchdog" };
+        watchdog.Start();
+
+        if (_linkServer is { } server)
+            SyncBridge.Run(() => server.DisposeAsync().AsTask(), TimeSpan.FromSeconds(2));
         _host?.Dispose();
         base.OnExit(e);
     }

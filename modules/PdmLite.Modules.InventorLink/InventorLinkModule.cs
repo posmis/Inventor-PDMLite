@@ -4,6 +4,7 @@ using PdmLite.Core.Documents;
 using PdmLite.Core.Domain;
 using PdmLite.Core.Modularity;
 using PdmLite.Core.Projects;
+using PdmLite.Core.Threading;
 using PdmLite.Core.UI;
 
 namespace PdmLite.Modules.InventorLink;
@@ -50,6 +51,7 @@ public sealed class InventorLinkModule : IPdmModule
 
     public void Shutdown()
     {
-        _connection?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        if (_connection is { } connection)
+            SyncBridge.Run(() => connection.DisposeAsync().AsTask(), TimeSpan.FromSeconds(3));
     }
 }
