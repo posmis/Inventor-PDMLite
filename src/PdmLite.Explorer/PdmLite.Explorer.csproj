@@ -14,6 +14,8 @@
     <ProjectReference Include="..\PdmLite.Hosting\PdmLite.Hosting.csproj" />
     <ProjectReference Include="..\PdmLite.Link\PdmLite.Link.csproj" />
     <ProjectReference Include="..\PdmLite.UI.Shared\PdmLite.UI.Shared.csproj" />
+    <!-- Свойства файлов Inventor без запуска Inventor (Apprentice). Нужен Inventor или Inventor View. -->
+    <ProjectReference Include="..\PdmLite.Apprentice\PdmLite.Apprentice.csproj" />
   </ItemGroup>
 
   <!--
@@ -25,6 +27,7 @@
     <ProjectReference Include="..\..\modules\PdmLite.Modules.ProjectTree\PdmLite.Modules.ProjectTree.csproj" />
     <ProjectReference Include="..\..\modules\PdmLite.Modules.Properties\PdmLite.Modules.Properties.csproj" />
     <ProjectReference Include="..\..\modules\PdmLite.Modules.InventorLink\PdmLite.Modules.InventorLink.csproj" />
+    <ProjectReference Include="..\..\modules\PdmLite.Modules.Library\PdmLite.Modules.Library.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Свойства файлов Inventor без запуска Inventor — через Apprentice Server
+    (входит в Inventor и бесплатный Inventor View). Используется в PdmLite Explorer.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+    <Description>Чтение и запись iProperties через Apprentice Server.</Description>
+    <!-- Сборку не держит запущенный Inventor: проверка не нужна. -->
+    <PdmLiteCheckInventorNotRunning>false</PdmLiteCheckInventorNotRunning>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PdmLite.Core\PdmLite.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <Import Project="..\..\build\Inventor.targets" />
+
+  <ItemGroup>
+    <!-- В отличие от плагина, Explorer — отдельная программа: сборку Inventor API кладём рядом. -->
+    <Reference Update="Autodesk.Inventor.Interop" Private="True" />
+  </ItemGroup>
+
+</Project>

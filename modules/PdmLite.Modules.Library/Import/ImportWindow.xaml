@@ -1,0 +1,244 @@
+<Window x:Class="PdmLite.Modules.Library.Import.ImportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:PdmLite.Modules.Library.Import"
+        xmlns:ui="clr-namespace:PdmLite.UI.Shared;assembly=PdmLite.UI.Shared"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance local:ImportViewModel}"
+        Title="Добавить в библиотеку" Width="1250" Height="720" MinWidth="800" MinHeight="450"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Theme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <ui:IconKeyConverter x:Key="IconKey" />
+            <ui:FileIconConverter x:Key="FileIcon" />
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Window.Style>
+        <StaticResource ResourceKey="Pdm.Window" />
+    </Window.Style>
+
+    <DockPanel>
+        <!-- Панель инструментов -->
+        <Border DockPanel.Dock="Top" Style="{StaticResource Pdm.Toolbar}" BorderBrush="{StaticResource Pdm.Brush.Border}">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Button Style="{StaticResource Pdm.ToolButton}" Click="AddFiles_OnClick" ToolTip="Добавить файлы деталей и сборок (.ipt, .iam)">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Pdm.Icon.Cmd.AddFiles}" Style="{StaticResource Pdm.Icon16}" />
+                            <TextBlock Text="Добавить файлы…" Margin="5,0,2,0" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource Pdm.ToolButton}" Click="AddFolder_OnClick" ToolTip="Добавить все детали и сборки из папки и её подпапок">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Pdm.Icon.Cmd.AddFolder}" Style="{StaticResource Pdm.Icon16}" />
+                            <TextBlock Text="Добавить папку…" Margin="5,0,2,0" />
+                        </StackPanel>
+                    </Button>
+                    <Rectangle Style="{StaticResource Pdm.ToolSeparator}" />
+                    <Button Style="{StaticResource Pdm.ToolButton}" Click="Exclude_OnClick" ToolTip="Не вносить выделенные строки">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Pdm.Icon.Cmd.Exclude}" Style="{StaticResource Pdm.Icon16}" />
+                            <TextBlock Text="Исключить" Margin="5,0,2,0" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource Pdm.ToolButton}" Click="Include_OnClick" ToolTip="Вернуть выделенные строки">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Pdm.Icon.Cmd.Include}" Style="{StaticResource Pdm.Icon16}" />
+                            <TextBlock Text="Включить" Margin="5,0,2,0" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource Pdm.ToolButton}" Command="{Binding RecheckCommand}" ToolTip="Проверить список заново">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Pdm.Icon.Cmd.Check}" Style="{StaticResource Pdm.Icon16}" />
+                            <TextBlock Text="Проверить" Margin="5,0,2,0" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <TextBlock Text="Показать:" Style="{StaticResource Pdm.Text.Hint}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <ComboBox ItemsSource="{Binding FilterNames}" SelectedItem="{Binding Filter}" Width="140" VerticalContentAlignment="Center" Margin="0,0,8,0" />
+                    <TextBox Style="{StaticResource Pdm.SearchBox}" Tag="Поиск" Width="220"
+                             Text="{Binding Search, UpdateSourceTrigger=PropertyChanged, Delay=250}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Предупреждение: свойства файлов недоступны -->
+        <Border DockPanel.Dock="Top" Background="#FFF4CE" BorderBrush="#E8D48A" BorderThickness="0,0,0,1" Padding="10,6"
+                Visibility="{Binding Banner, Converter={x:Static ui:NullToVisibilityConverter.Instance}}">
+            <StackPanel Orientation="Horizontal">
+                <Image Source="{StaticResource Pdm.Icon.State.Warning}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,8,0" />
+                <TextBlock Text="{Binding Banner}" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <!-- Низ: итог и кнопки -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource Pdm.Brush.Toolbar}" BorderBrush="{StaticResource Pdm.Brush.Border}"
+                BorderThickness="0,1,0,0" Padding="10,8">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Command="{Binding CommitCommand}" IsDefault="False" Margin="0,0,8,0" MinWidth="160">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Pdm.Icon.Cmd.LibraryAdd}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,6,0" />
+                            <TextBlock>
+                                <Run Text="Внести в библиотеку (" /><Run Text="{Binding ReadyCount, Mode=OneWay}" /><Run Text=")" />
+                            </TextBlock>
+                        </StackPanel>
+                    </Button>
+                    <Button Content="Закрыть" IsCancel="True" Click="Close_OnClick" />
+                </StackPanel>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Summary}" />
+                    <TextBlock Style="{StaticResource Pdm.Text.Hint}" Margin="0,2,0,0"
+                               Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" Text="{Binding ProgressText}" />
+                    <ProgressBar Height="3" Margin="0,3,0,0" Value="{Binding ProgressValue}" Maximum="100"
+                                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid Margin="6">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" MinHeight="150" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="170" MinHeight="80" />
+            </Grid.RowDefinitions>
+
+            <DataGrid x:Name="Grid" ItemsSource="{Binding View}" SelectedItem="{Binding SelectedRow}"
+                      SelectionMode="Extended" IsEnabled="{Binding IsBusy, Converter={x:Static ui:InverseBoolConverter.Instance}}">
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="" Width="28" CanUserResize="False" SortMemberPath="Include">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding Include, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center"
+                                          ToolTip="Вносить этот файл" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Header="Состояние" Width="110" SortMemberPath="Status">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Image Source="{Binding StatusIcon, Converter={StaticResource IconKey}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
+                                    <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTemplateColumn Header="Файл" Width="230" SortMemberPath="FileName">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" ToolTip="{Binding SourcePath}">
+                                    <Image Source="{Binding SourcePath, Converter={StaticResource FileIcon}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
+                                    <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTextColumn Header="Обозначение" Width="300" Binding="{Binding Designation}" SortMemberPath="Designation" />
+
+                    <DataGridTemplateColumn Header="Тип" Width="110" SortMemberPath="KindName">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding KindName}" VerticalAlignment="Center" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                        <DataGridTemplateColumn.CellEditingTemplate>
+                            <DataTemplate>
+                                <ComboBox ItemsSource="{Binding DataContext.KindNames, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                          SelectedItem="{Binding KindName, UpdateSourceTrigger=PropertyChanged}" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellEditingTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTextColumn Header="Стандарт" Width="140" Binding="{Binding Standard, Mode=OneWay}" IsReadOnly="True" />
+                    <DataGridTextColumn Header="Производитель" Width="120" Binding="{Binding Manufacturer}" />
+
+                    <DataGridTemplateColumn Header="Раздел" Width="220" SortMemberPath="Category.Path">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Category.Path}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                        <DataGridTemplateColumn.CellEditingTemplate>
+                            <DataTemplate>
+                                <ComboBox ItemsSource="{Binding DataContext.Categories, RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                          SelectedItem="{Binding Category, UpdateSourceTrigger=PropertyChanged}" DisplayMemberPath="Path"
+                                          IsTextSearchEnabled="True" TextSearch.TextPath="Path" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellEditingTemplate>
+                    </DataGridTemplateColumn>
+
+                    <DataGridTextColumn Header="Замечание" Width="*" Binding="{Binding Problem, Mode=OneWay}" IsReadOnly="True" />
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <GridSplitter Grid.Row="1" Height="5" HorizontalAlignment="Stretch" ResizeDirection="Rows" />
+
+            <!-- Подробности выделенной строки -->
+            <Border Grid.Row="2" BorderBrush="{StaticResource Pdm.Brush.Border}" BorderThickness="1" Background="{StaticResource Pdm.Brush.Panel}">
+                <Grid DataContext="{Binding SelectedRow}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="420" />
+                    </Grid.ColumnDefinitions>
+                    <DockPanel Margin="8,6">
+                        <TextBlock DockPanel.Dock="Top" Text="Проверка" Style="{StaticResource Pdm.Text.Section}" Margin="0,0,0,4" />
+                        <ItemsControl ItemsSource="{Binding Issues}">
+                            <ItemsControl.Template>
+                                <ControlTemplate>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <ItemsPresenter />
+                                    </ScrollViewer>
+                                </ControlTemplate>
+                            </ItemsControl.Template>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <DockPanel Margin="0,2">
+                                        <Image Source="{Binding Icon, Converter={StaticResource IconKey}}" Style="{StaticResource Pdm.Icon16}"
+                                               VerticalAlignment="Top" Margin="0,0,6,0" />
+                                        <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
+                                    </DockPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </DockPanel>
+                    <StackPanel Grid.Column="1" Margin="8,6">
+                        <TextBlock Text="Сейчас в файле" Style="{StaticResource Pdm.Text.Section}" Margin="0,0,0,4" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="Обозначение" Style="{StaticResource Pdm.Text.Label}" />
+                            <TextBox Grid.Column="1" Text="{Binding PartNumberInFile, Mode=OneWay}" Style="{StaticResource Pdm.Text.Value}" />
+                            <TextBlock Grid.Row="1" Text="Описание" Style="{StaticResource Pdm.Text.Label}" />
+                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding DescriptionInFile, Mode=OneWay}" Style="{StaticResource Pdm.Text.Value}" />
+                            <TextBlock Grid.Row="2" Text="Наименование" Style="{StaticResource Pdm.Text.Label}" />
+                            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding TitleInFile, Mode=OneWay}" Style="{StaticResource Pdm.Text.Value}" />
+                            <TextBlock Grid.Row="3" Text="Будет в библиотеке" Style="{StaticResource Pdm.Text.Label}" />
+                            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding TargetPath, Mode=OneWay}" Style="{StaticResource Pdm.Text.Value}" />
+                        </Grid>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>

@@ -74,8 +74,13 @@ public sealed class PdmHost : IDisposable
         services.AddSingleton<IProjectScanner, FileSystemProjectScanner>();
         services.AddSingleton<IProjectSession, ProjectSession>();
         services.TryAddSingleton<IDocumentLauncher, ShellDocumentLauncher>();
+        services.AddPdmDatabase();
 
         options.ConfigureServices?.Invoke(services);
+
+        // Если хост не дал способа читать свойства файлов Inventor — модули получат понятный отказ.
+        services.TryAddSingleton<IDocumentPropertyStore>(
+            new UnavailablePropertyStore("в этом приложении чтение свойств файлов Inventor не подключено."));
 
         var loaded = new List<IPdmModule>();
         var finalStatuses = statuses.ToList();

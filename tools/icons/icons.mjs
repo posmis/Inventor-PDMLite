@@ -175,6 +175,61 @@ export const icons = {
     { d: 'M9,4.6 A1,1 0 1 1 7,4.6 A1,1 0 1 1 9,4.6 Z', fill: '#FFFFFF' },
   ],
 
+  // Библиотека
+  'Cmd.Library': [
+    { d: 'M1.5,2.5 H4.5 V14.5 H1.5 Z', fill: C.blueLight, stroke: C.blueEdge, w: 1 },
+    { d: 'M5.5,2.5 H8.5 V14.5 H5.5 Z', fill: C.amberLight, stroke: C.amberEdge, w: 1 },
+    { d: 'M9.6,3.6 L12.5,2.8 L15.2,13.6 L12.3,14.4 Z', fill: C.blueMid, stroke: C.blueEdge, w: 1 },
+    { d: 'M2.5,5 H3.5 M6.5,5 H7.5', stroke: C.ink, w: 1 },
+  ],
+  'Cmd.LibraryAdd': [
+    { d: 'M1.5,2.5 H4.5 V14.5 H1.5 Z', fill: C.blueLight, stroke: C.blueEdge, w: 1 },
+    { d: 'M5.5,2.5 H8.5 V14.5 H5.5 Z', fill: C.amberLight, stroke: C.amberEdge, w: 1 },
+    { d: 'M8.5,7.5 H15.5 V15.5 H8.5 Z', fill: '#FFFFFF' },
+    { d: 'M12,9 V14 M9.5,11.5 H14.5', stroke: C.green, w: 1.8, cap: 'round' },
+  ],
+  'Cmd.AddFiles': [
+    ...sheet(2.5, 1.5, 11.5, 14.5),
+    { d: 'M4.5,5.5 H8.5 M4.5,7.5 H8.5', stroke: C.sheetText, w: 1 },
+    { d: 'M8.5,8.5 H15.5 V15.5 H8.5 Z', fill: '#FFFFFF' },
+    { d: 'M12,9.5 V14.5 M9.5,12 H14.5', stroke: C.green, w: 1.8, cap: 'round' },
+  ],
+  'Cmd.AddFolder': [
+    ...folder(),
+    { d: 'M8.5,8.5 H15.5 V15.5 H8.5 Z', fill: '#FFFFFF' },
+    { d: 'M12,9.5 V14.5 M9.5,12 H14.5', stroke: C.green, w: 1.8, cap: 'round' },
+  ],
+  'Cmd.Exclude': [
+    { d: 'M14.5,8 A6.5,6.5 0 1 1 1.5,8 A6.5,6.5 0 1 1 14.5,8 Z', fill: '#FFFFFF', stroke: C.inkSoft, w: 1.2 },
+    { d: 'M3.6,12.4 L12.4,3.6', stroke: C.red, w: 1.6, cap: 'round' },
+  ],
+  'Cmd.Include': [
+    { d: 'M2.5,8.5 L6.5,12.5 L13.5,4', stroke: C.green, w: 2, cap: 'round' },
+  ],
+  'Cmd.Check': [
+    { d: 'M1.5,2.5 H10.5 V13.5 H1.5 Z', fill: '#FFFFFF', stroke: C.ink, w: 1 },
+    { d: 'M3.5,5.5 H8.5 M3.5,8 H8.5 M3.5,10.5 H6.5', stroke: C.sheetText, w: 1 },
+    { d: 'M8,11 L10.5,13.5 L15,7.5', stroke: C.green, w: 1.8, cap: 'round' },
+  ],
+  'Cmd.Settings': [
+    { d: 'M8,1.5 L9.3,1.7 L9.6,3.3 L10.8,3.8 L12.1,2.8 L13.2,3.9 L12.2,5.2 L12.7,6.4 L14.3,6.7 L14.5,8 L14.3,9.3 L12.7,9.6 L12.2,10.8 L13.2,12.1 L12.1,13.2 L10.8,12.2 L9.6,12.7 L9.3,14.3 L8,14.5 L6.7,14.3 L6.4,12.7 L5.2,12.2 L3.9,13.2 L2.8,12.1 L3.8,10.8 L3.3,9.6 L1.7,9.3 L1.5,8 L1.7,6.7 L3.3,6.4 L3.8,5.2 L2.8,3.9 L3.9,2.8 L5.2,3.8 L6.4,3.3 L6.7,1.7 Z', fill: '#E8E8E8', stroke: C.ink, w: 1 },
+    { d: 'M10.25,8 A2.25,2.25 0 1 1 5.75,8 A2.25,2.25 0 1 1 10.25,8 Z', fill: '#FFFFFF', stroke: C.ink, w: 1 },
+  ],
+  'Cmd.Database': [
+    { d: 'M2.5,4 V12 A5.5,2 0 0 0 13.5,12 V4 Z', fill: C.blueLight, stroke: C.blueEdge, w: 1 },
+    { d: 'M13.5,4 A5.5,2 0 1 1 2.5,4 A5.5,2 0 1 1 13.5,4 Z', fill: '#FFFFFF', stroke: C.blueEdge, w: 1 },
+    { d: 'M2.5,8 A5.5,2 0 0 0 13.5,8', stroke: C.blueEdge, w: 1 },
+  ],
+  'State.Info': [
+    { d: 'M14.5,8 A6.5,6.5 0 1 1 1.5,8 A6.5,6.5 0 1 1 14.5,8 Z', fill: '#FFFFFF', stroke: C.blue, w: 1.2 },
+    { d: 'M7.2,7 H8.8 V11.5 H7.2 Z', fill: C.blue },
+    { d: 'M8.9,4.8 A0.9,0.9 0 1 1 7.1,4.8 A0.9,0.9 0 1 1 8.9,4.8 Z', fill: C.blue },
+  ],
+  'State.Ok': [
+    { d: 'M14.5,8 A6.5,6.5 0 1 1 1.5,8 A6.5,6.5 0 1 1 14.5,8 Z', fill: C.green },
+    { d: 'M4.8,8.2 L7,10.4 L11.2,5.8', stroke: '#FFFFFF', w: 1.8, cap: 'round' },
+  ],
+
   // Состояния
   'State.Online': [
     { d: 'M12.5,8 A4.5,4.5 0 1 1 3.5,8 A4.5,4.5 0 1 1 12.5,8 Z', fill: C.green, stroke: '#1F5E2C', w: 1 },

@@ -2,6 +2,8 @@ using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using PdmLite.Apprentice;
+using PdmLite.Core.Documents;
 using PdmLite.Core.Domain;
 using PdmLite.Core.Modularity;
 using PdmLite.Core.Projects;
@@ -40,6 +42,7 @@ public partial class App : Application
             {
                 services.AddSingleton<IUiDispatcher>(dispatcher);
                 services.AddSingleton(settings);
+                services.AddSingleton<IDocumentPropertyStore, ApprenticePropertyStore>();
             },
         });
         _logger = _host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("PdmLite.Explorer");

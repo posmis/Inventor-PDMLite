@@ -24,7 +24,7 @@
   </Target>
 
   <!-- Запущенный Inventor держит DLL плагина: понятная ошибка вместо «файл занят». -->
-  <Target Name="CheckInventorNotRunning" BeforeTargets="CopyFilesToOutputDirectory" Condition="'$(OS)' == 'Windows_NT'">
+  <Target Name="CheckInventorNotRunning" BeforeTargets="CopyFilesToOutputDirectory" Condition="'$(OS)' == 'Windows_NT' and '$(PdmLiteCheckInventorNotRunning)' != 'false'">
     <Exec Command="tasklist /FI &quot;IMAGENAME eq Inventor.exe&quot; /NH | find /I &quot;Inventor.exe&quot; &gt; NUL"
           IgnoreExitCode="true" StandardOutputImportance="low">
       <Output TaskParameter="ExitCode" PropertyName="_InventorRunningExitCode" />

@@ -35,7 +35,20 @@ public static class IconKeys
     public const string Modules = "Cmd.Modules";
     public const string Info = "Cmd.Info";
 
+    // Библиотека
+    public const string Library = "Cmd.Library";
+    public const string LibraryAdd = "Cmd.LibraryAdd";
+    public const string AddFiles = "Cmd.AddFiles";
+    public const string AddFolder = "Cmd.AddFolder";
+    public const string Exclude = "Cmd.Exclude";
+    public const string Include = "Cmd.Include";
+    public const string Check = "Cmd.Check";
+    public const string Settings = "Cmd.Settings";
+    public const string Database = "Cmd.Database";
+
     // Состояния
+    public const string StateInfo = "State.Info";
+    public const string StateOk = "State.Ok";
     public const string Online = "State.Online";
     public const string Offline = "State.Offline";
     public const string Warning = "State.Warning";

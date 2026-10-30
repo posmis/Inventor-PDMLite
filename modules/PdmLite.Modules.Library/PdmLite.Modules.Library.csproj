@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Description>Модуль «Стандартная библиотека»: добавление компонентов, настройки базы и папки библиотеки.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PdmLite.Core\PdmLite.Core.csproj" />
+    <ProjectReference Include="..\..\src\PdmLite.Data\PdmLite.Data.csproj" />
+    <ProjectReference Include="..\..\src\PdmLite.Hosting\PdmLite.Hosting.csproj" />
+    <ProjectReference Include="..\..\src\PdmLite.Library\PdmLite.Library.csproj" />
+    <ProjectReference Include="..\..\src\PdmLite.UI.Shared\PdmLite.UI.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+</Project>

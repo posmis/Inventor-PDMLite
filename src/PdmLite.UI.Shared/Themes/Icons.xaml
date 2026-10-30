@@ -284,6 +284,127 @@
     </DrawingImage.Drawing>
   </DrawingImage>
 
+  <DrawingImage x:Key="Pdm.Icon.Cmd.Library" po:Freeze="True">
+    <DrawingImage.Drawing>
+      <DrawingGroup>
+          <GeometryDrawing Brush="Transparent" Geometry="M0,0 H16 V16 H0 Z" />
+          <GeometryDrawing Brush="#D4E4F6" Geometry="F1 M1.5,2.5 H4.5 V14.5 H1.5 Z"><GeometryDrawing.Pen><Pen Brush="#24497A" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Brush="#F7DE9C" Geometry="F1 M5.5,2.5 H8.5 V14.5 H5.5 Z"><GeometryDrawing.Pen><Pen Brush="#7A5410" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Brush="#86AEDD" Geometry="F1 M9.6,3.6 L12.5,2.8 L15.2,13.6 L12.3,14.4 Z"><GeometryDrawing.Pen><Pen Brush="#24497A" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Geometry="F1 M2.5,5 H3.5 M6.5,5 H7.5"><GeometryDrawing.Pen><Pen Brush="#3B3B3B" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+      </DrawingGroup>
+    </DrawingImage.Drawing>
+  </DrawingImage>
+
+  <DrawingImage x:Key="Pdm.Icon.Cmd.LibraryAdd" po:Freeze="True">
+    <DrawingImage.Drawing>
+      <DrawingGroup>
+          <GeometryDrawing Brush="Transparent" Geometry="M0,0 H16 V16 H0 Z" />
+          <GeometryDrawing Brush="#D4E4F6" Geometry="F1 M1.5,2.5 H4.5 V14.5 H1.5 Z"><GeometryDrawing.Pen><Pen Brush="#24497A" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Brush="#F7DE9C" Geometry="F1 M5.5,2.5 H8.5 V14.5 H5.5 Z"><GeometryDrawing.Pen><Pen Brush="#7A5410" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Brush="#FFFFFF" Geometry="F1 M8.5,7.5 H15.5 V15.5 H8.5 Z"></GeometryDrawing>
+          <GeometryDrawing Geometry="F1 M12,9 V14 M9.5,11.5 H14.5"><GeometryDrawing.Pen><Pen Brush="#2E8540" Thickness="1.8" LineJoin="Round" StartLineCap="Round" EndLineCap="Round" /></GeometryDrawing.Pen></GeometryDrawing>
+      </DrawingGroup>
+    </DrawingImage.Drawing>
+  </DrawingImage>
+
+  <DrawingImage x:Key="Pdm.Icon.Cmd.AddFiles" po:Freeze="True">
+    <DrawingImage.Drawing>
+      <DrawingGroup>
+          <GeometryDrawing Brush="Transparent" Geometry="M0,0 H16 V16 H0 Z" />
+          <GeometryDrawing Brush="#FFFFFF" Geometry="F1 M2.5,1.5 H8.5 L11.5,4.5 V14.5 H2.5 Z"><GeometryDrawing.Pen><Pen Brush="#6F6F6F" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Geometry="F1 M8.5,1.5 V4.5 H11.5"><GeometryDrawing.Pen><Pen Brush="#6F6F6F" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Geometry="F1 M4.5,5.5 H8.5 M4.5,7.5 H8.5"><GeometryDrawing.Pen><Pen Brush="#A9A9A9" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Brush="#FFFFFF" Geometry="F1 M8.5,8.5 H15.5 V15.5 H8.5 Z"></GeometryDrawing>
+          <GeometryDrawing Geometry="F1 M12,9.5 V14.5 M9.5,12 H14.5"><GeometryDrawing.Pen><Pen Brush="#2E8540" Thickness="1.8" LineJoin="Round" StartLineCap="Round" EndLineCap="Round" /></GeometryDrawing.Pen></GeometryDrawing>
+      </DrawingGroup>
+    </DrawingImage.Drawing>
+  </DrawingImage>
+
+  <DrawingImage x:Key="Pdm.Icon.Cmd.AddFolder" po:Freeze="True">
+    <DrawingImage.Drawing>
+      <DrawingGroup>
+          <GeometryDrawing Brush="Transparent" Geometry="M0,0 H16 V16 H0 Z" />
+          <GeometryDrawing Brush="#E2AE3E" Geometry="F1 M1.5,3.5 L6,3.5 L7.5,5 L14.5,5 L14.5,13.5 L1.5,13.5 Z"><GeometryDrawing.Pen><Pen Brush="#A87A1C" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Brush="#F4CD6A" Geometry="F1 M1.5,6.5 L14.5,6.5 L14.5,13.5 L1.5,13.5 Z"><GeometryDrawing.Pen><Pen Brush="#A87A1C" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Brush="#FFFFFF" Geometry="F1 M8.5,8.5 H15.5 V15.5 H8.5 Z"></GeometryDrawing>
+          <GeometryDrawing Geometry="F1 M12,9.5 V14.5 M9.5,12 H14.5"><GeometryDrawing.Pen><Pen Brush="#2E8540" Thickness="1.8" LineJoin="Round" StartLineCap="Round" EndLineCap="Round" /></GeometryDrawing.Pen></GeometryDrawing>
+      </DrawingGroup>
+    </DrawingImage.Drawing>
+  </DrawingImage>
+
+  <DrawingImage x:Key="Pdm.Icon.Cmd.Exclude" po:Freeze="True">
+    <DrawingImage.Drawing>
+      <DrawingGroup>
+          <GeometryDrawing Brush="Transparent" Geometry="M0,0 H16 V16 H0 Z" />
+          <GeometryDrawing Brush="#FFFFFF" Geometry="F1 M14.5,8 A6.5,6.5 0 1 1 1.5,8 A6.5,6.5 0 1 1 14.5,8 Z"><GeometryDrawing.Pen><Pen Brush="#6E6E6E" Thickness="1.2" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Geometry="F1 M3.6,12.4 L12.4,3.6"><GeometryDrawing.Pen><Pen Brush="#C42B1C" Thickness="1.6" LineJoin="Round" StartLineCap="Round" EndLineCap="Round" /></GeometryDrawing.Pen></GeometryDrawing>
+      </DrawingGroup>
+    </DrawingImage.Drawing>
+  </DrawingImage>
+
+  <DrawingImage x:Key="Pdm.Icon.Cmd.Include" po:Freeze="True">
+    <DrawingImage.Drawing>
+      <DrawingGroup>
+          <GeometryDrawing Brush="Transparent" Geometry="M0,0 H16 V16 H0 Z" />
+          <GeometryDrawing Geometry="F1 M2.5,8.5 L6.5,12.5 L13.5,4"><GeometryDrawing.Pen><Pen Brush="#2E8540" Thickness="2" LineJoin="Round" StartLineCap="Round" EndLineCap="Round" /></GeometryDrawing.Pen></GeometryDrawing>
+      </DrawingGroup>
+    </DrawingImage.Drawing>
+  </DrawingImage>
+
+  <DrawingImage x:Key="Pdm.Icon.Cmd.Check" po:Freeze="True">
+    <DrawingImage.Drawing>
+      <DrawingGroup>
+          <GeometryDrawing Brush="Transparent" Geometry="M0,0 H16 V16 H0 Z" />
+          <GeometryDrawing Brush="#FFFFFF" Geometry="F1 M1.5,2.5 H10.5 V13.5 H1.5 Z"><GeometryDrawing.Pen><Pen Brush="#3B3B3B" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Geometry="F1 M3.5,5.5 H8.5 M3.5,8 H8.5 M3.5,10.5 H6.5"><GeometryDrawing.Pen><Pen Brush="#A9A9A9" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Geometry="F1 M8,11 L10.5,13.5 L15,7.5"><GeometryDrawing.Pen><Pen Brush="#2E8540" Thickness="1.8" LineJoin="Round" StartLineCap="Round" EndLineCap="Round" /></GeometryDrawing.Pen></GeometryDrawing>
+      </DrawingGroup>
+    </DrawingImage.Drawing>
+  </DrawingImage>
+
+  <DrawingImage x:Key="Pdm.Icon.Cmd.Settings" po:Freeze="True">
+    <DrawingImage.Drawing>
+      <DrawingGroup>
+          <GeometryDrawing Brush="Transparent" Geometry="M0,0 H16 V16 H0 Z" />
+          <GeometryDrawing Brush="#E8E8E8" Geometry="F1 M8,1.5 L9.3,1.7 L9.6,3.3 L10.8,3.8 L12.1,2.8 L13.2,3.9 L12.2,5.2 L12.7,6.4 L14.3,6.7 L14.5,8 L14.3,9.3 L12.7,9.6 L12.2,10.8 L13.2,12.1 L12.1,13.2 L10.8,12.2 L9.6,12.7 L9.3,14.3 L8,14.5 L6.7,14.3 L6.4,12.7 L5.2,12.2 L3.9,13.2 L2.8,12.1 L3.8,10.8 L3.3,9.6 L1.7,9.3 L1.5,8 L1.7,6.7 L3.3,6.4 L3.8,5.2 L2.8,3.9 L3.9,2.8 L5.2,3.8 L6.4,3.3 L6.7,1.7 Z"><GeometryDrawing.Pen><Pen Brush="#3B3B3B" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Brush="#FFFFFF" Geometry="F1 M10.25,8 A2.25,2.25 0 1 1 5.75,8 A2.25,2.25 0 1 1 10.25,8 Z"><GeometryDrawing.Pen><Pen Brush="#3B3B3B" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+      </DrawingGroup>
+    </DrawingImage.Drawing>
+  </DrawingImage>
+
+  <DrawingImage x:Key="Pdm.Icon.Cmd.Database" po:Freeze="True">
+    <DrawingImage.Drawing>
+      <DrawingGroup>
+          <GeometryDrawing Brush="Transparent" Geometry="M0,0 H16 V16 H0 Z" />
+          <GeometryDrawing Brush="#D4E4F6" Geometry="F1 M2.5,4 V12 A5.5,2 0 0 0 13.5,12 V4 Z"><GeometryDrawing.Pen><Pen Brush="#24497A" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Brush="#FFFFFF" Geometry="F1 M13.5,4 A5.5,2 0 1 1 2.5,4 A5.5,2 0 1 1 13.5,4 Z"><GeometryDrawing.Pen><Pen Brush="#24497A" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Geometry="F1 M2.5,8 A5.5,2 0 0 0 13.5,8"><GeometryDrawing.Pen><Pen Brush="#24497A" Thickness="1" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+      </DrawingGroup>
+    </DrawingImage.Drawing>
+  </DrawingImage>
+
+  <DrawingImage x:Key="Pdm.Icon.State.Info" po:Freeze="True">
+    <DrawingImage.Drawing>
+      <DrawingGroup>
+          <GeometryDrawing Brush="Transparent" Geometry="M0,0 H16 V16 H0 Z" />
+          <GeometryDrawing Brush="#FFFFFF" Geometry="F1 M14.5,8 A6.5,6.5 0 1 1 1.5,8 A6.5,6.5 0 1 1 14.5,8 Z"><GeometryDrawing.Pen><Pen Brush="#2F6DB5" Thickness="1.2" LineJoin="Round" StartLineCap="Flat" EndLineCap="Flat" /></GeometryDrawing.Pen></GeometryDrawing>
+          <GeometryDrawing Brush="#2F6DB5" Geometry="F1 M7.2,7 H8.8 V11.5 H7.2 Z"></GeometryDrawing>
+          <GeometryDrawing Brush="#2F6DB5" Geometry="F1 M8.9,4.8 A0.9,0.9 0 1 1 7.1,4.8 A0.9,0.9 0 1 1 8.9,4.8 Z"></GeometryDrawing>
+      </DrawingGroup>
+    </DrawingImage.Drawing>
+  </DrawingImage>
+
+  <DrawingImage x:Key="Pdm.Icon.State.Ok" po:Freeze="True">
+    <DrawingImage.Drawing>
+      <DrawingGroup>
+          <GeometryDrawing Brush="Transparent" Geometry="M0,0 H16 V16 H0 Z" />
+          <GeometryDrawing Brush="#2E8540" Geometry="F1 M14.5,8 A6.5,6.5 0 1 1 1.5,8 A6.5,6.5 0 1 1 14.5,8 Z"></GeometryDrawing>
+          <GeometryDrawing Geometry="F1 M4.8,8.2 L7,10.4 L11.2,5.8"><GeometryDrawing.Pen><Pen Brush="#FFFFFF" Thickness="1.8" LineJoin="Round" StartLineCap="Round" EndLineCap="Round" /></GeometryDrawing.Pen></GeometryDrawing>
+      </DrawingGroup>
+    </DrawingImage.Drawing>
+  </DrawingImage>
+
   <DrawingImage x:Key="Pdm.Icon.State.Online" po:Freeze="True">
     <DrawingImage.Drawing>
       <DrawingGroup>
