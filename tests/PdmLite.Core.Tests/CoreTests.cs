@@ -9,6 +9,7 @@ namespace PdmLite.Core.Tests;
 public sealed class CoreTests : IDisposable
 {
     private readonly string _root = Directory.CreateTempSubdirectory("pdmlite-core-").FullName;
+    private readonly List<string> _links = [];
 
     private string Touch(string relative, string content = "")
     {
@@ -66,7 +67,10 @@ public sealed class CoreTests : IDisposable
     {
         Touch("Детали/a.ipt");
         Touch(".hidden/b.ipt");
-        Directory.CreateSymbolicLink(Path.Combine(_root, "Детали", "loop"), _root);
+        // На Windows «скрытая» — это атрибут, а не точка в имени.
+        var hidden = new DirectoryInfo(Path.Combine(_root, ".hidden"));
+        hidden.Attributes |= FileAttributes.Hidden;
+        CreateFolderLink(Path.Combine(_root, "Детали", "loop"), _root);
 
         var root = await new FileSystemProjectScanner(NullLogger<FileSystemProjectScanner>.Instance).ScanAsync(ProjectInfo.FromPath(_root));
 
@@ -145,5 +149,35 @@ public sealed class CoreTests : IDisposable
         Assert.True(new CommandDescriptor("y", "Y", CommandPlacement.Toolbar, _ => Task.CompletedTask).IsAvailable(CommandContext.Empty));
     }
 
-    public void Dispose() => Directory.Delete(_root, true);
+    /// <summary>
+    /// Ссылка на папку. На Windows символическая ссылка требует прав администратора
+    /// (или режима разработчика), поэтому там создаётся junction — он доступен всем.
+    /// </summary>
+    private void CreateFolderLink(string link, string target)
+    {
+        _links.Add(link);
+        if (!OperatingSystem.IsWindows())
+        {
+            Directory.CreateSymbolicLink(link, target);
+            return;
+        }
+
+        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        })!;
+        process.WaitForExit();
+        Assert.True(Directory.Exists(link), "Не удалось создать junction: " + process.StandardError.ReadToEnd());
+    }
+
+    public void Dispose()
+    {
+        // Ссылку удаляем отдельно (как пустую папку, не трогая цель): обход через неё зацикливается.
+        foreach (var link in _links.Where(Directory.Exists))
+            Directory.Delete(link);
+        Directory.Delete(_root, true);
+    }
 }
