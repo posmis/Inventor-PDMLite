@@ -23,8 +23,21 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        var args = StartupArgs.Parse(e.Args);
+        try
+        {
+            await StartAsync(StartupArgs.Parse(e.Args));
+        }
+        catch (Exception ex)
+        {
+            // async void: без перехвата ошибка запуска закрыла бы программу молча.
+            _logger?.LogCritical(ex, "Ошибка запуска");
+            UiMessages.Error("PdmLite Explorer не удалось запустить.", ex);
+            Shutdown(1);
+        }
+    }
 
+    private async Task StartAsync(StartupArgs args)
+    {
         // Второй экземпляр передаёт аргументы уже запущенному Explorer и завершается.
         if (await ForwardToRunningInstanceAsync(args))
         {

@@ -62,6 +62,8 @@ public sealed class PdmHost : IDisposable
         var loader = new ModuleLoader(loaderLogger);
 
         var config = ModulesConfig.Load(Path.Combine(options.ModulesFolder, ModulesConfig.FileName));
+        if (config.LoadError is not null)
+            loaderLogger.LogWarning("modules.json не прочитан, включены все модули: {Error}", config.LoadError);
         var candidates = loader.Discover(options.ModulesFolder).Concat(options.ExtraModules);
         var (ordered, statuses) = loader.Resolve(candidates, options.Host, config);
 

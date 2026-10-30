@@ -27,7 +27,9 @@ public sealed class FileSystemProjectScanner(ILogger<FileSystemProjectScanner> l
         {
             foreach (var sub in dir.EnumerateDirectories().OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase))
             {
-                if (IgnoredFolders.Contains(sub.Name) || sub.Attributes.HasFlag(FileAttributes.Hidden))
+                // Ярлыки на папки (junction, symlink) пропускаем: они могут зациклить обход.
+                if (IgnoredFolders.Contains(sub.Name)
+                    || (sub.Attributes & (FileAttributes.Hidden | FileAttributes.System | FileAttributes.ReparsePoint)) != 0)
                     continue;
                 if (ScanFolder(sub, ct) is { } folder)
                     children.Add(folder);

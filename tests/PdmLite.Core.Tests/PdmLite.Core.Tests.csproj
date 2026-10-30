@@ -16,6 +16,7 @@
     <ProjectReference Include="..\..\src\PdmLite.Core\PdmLite.Core.csproj" />
     <ProjectReference Include="..\..\src\PdmLite.Hosting\PdmLite.Hosting.csproj" />
     <ProjectReference Include="..\..\src\PdmLite.Link\PdmLite.Link.csproj" />
+    <ProjectReference Include="..\..\modules\PdmLite.Modules.InventorLink\PdmLite.Modules.InventorLink.csproj" />
   </ItemGroup>
 
   <ItemGroup>

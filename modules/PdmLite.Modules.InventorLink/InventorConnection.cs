@@ -17,14 +17,32 @@ public interface IInventorConnection
 /// Поддерживает соединение с плагином PdmLite в Inventor: переподключается,
 /// пока Inventor не запущен, и переводит события плагина в события шины.
 /// </summary>
-public sealed class InventorConnection(IEventBus events, ILogger<InventorConnection> logger) : IInventorConnection, IAsyncDisposable
+public sealed class InventorConnection : IInventorConnection, IAsyncDisposable
 {
     private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromMilliseconds(500);
 
+    private readonly IEventBus events;
+    private readonly ILogger<InventorConnection> logger;
+    private readonly string _endpoint;
+    private readonly TimeSpan _retryInterval;
     private readonly CancellationTokenSource _cts = new();
     private LinkClient? _client;
     private Task? _loop;
+
+    public InventorConnection(IEventBus events, ILogger<InventorConnection> logger)
+        : this(events, logger, LinkEndpoints.Inventor, RetryInterval)
+    {
+    }
+
+    /// <summary>Для тестов: другой канал и интервал переподключения.</summary>
+    internal InventorConnection(IEventBus events, ILogger<InventorConnection> logger, string endpoint, TimeSpan retryInterval)
+    {
+        this.events = events;
+        this.logger = logger;
+        _endpoint = endpoint;
+        _retryInterval = retryInterval;
+    }
 
     public bool IsConnected => _client?.IsConnected == true;
     public string? InventorVersion { get; private set; }
@@ -49,7 +67,7 @@ public sealed class InventorConnection(IEventBus events, ILogger<InventorConnect
             {
                 if (!IsConnected)
                     await TryConnectAsync(ct);
-                await Task.Delay(RetryInterval, ct);
+                await Task.Delay(_retryInterval, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -64,15 +82,33 @@ public sealed class InventorConnection(IEventBus events, ILogger<InventorConnect
 
     private async Task TryConnectAsync(CancellationToken ct)
     {
-        if (_client is not null)
+        if (_client is { } old)
         {
-            await _client.DisposeAsync();
+            // Старое соединение уже разорвано и сообщено — отписываемся, чтобы не сообщить повторно.
+            old.EventReceived -= OnEvent;
+            old.Disconnected -= OnDisconnected;
             _client = null;
+            await old.DisposeAsync();
         }
 
-        var client = new LinkClient(LinkEndpoints.Inventor);
+        var client = new LinkClient(_endpoint);
         if (!await client.TryConnectAsync(ConnectTimeout, ct))
         {
+            await client.DisposeAsync();
+            return;
+        }
+
+        PingResult? ping;
+        InventorStatus? status;
+        try
+        {
+            ping = await client.RequestAsync<PingResult>(LinkProtocol.Requests.Ping, cancellationToken: ct);
+            status = await client.RequestAsync<InventorStatus>(LinkProtocol.Requests.GetStatus, cancellationToken: ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Плагин подключился, но не ответил — попробуем позже.
+            logger.LogWarning(ex, "Inventor не ответил на запрос состояния");
             await client.DisposeAsync();
             return;
         }
@@ -80,9 +116,6 @@ public sealed class InventorConnection(IEventBus events, ILogger<InventorConnect
         client.EventReceived += OnEvent;
         client.Disconnected += OnDisconnected;
         _client = client;
-
-        var ping = await client.RequestAsync<PingResult>(LinkProtocol.Requests.Ping, cancellationToken: ct);
-        var status = await client.RequestAsync<InventorStatus>(LinkProtocol.Requests.GetStatus, cancellationToken: ct);
         InventorVersion = status?.InventorVersion ?? ping?.Version;
 
         logger.LogInformation("Связь с Inventor {Version} установлена", InventorVersion);

@@ -85,7 +85,8 @@ public sealed class LinkServer : IAsyncDisposable
                 var connection = new LinkConnection(pipe);
                 pipe = null;
                 _clients[connection] = 0;
-                _ = Task.Run(() => ServeClientAsync(connection, ct), ct);
+                // Без токена: обслуживание должно стартовать, иначе соединение не будет закрыто.
+                _ = Task.Run(() => ServeClientAsync(connection, ct));
             }
             catch (OperationCanceledException)
             {
