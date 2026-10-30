@@ -32,7 +32,11 @@ if (Get-Process -Name PdmLite.Explorer -ErrorAction SilentlyContinue) {
 }
 
 Write-Host "Сборка плагина..." -ForegroundColor Cyan
-dotnet publish "$repo\src\PdmLite.AddIn\PdmLite.AddIn.csproj" -c $Configuration -o $addinOut
+if (Test-Path $addinOut) { Remove-Item $addinOut -Recurse -Force }
+# Загрузчик — в папку плагина, сам плагин со всеми зависимостями — в её подпапку core.
+dotnet publish "$repo\src\PdmLite.AddIn\PdmLite.AddIn.csproj" -c $Configuration -o $addinOut -p:PdmLiteRegisterAddIn=false
+if ($LASTEXITCODE -ne 0) { throw "Ошибка сборки загрузчика плагина." }
+dotnet publish "$repo\src\PdmLite.AddIn.Core\PdmLite.AddIn.Core.csproj" -c $Configuration -o (Join-Path $addinOut "core")
 if ($LASTEXITCODE -ne 0) { throw "Ошибка сборки плагина." }
 
 Write-Host "Сборка Explorer..." -ForegroundColor Cyan

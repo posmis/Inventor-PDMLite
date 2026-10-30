@@ -42,7 +42,8 @@ PdmLite.sln
 │  ├─ PdmLite.Link/          # связь плагин ⇄ Explorer
 │  ├─ PdmLite.Hosting/       # загрузчик модулей, DI, настройки, журналы
 │  ├─ PdmLite.UI.Shared/     # общие WPF-стили, размещение панелей, меню команд
-│  ├─ PdmLite.AddIn/         # хост: плагин Inventor
+│  ├─ PdmLite.AddIn/         # загрузчик плагина (его видит Inventor)
+│  ├─ PdmLite.AddIn.Core/    # хост: плагин Inventor (в изолированном контексте)
 │  ├─ PdmLite.Explorer/      # хост: внешнее приложение
 │  ├─ PdmLite.Data/          # (план) EF Core, PostgreSQL
 │  ├─ PdmLite.Inventor/      # (план) iProperties и ссылки через Inventor API
@@ -74,6 +75,25 @@ public interface IPdmModule
 - UI модуль регистрирует через `IUiRegistry` (кнопки ленты, пункты контекстного меню, панели).
 - Возможности хоста — через `IHostCapabilities` (`CanEditFiles`, `HasActiveDocument`, …):
   модуль сам скрывает недоступные действия.
+
+## Загрузка плагина в Inventor
+
+Inventor 2025 загружает плагины .NET 8 в общий контекст сборок, где уже есть его собственные
+версии библиотек (например, Microsoft.Extensions.* 6.0). Чтобы версии плагина не конфликтовали
+с ними, плагин разделён на две части:
+
+```
+<папка плагина>\
+  PdmLite.AddIn.dll         загрузчик без зависимостей — его указывает PdmLite.addin
+  core\
+    PdmLite.AddIn.Core.dll  плагин
+    PdmLite.*.dll, Microsoft.Extensions.*.dll, Serilog*.dll …  — свои версии
+```
+
+Загрузчик создаёт отдельный `AssemblyLoadContext` (`AddInLoadContext`) и загружает в него
+плагин по его `.deps.json`. Общими с Inventor остаются только Inventor API и сборки .NET/WPF.
+Вызовы `Activate`/`Deactivate` загрузчик передаёт плагину через интерфейс
+`ApplicationAddInServer` из Inventor API.
 
 ## Связь плагина и Explorer
 

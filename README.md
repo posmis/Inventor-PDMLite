@@ -72,7 +72,8 @@ src/
   PdmLite.Link         связь плагин ⇄ Explorer (именованные каналы, JSON)
   PdmLite.Hosting      загрузка модулей, DI, журналы, настройки
   PdmLite.UI.Shared    общие WPF-компоненты, тема оформления и иконки
-  PdmLite.AddIn        хост: плагин Inventor
+  PdmLite.AddIn        загрузчик плагина Inventor (изолирует версии библиотек)
+  PdmLite.AddIn.Core   хост: плагин Inventor
   PdmLite.Explorer     хост: внешнее приложение
 modules/
   PdmLite.Modules.ProjectTree    дерево проекта
@@ -80,6 +81,7 @@ modules/
   PdmLite.Modules.InventorLink   связь Explorer с Inventor
 tests/
   PdmLite.Core.Tests
+build/                 общие настройки сборки проектов с Inventor API
 tools/icons/           источник иконок и генератор (Icons.xaml, .ico, предпросмотр)
 deploy/                манифест плагина, установка
 ```
