@@ -28,6 +28,7 @@ public sealed class LibraryModule : IPdmModule
 
     private LibraryPanelViewModel? _panel;
     private ContentCenterPrompt? _contentCenter;
+    private LibraryFileResolver? _resolver;
 
     public void ConfigureServices(IServiceCollection services, HostKind host)
     {
@@ -46,6 +47,8 @@ public sealed class LibraryModule : IPdmModule
         services.AddTransient<CatalogViewModel>();
         services.AddTransient<AssemblyCheckViewModel>();
         services.AddSingleton<ContentCenterPrompt>();
+        services.AddSingleton<LibraryFileResolver>();
+        services.AddSingleton<IMissingFileResolver>(sp => sp.GetRequiredService<LibraryFileResolver>());
         services.AddTransient<LibrarySettingsViewModel>();
     }
 
@@ -66,6 +69,10 @@ public sealed class LibraryModule : IPdmModule
         {
             _contentCenter = services.GetRequiredService<ContentCenterPrompt>();
             _contentCenter.Attach();
+
+            // Ссылки сборок на переехавшие компоненты библиотеки подтягиваются при открытии.
+            _resolver = services.GetRequiredService<LibraryFileResolver>();
+            _resolver.Attach();
 
             context.Ui.RegisterCommand(new CommandDescriptor(
                 "Library.CheckAssembly", "Проверить сборку", CommandPlacement.Toolbar,
@@ -113,5 +120,6 @@ public sealed class LibraryModule : IPdmModule
     {
         _panel?.Detach();
         _contentCenter?.Dispose();
+        _resolver?.Dispose();
     }
 }

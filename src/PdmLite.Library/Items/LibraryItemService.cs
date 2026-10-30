@@ -79,6 +79,17 @@ public sealed class LibraryItemService(
             i.CategoryId, catalog.Get(i.CategoryId)?.Path ?? "?", i.RelativePath, i.Version, i.ModifiedAt, i.ModifiedBy, i.StandardIsManual)).ToList();
     }
 
+    /// <summary>Текущие и прежние пути компонентов — для подстановки ненайденных ссылок в сборках.</summary>
+    public async Task<LibraryPathIndex> LoadPathIndexAsync(CancellationToken ct = default)
+    {
+        await using var db = database.CreateContext();
+        var items = await db.LibraryItems.AsNoTracking().Select(i => new { i.Id, i.RelativePath, i.Designation })
+            .ToListAsync(ct).ConfigureAwait(false);
+        var edits = await db.LibraryLog.AsNoTracking().Where(e => e.Action == "edit" && e.ItemId != null)
+            .ToListAsync(ct).ConfigureAwait(false);
+        return new LibraryPathIndex(items.Select(i => (i.Id, i.RelativePath, i.Designation)), LibraryPathIndex.MovesFromLog(edits));
+    }
+
     /// <summary>Обозначения сборок библиотеки, в которые входит компонент.</summary>
     public async Task<IReadOnlyList<string>> UsedInAsync(Guid id, CancellationToken ct = default)
     {
