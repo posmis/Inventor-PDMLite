@@ -1,4 +1,5 @@
 using PdmLite.Core.Documents;
+using PdmLite.Core.Naming;
 using PdmLite.Library.Designations;
 using PdmLite.Library.Items;
 using PdmLite.Library.Storage;
@@ -71,7 +72,7 @@ public static class AssemblyCheck
         }
 
         return new AssemblyCheckResult(inLibrary, total,
-            findings.OrderBy(f => f.Finding).ThenBy(f => f.Designation, StringComparer.CurrentCulture).ToList());
+            findings.OrderBy(f => f.Finding).ThenBy(f => f.Designation, NaturalComparer.Instance).ToList());
     }
 
     /// <summary>Имя файла без расширения для путей Windows на любой платформе (пути приходят из Inventor).</summary>

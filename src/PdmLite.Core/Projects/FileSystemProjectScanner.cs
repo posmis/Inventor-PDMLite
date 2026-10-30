@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using PdmLite.Core.Domain;
+using PdmLite.Core.Naming;
 
 namespace PdmLite.Core.Projects;
 
@@ -25,7 +26,7 @@ public sealed class FileSystemProjectScanner(ILogger<FileSystemProjectScanner> l
         var children = new List<ProjectItem>();
         try
         {
-            foreach (var sub in dir.EnumerateDirectories().OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase))
+            foreach (var sub in dir.EnumerateDirectories().OrderBy(d => d.Name, NaturalComparer.Instance))
             {
                 // Ярлыки на папки (junction, symlink) пропускаем: они могут зациклить обход.
                 if (IgnoredFolders.Contains(sub.Name)
@@ -35,7 +36,7 @@ public sealed class FileSystemProjectScanner(ILogger<FileSystemProjectScanner> l
                     children.Add(folder);
             }
 
-            foreach (var file in dir.EnumerateFiles().OrderBy(f => f.Name, StringComparer.CurrentCultureIgnoreCase))
+            foreach (var file in dir.EnumerateFiles().OrderBy(f => f.Name, NaturalComparer.Instance))
             {
                 if (!DocumentKinds.IsKnown(file.Name) || file.Attributes.HasFlag(FileAttributes.Hidden))
                     continue;

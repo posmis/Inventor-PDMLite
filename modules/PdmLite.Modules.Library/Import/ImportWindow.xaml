@@ -147,7 +147,7 @@
                 <RowDefinition Height="170" MinHeight="80" />
             </Grid.RowDefinitions>
 
-            <DataGrid x:Name="Grid" ItemsSource="{Binding View}" SelectedItem="{Binding SelectedRow}"
+            <DataGrid ui:NaturalSort.IsEnabled="True" x:Name="Grid" ItemsSource="{Binding View}" SelectedItem="{Binding SelectedRow}"
                       SelectionMode="Extended" IsEnabled="{Binding IsBusy, Converter={x:Static ui:InverseBoolConverter.Instance}}">
                 <DataGrid.Columns>
                     <DataGridTemplateColumn Header="" Width="28" CanUserResize="False" SortMemberPath="Include">

@@ -77,7 +77,7 @@
             </DockPanel>
         </Border>
 
-        <DataGrid x:Name="Grid" Margin="6" ItemsSource="{Binding View}" SelectedItem="{Binding Selected}" IsReadOnly="True"
+        <DataGrid ui:NaturalSort.IsEnabled="True" x:Name="Grid" Margin="6" ItemsSource="{Binding View}" SelectedItem="{Binding Selected}" IsReadOnly="True"
                   SelectionMode="Extended" MouseDoubleClick="Grid_OnMouseDoubleClick">
             <DataGrid.Columns>
                 <DataGridTemplateColumn Header="Обозначение" Width="360" SortMemberPath="Item.Designation">

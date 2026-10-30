@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PdmLite.Core.Naming;
 using PdmLite.Data;
 using PdmLite.Data.Library;
 using PdmLite.Library.Designations;
@@ -22,7 +23,7 @@ public sealed class LibraryCatalog
     private LibraryCatalog(IEnumerable<CategoryInfo> categories, IEnumerable<LibraryCategoryRule> rules)
     {
         _byId = categories.ToDictionary(c => c.Id);
-        Categories = _byId.Values.OrderBy(c => c.Path, StringComparer.CurrentCulture).ToList();
+        Categories = _byId.Values.OrderBy(c => c.Path, NaturalComparer.Instance).ToList();
 
         // Запомненные правила важнее встроенных.
         var ordered = rules.OrderBy(r => r.IsLearned).ToList();

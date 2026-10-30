@@ -59,7 +59,7 @@
         </DockPanel>
 
         <!-- Диагностика: что изменится -->
-        <DataGrid ItemsSource="{Binding Rows}">
+        <DataGrid ui:NaturalSort.IsEnabled="True" ItemsSource="{Binding Rows}">
             <DataGrid.RowStyle>
                 <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
                     <Setter Property="Height" Value="NaN" />

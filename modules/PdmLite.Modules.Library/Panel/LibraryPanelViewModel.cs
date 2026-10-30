@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using PdmLite.Core.Documents;
 using PdmLite.Core.Events;
+using PdmLite.Core.Naming;
 using PdmLite.Core.Projects;
 using PdmLite.Core.Threading;
 using PdmLite.Data;
@@ -130,16 +131,21 @@ public sealed partial class LibraryPanelViewModel : ObservableObject
             return node;
         }
 
-        foreach (var item in items.OrderBy(i => i.CategoryPath, StringComparer.CurrentCulture).ThenBy(i => i.Designation, StringComparer.CurrentCulture))
+        static string Subfolder(LibraryItemSummary item) => item.Kind == LibraryItemKind.Standard
+            ? item.Standard ?? "Без стандарта"
+            : item.Manufacturer ?? LibraryStorage.NoManufacturerFolder;
+
+        // Числа по величине: M6, M8, M12; длина 20 раньше 100.
+        var ordered = items.OrderBy(i => i.CategoryPath, NaturalComparer.Instance)
+            .ThenBy(Subfolder, NaturalComparer.Instance)
+            .ThenBy(i => i.Designation, NaturalComparer.Instance);
+        foreach (var item in ordered)
         {
             var parts = item.CategoryPath.Split('/');
             var folder = RootFolder(parts[0]);
             foreach (var part in parts.Skip(1))
                 folder = folder.GetOrAddFolder(part);
-            var sub = item.Kind == LibraryItemKind.Standard
-                ? item.Standard ?? "Без стандарта"
-                : item.Manufacturer ?? LibraryStorage.NoManufacturerFolder;
-            folder.GetOrAddFolder(sub).Children.Add(LibraryNode.Component(item, storage.GetFullPath(item.RelativePath)));
+            folder.GetOrAddFolder(Subfolder(item)).Children.Add(LibraryNode.Component(item, storage.GetFullPath(item.RelativePath)));
         }
 
         Nodes.Clear();

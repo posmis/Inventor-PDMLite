@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PdmLite.Core.Documents;
+using PdmLite.Core.Naming;
 using PdmLite.Data;
 using PdmLite.Data.Library;
 using PdmLite.Library.Catalog;
@@ -72,7 +73,8 @@ public sealed class LibraryItemService(
     public async Task<IReadOnlyList<LibraryItemSummary>> ListAsync(LibraryCatalog catalog, CancellationToken ct = default)
     {
         await using var db = database.CreateContext();
-        var items = await db.LibraryItems.AsNoTracking().OrderBy(i => i.Designation).ToListAsync(ct).ConfigureAwait(false);
+        var items = (await db.LibraryItems.AsNoTracking().ToListAsync(ct).ConfigureAwait(false))
+            .OrderBy(i => i.Designation, NaturalComparer.Instance).ToList();
         return items.Select(i => new LibraryItemSummary(i.Id, i.Designation, i.Kind, i.DocumentType, i.Standard, i.Manufacturer,
             i.CategoryId, catalog.Get(i.CategoryId)?.Path ?? "?", i.RelativePath, i.Version, i.ModifiedAt, i.ModifiedBy, i.StandardIsManual)).ToList();
     }
@@ -276,7 +278,7 @@ public sealed class LibraryItemService(
         var query = db.LibraryItems.Include(i => i.Versions).AsQueryable();
         if (ids is not null)
             query = query.Where(i => ids.Contains(i.Id));
-        var items = await query.OrderBy(i => i.Designation).ToListAsync(ct).ConfigureAwait(false);
+        var items = (await query.ToListAsync(ct).ConfigureAwait(false)).OrderBy(i => i.Designation, NaturalComparer.Instance).ToList();
 
         var failed = new List<string>();
         int updated = 0, upToDate = 0, done = 0;
@@ -336,7 +338,7 @@ public sealed class LibraryItemService(
         var query = db.LibraryItems.AsNoTracking();
         if (ids is not null)
             query = query.Where(i => ids.Contains(i.Id));
-        return await query.OrderBy(i => i.Designation).ToListAsync(ct).ConfigureAwait(false);
+        return (await query.ToListAsync(ct).ConfigureAwait(false)).OrderBy(i => i.Designation, NaturalComparer.Instance).ToList();
     }
 
     private static DocumentPropertyChanges Expected(LibraryItem item, LibraryCatalog catalog) =>

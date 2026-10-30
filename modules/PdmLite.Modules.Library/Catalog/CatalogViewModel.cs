@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using PdmLite.Core.Events;
+using PdmLite.Core.Naming;
 using PdmLite.Data.Library;
 using PdmLite.Library.Catalog;
 using PdmLite.Library.Items;
@@ -64,7 +65,7 @@ public sealed partial class CatalogViewModel : ObservableObject
             foreach (var item in items)
                 Items.Add(new CatalogRow(item));
 
-            CategoryFilters = [AllCategories, .. items.Select(i => i.CategoryPath).Distinct().Order(StringComparer.CurrentCulture)];
+            CategoryFilters = [AllCategories, .. items.Select(i => i.CategoryPath).Distinct().Order(NaturalComparer.Instance)];
             if (!CategoryFilters.Contains(CategoryFilter))
                 CategoryFilter = AllCategories;
             Selected = Items.FirstOrDefault(r => r.Item.Id == selectedId);

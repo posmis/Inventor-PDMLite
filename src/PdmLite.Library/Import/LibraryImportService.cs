@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using PdmLite.Core.Documents;
+using PdmLite.Core.Naming;
 using PdmLite.Data;
 using PdmLite.Data.Library;
 using PdmLite.Library.Catalog;
@@ -111,7 +112,7 @@ public sealed class LibraryImportService(
                         AttributesToSkip = FileAttributes.ReparsePoint | FileAttributes.Hidden | FileAttributes.System,
                     })
                     .Where(f => InventorExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
-                    .Order(StringComparer.CurrentCultureIgnoreCase);
+                    .Order(NaturalComparer.Instance);
                 foreach (var file in files)
                     Consider(file);
             }

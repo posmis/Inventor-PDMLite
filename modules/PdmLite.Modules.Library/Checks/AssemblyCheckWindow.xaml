@@ -51,7 +51,7 @@
         </Border>
 
         <Grid Margin="6">
-            <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="False">
+            <DataGrid ui:NaturalSort.IsEnabled="True" ItemsSource="{Binding Rows}" IsReadOnly="False">
                 <DataGrid.Columns>
                     <DataGridTemplateColumn Header="" Width="28" CanUserResize="False">
                         <DataGridTemplateColumn.CellTemplate>
