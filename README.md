@@ -3,9 +3,9 @@
 Мини-PDM для Autodesk Inventor 2025: плагин (add-in) для Inventor и внешнее приложение
 **PdmLite Explorer** для просмотра проекта.
 
-> Статус: **этап 1, шаг 1 — каркас.** Реализованы дерево проекта, карточка файла,
-> связь плагина и Explorer. Плагин запускается в Inventor 2025, Explorer открывается и
-> закрывается без ошибок. iProperties, PostgreSQL и переименование — следующие шаги.
+> Статус: каркас (дерево проекта, карточка файла, связь плагина и Explorer) работает в
+> Inventor 2025. **Стандартная библиотека, шаг Б1:** база PostgreSQL, хранилище и добавление
+> компонентов с проверками в Explorer — см. [docs/LIBRARY.md](docs/LIBRARY.md).
 
 ## Что реализовано
 
@@ -32,6 +32,12 @@
 
 Требуется Windows, **.NET 8 SDK** и **Inventor 2025** (для сборки плагина нужна
 `Autodesk.Inventor.Interop.dll` из папки Inventor).
+
+База данных (нужна для стандартной библиотеки), один раз:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\install-postgres.ps1
+```
 
 Установка «как у пользователя» (в `%LOCALAPPDATA%\PdmLite`, без Visual Studio):
 
@@ -61,7 +67,12 @@ powershell -ExecutionPolicy Bypass -File deploy\install.ps1
 Если Inventor установлен не в стандартную папку: `-p:InventorInteropPath="D:\...\Autodesk.Inventor.Interop.dll"`
 (и поправьте путь к `Inventor.exe` в `src/PdmLite.AddIn/Properties/launchSettings.json`).
 
-Тесты: `dotnet test` или «Тест → Обозреватель тестов».
+Тесты: `dotnet test` или «Тест → Обозреватель тестов». Тесты библиотеки с базой выполняются,
+если задана переменная `PDMLITE_TEST_PG` (подключение с правом создавать базы, например
+`Host=localhost;Username=postgres;Password=...`), иначе пропускаются.
+
+Миграции базы: `dotnet tool restore`, затем в `src/PdmLite.Data`:
+`dotnet ef migrations add <Имя> -o Migrations` (строка подключения — переменная `PDMLITE_DB`).
 
 ## Структура
 
@@ -70,6 +81,9 @@ src/
   PdmLite.Core         ядро: домен, контракты, шина событий, правила имён (без Inventor и WPF)
   PdmLite.Link         связь плагин ⇄ Explorer (именованные каналы, JSON)
   PdmLite.Hosting      загрузка модулей, DI, журналы, настройки
+  PdmLite.Data         PostgreSQL: EF Core, миграции, настройки подключения
+  PdmLite.Library      стандартная библиотека: обозначения, классификатор, хранилище, добавление
+  PdmLite.Apprentice   iProperties без запуска Inventor (Apprentice / Inventor View)
   PdmLite.UI.Shared    общие WPF-компоненты, тема оформления и иконки
   PdmLite.AddIn        загрузчик плагина Inventor (изолирует версии библиотек)
   PdmLite.AddIn.Core   хост: плагин Inventor
@@ -78,8 +92,10 @@ modules/
   PdmLite.Modules.ProjectTree    дерево проекта
   PdmLite.Modules.Properties     карточка документа
   PdmLite.Modules.InventorLink   связь Explorer с Inventor
+  PdmLite.Modules.Library        стандартная библиотека: добавление, настройки
 tests/
   PdmLite.Core.Tests
+  PdmLite.Library.Tests   (с PostgreSQL: переменная PDMLITE_TEST_PG)
 build/                 общие настройки сборки проектов с Inventor API
 tools/icons/           источник иконок и генератор (Icons.xaml, .ico, предпросмотр)
 deploy/                манифест плагина, установка
@@ -94,7 +110,7 @@ deploy/                манифест плагина, установка
 | Платформа | .NET 8, C# |
 | CAD | Autodesk Inventor 2025 (Inventor API), Apprentice Server (Inventor View) |
 | UI | WPF + MVVM (CommunityToolkit.Mvvm) |
-| БД | PostgreSQL + EF Core (Npgsql) — следующий шаг |
+| БД | PostgreSQL 16 + EF Core 8 (Npgsql) |
 | DI / журналы | Microsoft.Extensions.DependencyInjection, Serilog |
 | Тесты | xUnit |
 
