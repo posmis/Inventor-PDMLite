@@ -52,6 +52,7 @@ public class ImportTests
         Assert.True(File.GetAttributes(target).HasFlag(FileAttributes.ReadOnly));
         Assert.Equal("Гайка M8-6H.10.016 ГОСТ 5915-70", store.Written[target].PartNumber);
         Assert.Equal("Крепёж/Гайки", store.Written[target].Custom[LibraryProperties.Category]);
+        Assert.Equal("StandardProducts", store.Written[target].Custom["SPEC_Section"]);
 
         await using (var context = db.Database.CreateContext())
         {

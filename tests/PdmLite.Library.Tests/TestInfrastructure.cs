@@ -68,6 +68,7 @@ public sealed class FakePropertyStore : IDocumentPropertyStore
     public Dictionary<string, DocumentPropertyChanges> Written { get; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, IReadOnlyDictionary<string, string>> Relinked { get; } = new(StringComparer.OrdinalIgnoreCase);
     public string? FailWriteFor { get; set; }
+    public int WriteCount { get; private set; }
 
     public bool IsAvailable => true;
     public string? UnavailableReason => null;
@@ -80,7 +81,20 @@ public sealed class FakePropertyStore : IDocumentPropertyStore
         if (FailWriteFor is not null && path.Contains(FailWriteFor))
             throw new IOException("Файл повреждён");
         Written[path] = changes;
+        WriteCount++;
         File.AppendAllText(path, "*");
+        // Как в настоящем файле: следующее чтение видит записанное.
+        var current = Files.TryGetValue(path, out var p) ? p : new DocumentProperties();
+        var custom = new Dictionary<string, string>(current.Custom);
+        foreach (var (name, value) in changes.Custom)
+            custom[name] = value;
+        Files[path] = current with
+        {
+            PartNumber = changes.PartNumber ?? current.PartNumber,
+            Description = changes.Description ?? current.Description,
+            Title = changes.Title ?? current.Title,
+            Custom = custom,
+        };
         return Task.CompletedTask;
     }
 

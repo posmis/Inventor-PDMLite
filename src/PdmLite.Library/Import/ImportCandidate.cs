@@ -56,6 +56,9 @@ public sealed class ImportCandidate
     public string Designation { get; set; } = "";
 
     public LibraryItemKind Kind { get; set; } = LibraryItemKind.Standard;
+
+    /// <summary>Тип взят из свойства SPEC_Section, записанного в файле.</summary>
+    public bool KindFromFile { get; init; }
     public string? Standard { get; set; }
     public string? Manufacturer { get; set; }
     public int? CategoryId { get; set; }

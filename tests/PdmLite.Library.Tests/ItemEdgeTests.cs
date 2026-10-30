@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PdmLite.Core.Documents;
 using Microsoft.Extensions.Logging.Abstractions;
 using PdmLite.Data.Library;
 using PdmLite.Library.Import;
@@ -86,13 +87,15 @@ public class ItemEdgeTests
     {
         await using var db = await TestDatabase.CreateAsync();
         using var folders = new TempFolders();
-        var (items, item) = await ImportOneAsync(db, new FakePropertyStore(), folders, "Гайка M8-6H.10 ГОСТ 5915-70.ipt");
+        var store = new FakePropertyStore();
+        var (items, item) = await ImportOneAsync(db, store, folders, "Гайка M8-6H.10 ГОСТ 5915-70.ipt");
 
         await items.ApplyEditAsync(await items.LoadCatalogAsync(), item.Id,
             new LibraryItemEdit("Гайка M8 нерж.", LibraryItemKind.Purchased, " Würth ", item.CategoryId));
 
         var saved = Assert.Single(await items.ListAsync(await items.LoadCatalogAsync()));
         Assert.Equal("Крепёж/Гайки/Würth/Гайка M8 нерж.ipt", saved.RelativePath);
+        Assert.Equal("OtherProducts", store.Written[Path.Combine(folders.Library, "Крепёж", "Гайки", "Würth", "Гайка M8 нерж.ipt")].Custom["SPEC_Section"]);
         Assert.Equal("Würth", saved.Manufacturer);
         Assert.Null(saved.Standard);
     }
@@ -112,5 +115,73 @@ public class ItemEdgeTests
         Assert.Equal(0, await context.LibraryItems.CountAsync());
         Assert.Equal(0, await context.LibraryItemVersions.CountAsync());
         Assert.Equal(1, await context.LibraryLog.CountAsync(l => l.Action == "delete"));
+    }
+
+    [PostgresFact]
+    public async Task RewriteProperties_WritesOnlyOutdatedFiles_AndKeepsThemReadOnly()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        using var folders = new TempFolders();
+        var store = new FakePropertyStore();
+        var (items, item) = await ImportOneAsync(db, store, folders, "Гайка M8-6H.10 ГОСТ 5915-70.ipt");
+        var catalog = await items.LoadCatalogAsync();
+        var full = Path.Combine(folders.Library, item.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+
+        // Свойства только что записаны — переписывать нечего.
+        var writes = store.WriteCount;
+        var first = await items.RewritePropertiesAsync(catalog, null);
+        Assert.Equal((1, 0, 1), (first.Checked, first.Updated, first.UpToDate));
+        Assert.Equal(writes, store.WriteCount);
+
+        // Файл «устарел» (как до появления SPEC_Section) — запишется только он.
+        var custom = new Dictionary<string, string>(store.Files[full].Custom);
+        custom.Remove("SPEC_Section");
+        store.Files[full] = store.Files[full] with { Custom = custom };
+        string hashBefore;
+        await using (var context = db.Database.CreateContext())
+            hashBefore = (await context.LibraryItems.SingleAsync()).FileHash;
+
+        var second = await items.RewritePropertiesAsync(catalog, [item.Id]);
+
+        Assert.Equal((1, 1, 0), (second.Checked, second.Updated, second.UpToDate));
+        Assert.Equal("StandardProducts", store.Files[full].Custom["SPEC_Section"]);
+        Assert.True(File.GetAttributes(full).HasFlag(FileAttributes.ReadOnly));
+        await using var after = db.Database.CreateContext();
+        var saved = await after.LibraryItems.Include(i => i.Versions).SingleAsync();
+        Assert.NotEqual(hashBefore, saved.FileHash);
+        Assert.Equal(saved.FileHash, saved.Versions.Single().FileHash);
+        Assert.Equal(2, await after.LibraryLog.CountAsync(l => l.Action == "rewrite-properties"));
+    }
+
+    [PostgresFact]
+    public async Task RewriteProperties_FailedFile_IsRestored_OthersContinue_AndCancelStopsBetweenFiles()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        using var folders = new TempFolders();
+        var store = new FakePropertyStore();
+        LibraryStorage Storage() => new(folders.Library);
+        var import = new LibraryImportService(db.Database, store, Storage, NullLogger<LibraryImportService>.Instance);
+        var items = new LibraryItemService(db.Database, store, Storage, NullLogger<LibraryItemService>.Instance);
+        folders.AddFile("Гайка M8-6H.10 ГОСТ 5915-70.ipt", "a");
+        folders.AddFile("Гайка M10-6H.10 ГОСТ 5915-70.ipt", "b");
+        Assert.Equal(2, (await import.CommitAsync(await import.AnalyzeAsync([folders.Source]))).Added);
+        var catalog = await items.LoadCatalogAsync();
+        var all = await items.ListAsync(catalog);
+        foreach (var path in all.Select(i => Path.Combine(folders.Library, i.RelativePath.Replace('/', Path.DirectorySeparatorChar))))
+            store.Files[path] = new DocumentProperties(); // оба файла устарели
+
+        var m8 = Path.Combine(folders.Library, all.Single(i => i.Designation.Contains("M8")).RelativePath.Replace('/', Path.DirectorySeparatorChar));
+        var content = File.ReadAllText(m8);
+        store.FailWriteFor = "M8";
+        var result = await items.RewritePropertiesAsync(catalog, null);
+
+        Assert.Equal(1, result.Updated);
+        Assert.Contains("M8", Assert.Single(result.Failed));
+        Assert.Equal(content, File.ReadAllText(m8));
+        Assert.True(File.GetAttributes(m8).HasFlag(FileAttributes.ReadOnly));
+
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => items.RewritePropertiesAsync(catalog, null, ct: cancelled.Token));
     }
 }

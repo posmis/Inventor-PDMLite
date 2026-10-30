@@ -154,13 +154,15 @@ public sealed class RulesTests : IDisposable
     public void LibraryProperties_WriteDesignationEverywhere()
     {
         var id = Guid.NewGuid();
-        var changes = LibraryProperties.For("Болт M8 ГОСТ 7798-70", "ГОСТ 7798-70", null, "Крепёж/Болты", id);
+        var changes = LibraryProperties.For("Болт M8 ГОСТ 7798-70", LibraryItemKind.Standard, "ГОСТ 7798-70", null, "Крепёж/Болты", id);
         Assert.Equal("Болт M8 ГОСТ 7798-70", changes.PartNumber);
         Assert.Equal(changes.PartNumber, changes.Description);
         Assert.Equal(changes.PartNumber, changes.Title);
         Assert.Equal("", changes.Custom[LibraryProperties.Manufacturer]);
         Assert.Equal(id.ToString(), changes.Custom[LibraryProperties.LibraryId]);
-        Assert.False(LibraryProperties.For("x", null, null, "y").Custom.ContainsKey(LibraryProperties.LibraryId));
+        Assert.Equal("StandardProducts", changes.Custom[LibraryProperties.SpecSection]);
+        Assert.Equal("OtherProducts", LibraryProperties.For("Ввод Lapp", LibraryItemKind.Purchased, null, "Lapp", "Э").Custom["SPEC_Section"]);
+        Assert.False(LibraryProperties.For("x", LibraryItemKind.Standard, null, null, "y").Custom.ContainsKey(LibraryProperties.LibraryId));
     }
 
     public void Dispose()

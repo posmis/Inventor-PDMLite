@@ -26,6 +26,9 @@ public sealed record LibraryItemSummary(
     DateTime ModifiedAt,
     string ModifiedBy);
 
+/// <summary>Итог обновления свойств: проверено, записано, уже в порядке, ошибки.</summary>
+public sealed record RewriteResult(int Checked, int Updated, int UpToDate, IReadOnlyList<string> Failed);
+
 /// <summary>Новые значения карточки компонента.</summary>
 public sealed record LibraryItemEdit(string Designation, LibraryItemKind Kind, string? Manufacturer, int? CategoryId);
 
@@ -143,7 +146,7 @@ public sealed class LibraryItemService(
                 File.Move(oldFull, newFull);
             }
 
-            await properties.WriteAsync(newFull, LibraryProperties.For(check.CanonicalDesignation, check.Standard, manufacturer, category.Path, id), ct)
+            await properties.WriteAsync(newFull, LibraryProperties.For(check.CanonicalDesignation, edit.Kind, check.Standard, manufacturer, category.Path, id), ct)
                 .ConfigureAwait(false);
             LibraryStorage.MakeReadOnly(newFull);
             var (hash, size) = await LibraryStorage.HashAsync(newFull, ct).ConfigureAwait(false);
@@ -202,6 +205,110 @@ public sealed class LibraryItemService(
         if (moved)
             storage.RemoveEmptyFolders(Path.GetDirectoryName(oldFull)!);
     }
+
+    /// <summary>
+    /// Служебная функция: приводит свойства PdmLite в файлах библиотеки в соответствие с базой
+    /// (например, после появления нового свойства — раздела спецификации).
+    /// </summary>
+    /// <remarks>
+    /// Безопасность на большой библиотеке: сначала свойства читаются, и записываются только файлы,
+    /// где они отличаются; перед записью — резервная копия файла, при ошибке файл восстанавливается;
+    /// база (контрольная сумма) обновляется после каждого файла; остановка — между файлами.
+    /// </remarks>
+    /// <param name="ids">Какие компоненты обработать; <c>null</c> — вся библиотека.</param>
+    public async Task<RewriteResult> RewritePropertiesAsync(LibraryCatalog catalog, IReadOnlyCollection<Guid>? ids,
+        IProgress<(int Done, int Total, string? Current)>? progress = null, CancellationToken ct = default)
+    {
+        if (!properties.IsAvailable)
+            throw new InvalidOperationException($"Нет доступа к свойствам файлов Inventor: {properties.UnavailableReason}");
+
+        var storage = storageFactory();
+        await using var db = database.CreateContext();
+        var query = db.LibraryItems.Include(i => i.Versions).AsQueryable();
+        if (ids is not null)
+            query = query.Where(i => ids.Contains(i.Id));
+        var items = await query.OrderBy(i => i.Designation).ToListAsync(ct).ConfigureAwait(false);
+
+        var failed = new List<string>();
+        int updated = 0, upToDate = 0, done = 0;
+        try
+        {
+            foreach (var item in items)
+            {
+                ct.ThrowIfCancellationRequested();
+                progress?.Report((done, items.Count, item.Designation));
+                var full = storage.GetFullPath(item.RelativePath);
+                var expected = LibraryProperties.For(item.Designation, item.Kind, item.Standard, item.Manufacturer,
+                    catalog.Get(item.CategoryId)?.Path ?? "", item.Id);
+                try
+                {
+                    if (!File.Exists(full))
+                        throw new FileNotFoundException("Файл не найден в папке библиотеки.", full);
+                    if (IsUpToDate(await properties.ReadAsync(full, ct).ConfigureAwait(false), expected))
+                        upToDate++;
+                    else
+                    {
+                        await WriteSafelyAsync(full, expected, ct).ConfigureAwait(false);
+                        (item.FileHash, item.FileSize) = await LibraryStorage.HashAsync(full, ct).ConfigureAwait(false);
+                        if (item.Versions.FirstOrDefault(v => v.Version == item.Version) is { } current)
+                            (current.FileHash, current.FileSize) = (item.FileHash, item.FileSize);
+                        await db.SaveChangesAsync(ct).ConfigureAwait(false);
+                        updated++;
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    logger.LogWarning(ex, "Не удалось обновить свойства {Path}", full);
+                    failed.Add($"{item.Designation}: {ex.Message}");
+                }
+                done++;
+            }
+        }
+        finally
+        {
+            // Журнал пишется и при остановке: видно, сколько успели.
+            db.ChangeTracker.Clear();
+            db.LibraryLog.Add(new LibraryLogEntry
+            {
+                At = DateTime.UtcNow,
+                User = Environment.UserName,
+                Action = "rewrite-properties",
+                Details = JsonSerializer.Serialize(new { total = items.Count, done, updated, upToDate, failed = failed.Count }),
+            });
+            await db.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+
+        progress?.Report((items.Count, items.Count, null));
+        return new RewriteResult(items.Count, updated, upToDate, failed);
+    }
+
+    /// <summary>Запись свойств с резервной копией: при ошибке файл возвращается как был.</summary>
+    private async Task WriteSafelyAsync(string full, DocumentPropertyChanges changes, CancellationToken ct)
+    {
+        var backup = LibraryStorage.Backup(full);
+        try
+        {
+            LibraryStorage.ClearReadOnly(full);
+            await properties.WriteAsync(full, changes, ct).ConfigureAwait(false);
+            LibraryStorage.MakeReadOnly(full);
+        }
+        catch
+        {
+            TryRestore(backup, full);
+            throw;
+        }
+        finally
+        {
+            TryDelete(backup);
+        }
+    }
+
+    /// <summary>Свойства в файле уже такие, какие записал бы PdmLite.</summary>
+    internal static bool IsUpToDate(DocumentProperties current, DocumentPropertyChanges expected) =>
+        current.PartNumber == expected.PartNumber
+        && current.Description == expected.Description
+        && current.Title == expected.Title
+        && expected.Custom.All(p => current.Custom.TryGetValue(p.Key, out var value) && value == p.Value);
 
     /// <summary>Удаляет компонент: файл и запись в базе. Нельзя, если он входит в сборку библиотеки.</summary>
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)

@@ -65,5 +65,16 @@ public partial class CatalogWindow : Window
         Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true })?.Dispose();
     }
 
+    private async void Maintenance_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.Catalog is not { } catalog)
+            return;
+        var selected = Grid.SelectedItems.OfType<CatalogRow>().Select(r => r.Item.Id).ToList();
+        var window = new MaintenanceWindow(new MaintenanceViewModel(_viewModel.Service, catalog, selected, _viewModel.Items.Count)) { Owner = this };
+        window.ShowDialog();
+        if (window.Changed)
+            await _viewModel.OnEditedAsync();
+    }
+
     private void Close_OnClick(object sender, RoutedEventArgs e) => Close();
 }

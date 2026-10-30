@@ -172,6 +172,8 @@ public sealed class LibraryImportService(
         var designation = DesignationNormalizer.ToCanonical(original);
         var standard = StandardParser.Find(designation);
         var suggested = catalog.Suggest(designation, standard);
+        // Раздел спецификации уже записан в файле (например, другим плагином) — тип берём из него.
+        var kindFromFile = props is null ? null : LibraryProperties.KindFromSpecSection(props.Custom);
 
         return new ImportCandidate
         {
@@ -184,7 +186,8 @@ public sealed class LibraryImportService(
             ReferenceHashes = referenceHashes,
             OriginalDesignation = original.Trim(),
             Designation = designation,
-            Kind = standard is not null ? LibraryItemKind.Standard : LibraryItemKind.Purchased,
+            Kind = kindFromFile ?? (standard is not null ? LibraryItemKind.Standard : LibraryItemKind.Purchased),
+            KindFromFile = kindFromFile is not null,
             Standard = standard,
             CategoryId = suggested?.Id,
             SuggestedCategoryId = suggested?.Id,
@@ -251,6 +254,9 @@ public sealed class LibraryImportService(
                 if (p.IsContentCenter)
                     Warn("Файл создан из Content Center. В библиотеку он попадёт как самостоятельный компонент.");
             }
+
+            if (c.KindFromFile)
+                Info($"Тип «{(c.Kind == LibraryItemKind.Standard ? "стандартное" : "покупное")}» взят из свойства {LibraryProperties.SpecSection} в файле.");
 
             if (DesignationNormalizer.ToKey(Path.GetFileNameWithoutExtension(c.SourcePath)) != key)
                 Info("Имя файла не совпадает с обозначением — в библиотеке файл будет назван по обозначению.");
@@ -321,7 +327,7 @@ public sealed class LibraryImportService(
                     ? await RelinkAssemblyAsync(db, storage, c, copied, committed, ct).ConfigureAwait(false)
                     : [];
 
-                await properties.WriteAsync(copied, LibraryProperties.For(c.Designation, c.Standard, c.Manufacturer, category.Path, id), ct)
+                await properties.WriteAsync(copied, LibraryProperties.For(c.Designation, c.Kind, c.Standard, c.Manufacturer, category.Path, id), ct)
                     .ConfigureAwait(false);
                 LibraryStorage.MakeReadOnly(copied);
                 var (hash, size) = await LibraryStorage.HashAsync(copied, ct).ConfigureAwait(false);

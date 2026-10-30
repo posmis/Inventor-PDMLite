@@ -176,4 +176,28 @@ public class ImportEdgeTests
         await using var context = db.Database.CreateContext();
         Assert.Equal(0, await context.LibraryItems.CountAsync());
     }
+
+    [PostgresFact]
+    public async Task Analyze_TakesKindFromSpecSectionInFile()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        using var folders = new TempFolders();
+        var store = new FakePropertyStore();
+        // В обозначении есть ГОСТ, но в файле записано «прочее изделие» — побеждает файл.
+        var screw = folders.AddFile("Винт ГОСТ 11738-84 M8x25.ipt", "s");
+        store.Files[screw] = new DocumentProperties { Custom = new Dictionary<string, string> { ["SPEC_Section"] = "OtherProducts" } };
+        var nut = folders.AddFile("Гайка M8 особая.ipt", "n");
+        store.Files[nut] = new DocumentProperties { Custom = new Dictionary<string, string> { ["SPEC_Section"] = " standardproducts " } };
+        var plain = folders.AddFile("Шайба 8 ГОСТ 11371-78.ipt", "w");
+
+        var session = await Service(db, store, folders).AnalyzeAsync([folders.Source]);
+
+        var screwCandidate = session.Candidates.Single(c => c.SourcePath == screw);
+        Assert.Equal(LibraryItemKind.Purchased, screwCandidate.Kind);
+        Assert.Contains(screwCandidate.Issues, i => i.Message.Contains("SPEC_Section"));
+        Assert.Equal(LibraryItemKind.Standard, session.Candidates.Single(c => c.SourcePath == nut).Kind);
+        var plainCandidate = session.Candidates.Single(c => c.SourcePath == plain);
+        Assert.Equal(LibraryItemKind.Standard, plainCandidate.Kind); // свойства нет — тип по стандарту в обозначении
+        Assert.False(plainCandidate.KindFromFile);
+    }
 }
