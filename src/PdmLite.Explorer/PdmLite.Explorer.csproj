@@ -4,6 +4,8 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <!-- Apprentice — 64-битный COM-компонент Inventor: процесс тоже должен быть 64-битным. -->
+    <PlatformTarget>x64</PlatformTarget>
     <AssemblyName>PdmLite.Explorer</AssemblyName>
     <ApplicationIcon>Assets\PdmLite.ico</ApplicationIcon>
     <Description>PdmLite Explorer — просмотр проекта без запуска Inventor.</Description>
