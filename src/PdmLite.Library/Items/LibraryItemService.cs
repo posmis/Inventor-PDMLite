@@ -161,8 +161,7 @@ public sealed class LibraryItemService(
         var manufacturer = string.IsNullOrWhiteSpace(edit.Manufacturer) ? null : edit.Manufacturer.Trim();
 
         // Резервная копия файла на время операции: свойства в нём перезаписываются.
-        var backup = Path.Combine(Path.GetTempPath(), $"pdmlite-{Guid.NewGuid():N}{Path.GetExtension(oldFull)}");
-        File.Copy(oldFull, backup);
+        var backup = MakeBackup(oldFull);
         var relinked = new List<(string Path, string Backup)>();
         try
         {
@@ -196,9 +195,7 @@ public sealed class LibraryItemService(
                 foreach (var assembly in assemblies)
                 {
                     var asmPath = storage.GetFullPath(assembly.RelativePath);
-                    var asmBackup = Path.Combine(Path.GetTempPath(), $"pdmlite-{Guid.NewGuid():N}.iam");
-                    File.Copy(asmPath, asmBackup);
-                    relinked.Add((asmPath, asmBackup));
+                    relinked.Add((asmPath, MakeBackup(asmPath)));
                     ClearReadOnly(asmPath);
                     await properties.ReplaceReferencesAsync(asmPath, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [oldFull] = newFull }, ct).ConfigureAwait(false);
                     LibraryStorage.MakeReadOnly(asmPath);
@@ -296,6 +293,18 @@ public sealed class LibraryItemService(
     private static void ClearReadOnly(string path) =>
         File.SetAttributes(path, File.GetAttributes(path) & ~FileAttributes.ReadOnly);
 
+    /// <summary>
+    /// Временная копия файла на случай отката. Копия наследует «только чтение» от файла
+    /// библиотеки — снимаем, иначе Windows не даст её удалить.
+    /// </summary>
+    private static string MakeBackup(string path)
+    {
+        var backup = Path.Combine(Path.GetTempPath(), $"pdmlite-{Guid.NewGuid():N}{Path.GetExtension(path)}");
+        File.Copy(path, backup);
+        ClearReadOnly(backup);
+        return backup;
+    }
+
     private void TryRestore(string backup, string original, string? moved)
     {
         try
@@ -316,14 +325,19 @@ public sealed class LibraryItemService(
         }
     }
 
-    private static void TryDelete(string path)
+    /// <summary>Удаляет временный файл. Не удалось — не ошибка операции, только запись в журнал.</summary>
+    private void TryDelete(string path)
     {
         try
         {
+            if (!File.Exists(path))
+                return;
+            File.SetAttributes(path, FileAttributes.Normal);
             File.Delete(path);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            logger.LogWarning(ex, "Не удалось удалить временный файл {Path}", path);
         }
     }
 
