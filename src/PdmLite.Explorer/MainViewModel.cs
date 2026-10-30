@@ -38,7 +38,7 @@ public sealed partial class MainViewModel : ObservableObject
         host.Events.Subscribe<ActiveDocumentChanged>(e => ui.Post(() =>
         {
             ActiveDocument = e.Path is null ? "" : Path.GetFileName(e.Path);
-            ActiveDocumentKind = e.Path is null ? DocumentKind.Other : DocumentKinds.FromPath(e.Path);
+            ActiveDocumentPath = e.Path;
         }));
     }
 
@@ -54,7 +54,7 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasActiveDocument))]
     private string _activeDocument = "";
 
-    [ObservableProperty] private DocumentKind _activeDocumentKind = DocumentKind.Other;
+    [ObservableProperty] private string? _activeDocumentPath;
 
     public bool HasActiveDocument => ActiveDocument.Length > 0;
 
