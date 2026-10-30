@@ -1,0 +1,8 @@
+{
+  // Включение и отключение модулей Explorer. Модули, которых нет в списке, включены.
+  "Modules": [
+    { "Id": "ProjectTree", "Enabled": true },
+    { "Id": "Properties", "Enabled": true },
+    { "Id": "InventorLink", "Enabled": true }
+  ]
+}

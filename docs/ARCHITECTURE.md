@@ -33,27 +33,29 @@
                            PdmLite.Data (EF Core, PostgreSQL)
 ```
 
-## Планируемая структура решения
+## Структура решения
 
 ```
 PdmLite.sln
 ├─ src/
-│  ├─ PdmLite.Core/          # домен, контракты, шина событий, операции
-│  ├─ PdmLite.Data/          # EF Core, миграции, PostgreSQL
-│  ├─ PdmLite.Hosting/       # загрузчик модулей, DI, настройки, логи
-│  ├─ PdmLite.UI.Shared/     # общие WPF-стили, контролы, диалоги
-│  ├─ PdmLite.Inventor/      # реализация сервисов через Inventor API
-│  ├─ PdmLite.Apprentice/    # реализация сервисов через Apprentice
+│  ├─ PdmLite.Core/          # домен, контракты, шина событий, правила имён
+│  ├─ PdmLite.Link/          # связь плагин ⇄ Explorer
+│  ├─ PdmLite.Hosting/       # загрузчик модулей, DI, настройки, журналы
+│  ├─ PdmLite.UI.Shared/     # общие WPF-стили, размещение панелей, меню команд
 │  ├─ PdmLite.AddIn/         # хост: плагин Inventor
-│  └─ PdmLite.Explorer/      # хост: внешнее приложение
+│  ├─ PdmLite.Explorer/      # хост: внешнее приложение
+│  ├─ PdmLite.Data/          # (план) EF Core, PostgreSQL
+│  ├─ PdmLite.Inventor/      # (план) iProperties и ссылки через Inventor API
+│  └─ PdmLite.Apprentice/    # (план) то же через Apprentice
 ├─ modules/
-│  ├─ PdmLite.Modules.ReferenceIndex/
 │  ├─ PdmLite.Modules.ProjectTree/
 │  ├─ PdmLite.Modules.Properties/
-│  ├─ PdmLite.Modules.Preview/
-│  └─ PdmLite.Modules.Rename/
+│  ├─ PdmLite.Modules.InventorLink/   # только Explorer
+│  ├─ PdmLite.Modules.ReferenceIndex/ # (план)
+│  ├─ PdmLite.Modules.Preview/        # (план)
+│  └─ PdmLite.Modules.Rename/         # (план)
 ├─ tests/
-└─ deploy/                   # .addin-манифест, установка
+└─ deploy/                   # .addin-манифест, install.ps1
 ```
 
 ## Контракт модуля
@@ -72,6 +74,34 @@ public interface IPdmModule
 - UI модуль регистрирует через `IUiRegistry` (кнопки ленты, пункты контекстного меню, панели).
 - Возможности хоста — через `IHostCapabilities` (`CanEditFiles`, `HasActiveDocument`, …):
   модуль сам скрывает недоступные действия.
+
+## Связь плагина и Explorer
+
+Два процесса связаны **именованными каналами Windows** (`PdmLite.Link`), сообщения — строки JSON.
+Канал создаётся для текущего пользователя (`PipeOptions.CurrentUserOnly`), имя:
+`PdmLite.{Inventor|Explorer}.{пользователь}`.
+
+```
+┌───────────── Inventor ─────────────┐            ┌──────────── PdmLite Explorer ───────────┐
+│ PdmLite.AddIn                      │            │ модуль InventorLink                     │
+│  InventorLinkServer  ◄─────────────┼── запросы ─┤  InventorConnection (переподключение)  │
+│   ping, getStatus, openDocument    │            │   двойной щелчок → openDocument         │
+│                      ──────────────┼── события ►│   события → шина (ActiveDocumentChanged)│
+│   activeDocumentChanged,           │            │                                         │
+│   documentSaved, documentClosed    │            │ ExplorerLinkServer                      │
+│                                    │            │   openProject, revealDocument           │
+│  «Показать в Explorer» ────────────┼── запрос ─►│   (и для второго экземпляра Explorer)   │
+│   (или запуск Explorer с --reveal) │            │                                         │
+└────────────────────────────────────┘            └─────────────────────────────────────────┘
+```
+
+- Explorer работает и без Inventor: связь восстанавливается автоматически, когда Inventor запускается.
+- Плагин находит Explorer по пути, который Explorer записывает в `%AppData%\PdmLite\settings.json`
+  при каждом запуске (или в папке установки `%LOCALAPPDATA%\PdmLite\Explorer`).
+- Explorer — единственный экземпляр: повторный запуск передаёт аргументы работающему окну.
+- Inventor API вызывается только в главном потоке Inventor (`IUiDispatcher`).
+- Общие данные (документы, связи, журнал) появятся в PostgreSQL; канал — для оперативного
+  взаимодействия («открой», «покажи», «что сейчас активно»).
 
 ## Модули этапа 1
 

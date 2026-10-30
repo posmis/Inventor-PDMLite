@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Description>Модуль «Связь с Inventor» для Explorer: подключение к плагину, открытие документов в Inventor, активный документ.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PdmLite.Core\PdmLite.Core.csproj" />
+    <ProjectReference Include="..\..\src\PdmLite.Link\PdmLite.Link.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+  </ItemGroup>
+
+</Project>

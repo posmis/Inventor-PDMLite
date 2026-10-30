@@ -9,3 +9,4 @@
 *.idw binary
 *.dwg binary
 *.ipj binary
+*.ps1    text eol=crlf

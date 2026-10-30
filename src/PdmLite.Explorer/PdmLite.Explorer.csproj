@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>PdmLite.Explorer</AssemblyName>
+    <Description>PdmLite Explorer — просмотр проекта без запуска Inventor.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PdmLite.Core\PdmLite.Core.csproj" />
+    <ProjectReference Include="..\PdmLite.Hosting\PdmLite.Hosting.csproj" />
+    <ProjectReference Include="..\PdmLite.Link\PdmLite.Link.csproj" />
+    <ProjectReference Include="..\PdmLite.UI.Shared\PdmLite.UI.Shared.csproj" />
+  </ItemGroup>
+
+  <!--
+    Модули подключаются только ради копирования сборок в папку приложения.
+    Код Explorer на них не ссылается: модули находятся при запуске (PdmLite.Modules.*.dll)
+    и включаются/отключаются в modules.json.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\modules\PdmLite.Modules.ProjectTree\PdmLite.Modules.ProjectTree.csproj" />
+    <ProjectReference Include="..\..\modules\PdmLite.Modules.Properties\PdmLite.Modules.Properties.csproj" />
+    <ProjectReference Include="..\..\modules\PdmLite.Modules.InventorLink\PdmLite.Modules.InventorLink.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- WPF-проекты не подключают System.IO неявно (конфликт имени Path с System.Windows.Shapes). -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="modules.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

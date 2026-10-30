@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Манифест плагина PdmLite. Файл PdmLite.addin создаётся из этого шаблона скриптом install.ps1. -->
+<Addin Type="Standard">
+  <ClassId>{DAF7F48D-0F53-40EA-8861-0D3FE0627C14}</ClassId>
+  <ClientId>{DAF7F48D-0F53-40EA-8861-0D3FE0627C14}</ClientId>
+  <DisplayName>PdmLite</DisplayName>
+  <Description>Мини-PDM: дерево проекта, свойства документа, связь с PdmLite Explorer.</Description>
+  <Assembly>{ASSEMBLY_PATH}</Assembly>
+  <LoadOnStartUp>1</LoadOnStartUp>
+  <UserUnloadable>1</UserUnloadable>
+  <Hidden>0</Hidden>
+  <!-- 29 = Inventor 2025 -->
+  <SupportedSoftwareVersionGreaterThan>28..</SupportedSoftwareVersionGreaterThan>
+  <DataVersion>1</DataVersion>
+  <UserInterfaceVersion>1</UserInterfaceVersion>
+</Addin>
