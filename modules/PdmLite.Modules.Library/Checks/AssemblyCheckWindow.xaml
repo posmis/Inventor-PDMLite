@@ -1,0 +1,93 @@
+<Window x:Class="PdmLite.Modules.Library.Checks.AssemblyCheckWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:PdmLite.Modules.Library.Checks"
+        xmlns:ui="clr-namespace:PdmLite.UI.Shared;assembly=PdmLite.UI.Shared"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance local:AssemblyCheckViewModel}"
+        Title="Проверка сборки: стандартные компоненты" Width="1050" Height="560" MinWidth="700" MinHeight="300"
+        WindowStartupLocation="CenterScreen" ShowInTaskbar="False">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Theme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+            <ui:IconKeyConverter x:Key="IconKey" />
+            <ui:FileIconConverter x:Key="FileIcon" />
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Window.Style>
+        <StaticResource ResourceKey="Pdm.Window" />
+    </Window.Style>
+
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Style="{StaticResource Pdm.Toolbar}" BorderBrush="{StaticResource Pdm.Brush.Border}" Padding="10,6">
+            <StackPanel>
+                <TextBlock Text="{Binding Header}" Style="{StaticResource Pdm.Text.Title}" />
+                <TextBlock Text="{Binding Summary}" Style="{StaticResource Pdm.Text.Hint}" />
+            </StackPanel>
+        </Border>
+
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource Pdm.Brush.Toolbar}" BorderBrush="{StaticResource Pdm.Brush.Border}"
+                BorderThickness="0,1,0,0" Padding="10,8">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Command="{Binding ReplaceCommand}" Margin="0,0,8,0" MinWidth="190">
+                        <TextBlock>
+                            <Run Text="Заменить отмеченные (" /><Run Text="{Binding ToReplace, Mode=OneWay}" /><Run Text=")" />
+                        </TextBlock>
+                    </Button>
+                    <Button Content="Проверить заново" Command="{Binding RunCommand}" Margin="0,0,8,0" />
+                    <Button Content="Закрыть" IsCancel="True" Click="Close_OnClick" />
+                </StackPanel>
+                <TextBlock Style="{StaticResource Pdm.Text.Hint}" VerticalAlignment="Center"
+                           Text="Перед заменой сборки копируются в %LOCALAPPDATA%\PdmLite\backups. Изменённые сборки сохраните в Inventor." />
+            </DockPanel>
+        </Border>
+
+        <Grid Margin="6">
+            <DataGrid ItemsSource="{Binding Rows}" IsReadOnly="False">
+                <DataGrid.Columns>
+                    <DataGridTemplateColumn Header="" Width="28" CanUserResize="False">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding Replace, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanReplace}"
+                                          HorizontalAlignment="Center" ToolTip="Заменить на компонент из библиотеки" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Замечание" Width="140" SortMemberPath="FindingText">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" ToolTip="{Binding Message}">
+                                    <Image Source="{Binding Icon, Converter={StaticResource IconKey}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
+                                    <TextBlock Text="{Binding FindingText}" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Компонент" Width="300" SortMemberPath="Designation">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" ToolTip="{Binding FilePath}">
+                                    <Image Source="{Binding FilePath, Converter={StaticResource FileIcon}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
+                                    <TextBlock Text="{Binding Designation}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="Шт." Width="50" Binding="{Binding Count, Mode=OneWay}" IsReadOnly="True" />
+                    <DataGridTextColumn Header="Замена из библиотеки" Width="300" Binding="{Binding ReplacementText, Mode=OneWay}" IsReadOnly="True" />
+                    <DataGridTextColumn Header="Пояснение" Width="*" Binding="{Binding Message, Mode=OneWay}" IsReadOnly="True" />
+                </DataGrid.Columns>
+            </DataGrid>
+            <ProgressBar IsIndeterminate="True" Height="2" VerticalAlignment="Top"
+                         Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+        </Grid>
+    </DockPanel>
+</Window>

@@ -7,7 +7,9 @@ using PdmLite.Hosting;
 using PdmLite.Library.Import;
 using PdmLite.Library.Items;
 using PdmLite.Library.Storage;
+using PdmLite.Core.Documents;
 using PdmLite.Modules.Library.Catalog;
+using PdmLite.Modules.Library.Checks;
 using PdmLite.Modules.Library.Import;
 using PdmLite.Modules.Library.Panel;
 using PdmLite.Modules.Library.Settings;
@@ -23,6 +25,7 @@ public sealed class LibraryModule : IPdmModule
     public ModuleInfo Info { get; } = new("Library", "Стандартная библиотека", new Version(0, 2, 0));
 
     private LibraryPanelViewModel? _panel;
+    private ContentCenterPrompt? _contentCenter;
 
     public void ConfigureServices(IServiceCollection services, HostKind host)
     {
@@ -37,6 +40,8 @@ public sealed class LibraryModule : IPdmModule
         services.AddSingleton<LibraryPanelViewModel>();
         services.AddTransient<ImportViewModel>();
         services.AddTransient<CatalogViewModel>();
+        services.AddTransient<AssemblyCheckViewModel>();
+        services.AddSingleton<ContentCenterPrompt>();
         services.AddTransient<LibrarySettingsViewModel>();
     }
 
@@ -51,6 +56,22 @@ public sealed class LibraryModule : IPdmModule
             "Library.Panel", "Библиотека", PanelPlacement.Navigator,
             sp => new LibraryPanelView { DataContext = sp.GetRequiredService<LibraryPanelViewModel>() },
             Order: 10, Icon: IconKeys.Library));
+
+        // Проверка сборок и отделение Content Center — там, где есть сборка Inventor (внутри Inventor).
+        if (services.GetService<IAssemblyComponents>() is not null)
+        {
+            _contentCenter = services.GetRequiredService<ContentCenterPrompt>();
+            _contentCenter.Attach();
+
+            context.Ui.RegisterCommand(new CommandDescriptor(
+                "Library.CheckAssembly", "Проверить сборку", CommandPlacement.Toolbar,
+                _ =>
+                {
+                    new AssemblyCheckWindow(services.GetRequiredService<AssemblyCheckViewModel>()).Show();
+                    return Task.CompletedTask;
+                },
+                Order: 0, Group: "1-library", Icon: IconKeys.Check));
+        }
 
         // Добавление, каталог и настройки — только в Explorer (свойства файлов читаются через Apprentice).
         if (context.Host != HostKind.Explorer)
@@ -84,5 +105,9 @@ public sealed class LibraryModule : IPdmModule
             Order: 10, Group: "1-library", Icon: IconKeys.Settings));
     }
 
-    public void Shutdown() => _panel?.Detach();
+    public void Shutdown()
+    {
+        _panel?.Detach();
+        _contentCenter?.Dispose();
+    }
 }

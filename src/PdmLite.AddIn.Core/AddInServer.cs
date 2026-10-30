@@ -25,6 +25,7 @@ public sealed class AddInServer : Inv.ApplicationAddInServer
     private InventorLinkServer? _link;
     private InventorEventsBridge? _events;
     private AddInUi? _ui;
+    private ContentCenterWatcher? _contentCenter;
 
     public void Activate(Inv.ApplicationAddInSite addInSiteObject, bool firstTime)
     {
@@ -48,6 +49,7 @@ public sealed class AddInServer : Inv.ApplicationAddInServer
                     services.AddSingleton<IDocumentLauncher, InventorDocumentLauncher>();
                     services.AddSingleton<IComponentPlacer, InventorComponentPlacer>();
                     services.AddSingleton<IProjectLibraryBinding, InventorProjectLibraryBinding>();
+                    services.AddSingleton<IAssemblyComponents, InventorAssemblyComponents>();
                     services.AddSingleton<InventorProjects>();
                     services.AddSingleton<ExplorerLauncher>();
                 },
@@ -62,6 +64,7 @@ public sealed class AddInServer : Inv.ApplicationAddInServer
             _link.Start();
 
             _events = new InventorEventsBridge(_host.Services, _link, _logger);
+            _contentCenter = new ContentCenterWatcher(inventor, _host.Events);
             _ui = new AddInUi(_host, ClientId, _logger);
             _ui.Create(firstTime);
 
@@ -81,12 +84,14 @@ public sealed class AddInServer : Inv.ApplicationAddInServer
 
         Safe(() => _ui?.Dispose());
         Safe(() => _events?.Dispose());
+        Safe(() => _contentCenter?.Dispose());
         if (_link is { } link)
             Safe(() => SyncBridge.Run(() => link.DisposeAsync().AsTask(), TimeSpan.FromSeconds(3)));
         Safe(() => _host?.Dispose());
 
         _ui = null;
         _events = null;
+        _contentCenter = null;
         _link = null;
         _host = null;
 

@@ -22,3 +22,6 @@ public sealed record InventorConnectionChanged(bool IsConnected, string? Invento
 
 /// <summary>Запрос показать и выделить документ в дереве проекта.</summary>
 public sealed record RevealDocumentRequested(string Path);
+
+/// <summary>В сборку вставлен компонент из Content Center Inventor.</summary>
+public sealed record ContentCenterComponentPlaced(string AssemblyPath, string ComponentPath, string? PartNumber);

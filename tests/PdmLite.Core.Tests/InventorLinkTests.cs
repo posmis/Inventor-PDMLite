@@ -99,10 +99,10 @@ public class InventorLinkTests
     public async Task PlaceComponent_ReachesPlugin_AndPluginErrorsComeBack()
     {
         var endpoint = "Test" + Guid.NewGuid().ToString("N")[..8];
-        var placed = new ConcurrentQueue<string?>();
+        var placed = new ConcurrentQueue<string>();
         await using var server = FakeInventor(endpoint, null);
         server.Handle<DocumentArgs>(LinkProtocol.Requests.PlaceComponent, (args, _) =>
-            args.Path!.EndsWith(".ipt") ? Enqueue(placed, args.Path) : throw new InvalidOperationException("Активный документ — не сборка."));
+            args.Path!.EndsWith(".ipt") ? Enqueue(placed, args.Path!) : throw new InvalidOperationException("Активный документ — не сборка."));
 
         await using var link = new InventorConnection(new EventBus(NullLogger<EventBus>.Instance), NullLogger<InventorConnection>.Instance,
             endpoint, TimeSpan.FromMilliseconds(100));
@@ -115,7 +115,7 @@ public class InventorLinkTests
         Assert.Contains("не сборка", error.Message);
     }
 
-    private static Task<object?> Enqueue(ConcurrentQueue<string?> queue, string? value)
+    private static Task<object?> Enqueue(ConcurrentQueue<string> queue, string value)
     {
         queue.Enqueue(value);
         return Task.FromResult<object?>(null);

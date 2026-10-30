@@ -49,6 +49,12 @@ internal sealed class AddInUi : IDisposable
         var refresh = AddButton("Обновить проект", "PdmLite.RefreshProject", "Перечитать дерево проекта",
             IconKeys.Refresh, RefreshProject);
 
+        // Команды модулей (размещение Toolbar) — тоже кнопками на вкладке PdmLite.
+        var buttons = new List<Inv.ButtonDefinition> { toggle, reveal, refresh };
+        foreach (var command in _host.Ui.GetCommands(CommandPlacement.Toolbar))
+            buttons.Add(AddButton(command.Title.TrimEnd('…', '.'), "PdmLite.Cmd." + command.Id, command.Title, command.Icon ?? IconKeys.Info,
+                () => CommandMenuBuilder.RunAsync(command, CommandContext.Empty)));
+
         foreach (var ribbonName in Ribbons)
         {
             try
@@ -56,7 +62,7 @@ internal sealed class AddInUi : IDisposable
                 var ribbon = _inventor.UserInterfaceManager.Ribbons[ribbonName];
                 var tab = FindTab(ribbon) ?? ribbon.RibbonTabs.Add("PdmLite", TabId, _clientId);
                 var panel = FindPanel(tab) ?? tab.RibbonPanels.Add("PdmLite", PanelId, _clientId);
-                foreach (var button in new[] { toggle, reveal, refresh })
+                foreach (var button in buttons)
                     if (!HasControl(panel, button.InternalName))
                         panel.CommandControls.AddButton(button, true, true);
             }

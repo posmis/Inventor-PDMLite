@@ -8,4 +8,7 @@ public sealed class LibrarySettings
     /// <summary>Папка библиотеки. Подключается в проекты Inventor как библиотека «PdmLite».</summary>
     public string RootFolder { get; set; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PdmLite", "Library");
+
+    /// <summary>Предупреждать при вставке компонента из Content Center (и предлагать замену из библиотеки).</summary>
+    public bool WarnOnContentCenter { get; set; } = true;
 }
