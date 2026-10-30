@@ -16,9 +16,10 @@ public static partial class StandardParser
     }
 
     // Номер: цифры, группы через точку или дефис (7798-70, 7380-1, 26-04-2000-77, 71547-2024).
-    // После дефиса обязательна цифра — так «7040-M6-10» даёт «7040».
+    // После дефиса обязательна цифра — так «7040-M6-10» даёт «7040». Группа, за которой идёт
+    // «x» или запятая, — уже размер: «DIN 471-15x1» даёт «DIN 471».
     [GeneratedRegex(
-        @"(?<![\p{L}])(?<prefix>ГОСТ\s+Р\s+(?:ИСО|ISO)|ГОСТ\s+(?:ИСО|ISO)|ГОСТ\s+Р|ГОСТ|ОСТ|DIN\s+EN\s+ISO|DIN\s+EN|DIN|EN\s+ISO|EN|ISO|ИСО|IEC|ТУ|СТО)\s*(?<number>\d+(?:[.\-]\d+)*)",
+        @"(?<![\p{L}])(?<prefix>ГОСТ\s+Р\s+(?:ИСО|ISO)|ГОСТ\s+(?:ИСО|ISO)|ГОСТ\s+Р|ГОСТ|ОСТ|DIN\s+EN\s+ISO|DIN\s+EN|DIN|EN\s+ISO|EN|ISO|ИСО|IEC|ТУ|СТО)\s*(?<number>\d+(?:[.\-]\d+(?![\d.]*[xXхХ×,]))*)",
         RegexOptions.CultureInvariant)]
     private static partial Regex StandardRegex();
 }

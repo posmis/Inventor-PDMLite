@@ -6,12 +6,14 @@ using PdmLite.Core.UI;
 using PdmLite.Hosting;
 using PdmLite.Library.Import;
 using PdmLite.Library.Items;
+using PdmLite.Library.Rules;
 using PdmLite.Library.Storage;
 using PdmLite.Core.Documents;
 using PdmLite.Modules.Library.Catalog;
 using PdmLite.Modules.Library.Checks;
 using PdmLite.Modules.Library.Import;
 using PdmLite.Modules.Library.Panel;
+using PdmLite.Modules.Library.Rules;
 using PdmLite.Modules.Library.Settings;
 
 namespace PdmLite.Modules.Library;
@@ -36,6 +38,8 @@ public sealed class LibraryModule : IPdmModule
             return () => new LibraryStorage(settings.Value.RootFolder);
         });
         services.AddSingleton<LibraryImportService>();
+        services.AddSingleton<DesignationRuleService>();
+        services.AddTransient<RulesViewModel>();
         services.AddSingleton<LibraryItemService>();
         services.AddSingleton<LibraryPanelViewModel>();
         services.AddTransient<ImportViewModel>();

@@ -43,6 +43,10 @@ public sealed class LibraryItem
     public required string DesignationKey { get; set; }
 
     public string? Standard { get; set; }
+
+    /// <summary>Стандарт указан вручную (иначе распознаётся из обозначения).</summary>
+    public bool StandardIsManual { get; set; }
+
     public string? Manufacturer { get; set; }
 
     /// <summary>Путь к файлу текущей версии относительно папки библиотеки.</summary>
@@ -135,4 +139,30 @@ public sealed class LibraryLogEntry
     public required string Action { get; set; }
     public Guid? ItemId { get; set; }
     public string? Details { get; set; }
+}
+
+/// <summary>
+/// Правило замены в обозначении при подготовке файлов к добавлению в библиотеку
+/// (например, «Болт_» → «Болт »). Формат обозначений по стандартам не проверяется.
+/// </summary>
+public sealed class DesignationRule
+{
+    public int Id { get; set; }
+
+    /// <summary>Порядок применения (замены выполняются по возрастанию).</summary>
+    public int SortOrder { get; set; }
+
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Что искать.</summary>
+    public required string Pattern { get; set; }
+
+    /// <summary>На что заменить.</summary>
+    public string? Replacement { get; set; }
+
+    /// <summary>Pattern — регулярное выражение (иначе обычный текст).</summary>
+    public bool IsRegex { get; set; }
+
+    /// <summary>Пояснение.</summary>
+    public string? Comment { get; set; }
 }

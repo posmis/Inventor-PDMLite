@@ -2,6 +2,8 @@ using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Win32;
 using PdmLite.Data;
+using PdmLite.Library.Import;
+using PdmLite.Modules.Library.Rules;
 using PdmLite.Modules.Library.Settings;
 using PdmLite.UI.Shared;
 
@@ -56,4 +58,71 @@ public partial class ImportWindow : Window
     private void Include_OnClick(object sender, RoutedEventArgs e) => _viewModel.SetInclude(SelectedRows, true);
 
     private void Close_OnClick(object sender, RoutedEventArgs e) => Close();
+
+    private List<ImportRowViewModel>? SelectionOrWarn()
+    {
+        var rows = SelectedRows.ToList();
+        if (rows.Count > 0)
+            return rows;
+        UiMessages.Info("Выделите строки в таблице (Ctrl+A — все).");
+        return null;
+    }
+
+    private void Source_OnClick(object sender, RoutedEventArgs e)
+    {
+        SourceButton.ContextMenu!.PlacementTarget = SourceButton;
+        SourceButton.ContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        SourceButton.ContextMenu.IsOpen = true;
+    }
+
+    private void SourceItem_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (SelectionOrWarn() is not { } rows)
+            return;
+        var source = Enum.Parse<DesignationSource>((string)((FrameworkElement)sender).Tag);
+        var changed = _viewModel.SetSource(rows, source);
+        if (changed < rows.Count)
+            UiMessages.Info($"Изменено строк: {changed} из {rows.Count}. В остальных файлах выбранное поле пустое.");
+    }
+
+    private void BulkEdit_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (SelectionOrWarn() is { } rows)
+            new BulkEditWindow(_viewModel, rows) { Owner = this }.ShowDialog();
+    }
+
+    private async void Rules_OnClick(object sender, RoutedEventArgs e)
+    {
+        var window = new RulesWindow(_services.GetRequiredService<RulesViewModel>()) { Owner = this };
+        if (window.ShowDialog() == true)
+            await _viewModel.ReloadRulesAsync();
+    }
+
+    private async void OpenList_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.Rows.Count > 0
+            && MessageBox.Show(this, "Текущий список будет закрыт (несохранённые правки пропадут). Продолжить?", UiMessages.Caption,
+                MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
+            return;
+        var dialog = new OpenFileDialog
+        {
+            Title = "Список подготовки",
+            Filter = $"Список PdmLite (*{ImportList.Extension})|*{ImportList.Extension}",
+        };
+        if (dialog.ShowDialog(this) == true)
+            await _viewModel.LoadListAsync(dialog.FileName);
+    }
+
+    private void SaveList_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "Сохранить список подготовки",
+            Filter = $"Список PdmLite (*{ImportList.Extension})|*{ImportList.Extension}",
+            FileName = _viewModel.ListPath is { } path ? System.IO.Path.GetFileName(path) : "Подготовка" + ImportList.Extension,
+            InitialDirectory = _viewModel.ListPath is { } p ? System.IO.Path.GetDirectoryName(p) : null,
+        };
+        if (dialog.ShowDialog(this) == true)
+            _viewModel.SaveList(dialog.FileName);
+    }
 }

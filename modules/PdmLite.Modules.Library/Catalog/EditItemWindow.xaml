@@ -16,6 +16,7 @@
                 <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Theme.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <ui:IconKeyConverter x:Key="IconKey" />
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         </ResourceDictionary>
     </Window.Resources>
 
@@ -66,7 +67,16 @@
                 <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding KindNames}" SelectedItem="{Binding KindName}" Margin="0,3" />
 
                 <TextBlock Grid.Row="2" Text="Стандарт" Style="{StaticResource Pdm.Text.Label}" VerticalAlignment="Center" />
-                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding Standard, Mode=OneWay}" Style="{StaticResource Pdm.Text.Value}" VerticalAlignment="Center" />
+                <DockPanel Grid.Row="2" Grid.Column="1" Margin="0,3">
+                    <CheckBox DockPanel.Dock="Right" Content="вручную" IsChecked="{Binding StandardIsManual}" VerticalAlignment="Center" Margin="8,0,0,0"
+                              ToolTip="Если стандарт распознан из обозначения неверно — укажите его сами" />
+                    <Grid>
+                        <TextBox Text="{Binding Standard, Mode=OneWay}" Style="{StaticResource Pdm.Text.Value}" VerticalAlignment="Center"
+                                 Visibility="{Binding StandardIsManual, Converter={x:Static ui:InverseBoolToVisibilityConverter.Instance}}" />
+                        <TextBox Text="{Binding ManualStandard, UpdateSourceTrigger=PropertyChanged, Delay=300}"
+                                 Visibility="{Binding StandardIsManual, Converter={StaticResource BoolToVisibility}}" />
+                    </Grid>
+                </DockPanel>
 
                 <TextBlock Grid.Row="3" Text="Производитель" Style="{StaticResource Pdm.Text.Label}" VerticalAlignment="Center" />
                 <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding Manufacturer, UpdateSourceTrigger=PropertyChanged, Delay=300}" Margin="0,3" />

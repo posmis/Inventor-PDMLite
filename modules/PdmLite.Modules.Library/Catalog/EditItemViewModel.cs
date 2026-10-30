@@ -24,6 +24,9 @@ public sealed partial class EditItemViewModel : ObservableObject
         _kindName = item.Kind == LibraryItemKind.Standard ? ImportRowViewModel.KindNames[0] : ImportRowViewModel.KindNames[1];
         _manufacturer = item.Manufacturer ?? "";
         _category = catalog.Get(item.CategoryId);
+        _standardIsManual = item.StandardIsManual;
+        _manualStandard = item.StandardIsManual ? item.Standard ?? "" : "";
+        _standard = item.Standard;
         _ = CheckAsync();
     }
 
@@ -37,6 +40,10 @@ public sealed partial class EditItemViewModel : ObservableObject
     [ObservableProperty] private string _manufacturer;
     [ObservableProperty] private CategoryInfo? _category;
 
+    /// <summary>Стандарт указан вручную (если распознан из обозначения неверно).</summary>
+    [ObservableProperty] private bool _standardIsManual;
+    [ObservableProperty] private string _manualStandard;
+
     [ObservableProperty] private IReadOnlyList<IssueViewModel> _issues = [];
     [ObservableProperty] private string? _newPath;
     [ObservableProperty] private string? _standard;
@@ -45,12 +52,20 @@ public sealed partial class EditItemViewModel : ObservableObject
 
     private LibraryItemKind Kind => KindName == ImportRowViewModel.KindNames[1] ? LibraryItemKind.Purchased : LibraryItemKind.Standard;
 
-    private LibraryItemEdit Edit => new(Designation, Kind, Manufacturer, Category?.Id);
+    private LibraryItemEdit Edit => new(Designation, Kind, Manufacturer, Category?.Id, StandardIsManual ? ManualStandard : null);
 
     partial void OnDesignationChanged(string value) => _ = CheckAsync();
     partial void OnKindNameChanged(string value) => _ = CheckAsync();
     partial void OnManufacturerChanged(string value) => _ = CheckAsync();
     partial void OnCategoryChanged(CategoryInfo? value) => _ = CheckAsync();
+    partial void OnManualStandardChanged(string value) => _ = CheckAsync();
+
+    partial void OnStandardIsManualChanged(bool value)
+    {
+        if (value && ManualStandard.Length == 0)
+            ManualStandard = Standard ?? ""; // начать правку с распознанного
+        _ = CheckAsync();
+    }
 
     private async Task CheckAsync()
     {
@@ -76,7 +91,9 @@ public sealed partial class EditItemViewModel : ObservableObject
         check.CanonicalDesignation != _item.Designation
         || Kind != _item.Kind
         || (string.IsNullOrWhiteSpace(Manufacturer) ? null : Manufacturer.Trim()) != _item.Manufacturer
-        || Category?.Id != _item.CategoryId;
+        || Category?.Id != _item.CategoryId
+        || check.Standard != _item.Standard
+        || (StandardIsManual && Kind == LibraryItemKind.Standard) != _item.StandardIsManual;
 
     /// <summary>Сохраняет; <c>null</c> — успешно, иначе текст ошибки.</summary>
     public async Task<string?> SaveAsync()

@@ -12,6 +12,25 @@ public enum ImportSeverity
 
 public sealed record ImportIssue(ImportSeverity Severity, string Message);
 
+/// <summary>Откуда взято обозначение.</summary>
+public enum DesignationSource
+{
+    /// <summary>Свойство «Обозначение» (Part Number).</summary>
+    PartNumber,
+
+    /// <summary>Свойство «Описание» (Description).</summary>
+    Description,
+
+    /// <summary>Свойство «Наименование» (Title).</summary>
+    Title,
+
+    /// <summary>Имя файла без расширения.</summary>
+    FileName,
+
+    /// <summary>Введено или исправлено вручную — правила к нему повторно не применяются.</summary>
+    Manual,
+}
+
 public enum ImportStatus
 {
     /// <summary>Готов к внесению.</summary>
@@ -49,8 +68,30 @@ public sealed class ImportCandidate
 
     public bool Include { get; set; } = true;
 
-    /// <summary>Обозначение, как оно было в файле (до приведения к единому виду).</summary>
-    public string OriginalDesignation { get; init; } = "";
+    /// <summary>Обозначение, как оно было в источнике (до приведения к единому виду и правил).</summary>
+    public string OriginalDesignation { get; set; } = "";
+
+    /// <summary>Откуда взято обозначение.</summary>
+    public DesignationSource Source { get; set; } = DesignationSource.PartNumber;
+
+    /// <summary>Какие правила замены изменили обозначение (пояснения правил).</summary>
+    public IReadOnlyList<string> AppliedRules { get; set; } = [];
+
+    /// <summary>Текст источника обозначения или <c>null</c>, если он пуст.</summary>
+    public string? SourceText(DesignationSource source)
+    {
+        var text = source switch
+        {
+            DesignationSource.PartNumber => Properties?.PartNumber,
+            DesignationSource.Description => Properties?.Description,
+            DesignationSource.Title => Properties?.Title,
+            DesignationSource.FileName => FileNameWithoutExtension,
+            _ => null,
+        };
+        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+    }
+
+    private string FileNameWithoutExtension => System.IO.Path.GetFileNameWithoutExtension(FileName);
 
     /// <summary>Обозначение (приводится к единому виду при проверке).</summary>
     public string Designation { get; set; } = "";
@@ -60,6 +101,10 @@ public sealed class ImportCandidate
     /// <summary>Тип взят из свойства SPEC_Section, записанного в файле.</summary>
     public bool KindFromFile { get; init; }
     public string? Standard { get; set; }
+
+    /// <summary>Стандарт, указанный пользователем вручную (<c>null</c> — распознаётся из обозначения).</summary>
+    public string? ManualStandard { get; set; }
+
     public string? Manufacturer { get; set; }
     public int? CategoryId { get; set; }
 

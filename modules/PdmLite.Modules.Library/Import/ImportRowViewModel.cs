@@ -1,7 +1,9 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using PdmLite.Core.UI;
 using PdmLite.Data.Library;
+using PdmLite.Library;
 using PdmLite.Library.Catalog;
+using PdmLite.Library.Designations;
 using PdmLite.Library.Import;
 
 namespace PdmLite.Modules.Library.Import;
@@ -26,8 +28,28 @@ public sealed class ImportRowViewModel(ImportCandidate candidate, ImportViewMode
     public string Designation
     {
         get => candidate.Designation;
-        set => Edit(() => candidate.Designation = value ?? "");
+        set => Edit(() =>
+        {
+            var designation = value ?? "";
+            if (designation == candidate.Designation)
+                return;
+            candidate.Designation = designation;
+            candidate.Source = DesignationSource.Manual; // правила к ручной правке больше не применяются
+            candidate.AppliedRules = [];
+        });
     }
+
+    /// <summary>Откуда взято обозначение — для колонки «Источник».</summary>
+    public string SourceName => SourceNames[candidate.Source];
+
+    public static readonly IReadOnlyDictionary<DesignationSource, string> SourceNames = new Dictionary<DesignationSource, string>
+    {
+        [DesignationSource.PartNumber] = "Обозначение",
+        [DesignationSource.Description] = "Описание",
+        [DesignationSource.Title] = "Наименование",
+        [DesignationSource.FileName] = "Имя файла",
+        [DesignationSource.Manual] = "Вручную",
+    };
 
     public string KindName
     {
@@ -37,7 +59,19 @@ public sealed class ImportRowViewModel(ImportCandidate candidate, ImportViewMode
 
     public bool IsPurchased => candidate.Kind == LibraryItemKind.Purchased;
 
-    public string? Standard => candidate.Standard;
+    /// <summary>
+    /// Стандарт: распознаётся из обозначения; правка в таблице задаёт его вручную,
+    /// пустое значение возвращает распознавание.
+    /// </summary>
+    public string? Standard
+    {
+        get => candidate.Standard;
+        set => Edit(() =>
+        {
+            var manual = LibraryRules.NormalizeStandard(value);
+            candidate.ManualStandard = manual == StandardParser.Find(DesignationNormalizer.ToCanonical(candidate.Designation)) ? null : manual;
+        });
+    }
 
     public string? Manufacturer
     {

@@ -6,6 +6,7 @@ using PdmLite.Data;
 using PdmLite.Data.Library;
 using PdmLite.Library.Catalog;
 using PdmLite.Library.Designations;
+using PdmLite.Library.Rules;
 using PdmLite.Library.Storage;
 
 namespace PdmLite.Library.Import;
@@ -43,7 +44,7 @@ public sealed class LibraryImportService(
         {
             ct.ThrowIfCancellationRequested();
             progress?.Report(new ImportProgress(i, files.Count, Path.GetFileName(files[i])));
-            session.Candidates.Add(await AnalyzeFileAsync(files[i], session.Catalog, ct).ConfigureAwait(false));
+            session.Candidates.Add(await AnalyzeFileAsync(files[i], session, ct).ConfigureAwait(false));
         }
 
         progress?.Report(new ImportProgress(files.Count, files.Count, null));
@@ -70,7 +71,11 @@ public sealed class LibraryImportService(
                 hashes.TryAdd(item.SourceHash, item.Designation);
         }
 
-        return new ImportSession(catalog, keys, hashes, properties.IsAvailable, properties.UnavailableReason);
+        var rules = await db.DesignationRules.AsNoTracking().ToListAsync(ct).ConfigureAwait(false);
+        return new ImportSession(catalog, keys, hashes, properties.IsAvailable, properties.UnavailableReason)
+        {
+            Rules = new DesignationRuleSet(rules),
+        };
     }
 
     private static List<string> Enumerate(IEnumerable<string> inputs, LibraryStorage storage, List<SkippedFile> skipped)
@@ -119,7 +124,7 @@ public sealed class LibraryImportService(
         return result;
     }
 
-    private async Task<ImportCandidate> AnalyzeFileAsync(string path, LibraryCatalog catalog, CancellationToken ct)
+    private async Task<ImportCandidate> AnalyzeFileAsync(string path, ImportSession session, CancellationToken ct)
     {
         var documentType = Path.GetExtension(path).Equals(".iam", StringComparison.OrdinalIgnoreCase)
             ? LibraryDocumentType.Assembly
@@ -168,14 +173,10 @@ public sealed class LibraryImportService(
             }
         }
 
-        var original = !string.IsNullOrWhiteSpace(props?.PartNumber) ? props.PartNumber! : Path.GetFileNameWithoutExtension(path);
-        var designation = DesignationNormalizer.ToCanonical(original);
-        var standard = StandardParser.Find(designation);
-        var suggested = catalog.Suggest(designation, standard);
         // Раздел спецификации уже записан в файле (например, другим плагином) — тип берём из него.
         var kindFromFile = props is null ? null : LibraryProperties.KindFromSpecSection(props.Custom);
 
-        return new ImportCandidate
+        var candidate = new ImportCandidate
         {
             SourcePath = path,
             DocumentType = documentType,
@@ -184,14 +185,152 @@ public sealed class LibraryImportService(
             FileHash = hash,
             FileSize = size,
             ReferenceHashes = referenceHashes,
-            OriginalDesignation = original.Trim(),
-            Designation = designation,
-            Kind = kindFromFile ?? (standard is not null ? LibraryItemKind.Standard : LibraryItemKind.Purchased),
             KindFromFile = kindFromFile is not null,
-            Standard = standard,
-            CategoryId = suggested?.Id,
-            SuggestedCategoryId = suggested?.Id,
         };
+
+        // Обозначение — из «Обозначения», если оно заполнено, иначе из имени файла.
+        Prepare(candidate, session, candidate.SourceText(DesignationSource.PartNumber) is not null
+            ? DesignationSource.PartNumber
+            : DesignationSource.FileName, resetKind: kindFromFile is null);
+        if (kindFromFile is { } kind)
+            candidate.Kind = kind;
+        return candidate;
+    }
+
+    /// <summary>
+    /// Готовит обозначение из источника: единый вид → правила замены → единый вид. Обновляет
+    /// стандарт и, если раздел не менял пользователь, предложенный раздел.
+    /// </summary>
+    private static void Prepare(ImportCandidate c, ImportSession session, DesignationSource source, bool resetKind)
+    {
+        var text = c.SourceText(source) ?? "";
+        var (replaced, applied) = session.Rules.ApplyReplacements(DesignationNormalizer.ToCanonical(text));
+        var designation = DesignationNormalizer.ToCanonical(replaced);
+        var standard = c.ManualStandard ?? StandardParser.Find(designation);
+        var categoryUntouched = c.CategoryId == c.SuggestedCategoryId;
+        var suggested = session.Catalog.Suggest(designation, standard);
+
+        c.Source = source;
+        c.OriginalDesignation = text;
+        c.AppliedRules = applied;
+        c.Designation = designation;
+        c.Standard = standard;
+        if (resetKind && !c.KindFromFile)
+            c.Kind = standard is not null ? LibraryItemKind.Standard : LibraryItemKind.Purchased;
+        if (categoryUntouched)
+            c.CategoryId = suggested?.Id;
+        c.SuggestedCategoryId = suggested?.Id;
+    }
+
+    /// <summary>
+    /// Берёт обозначение выбранных строк из другого источника (свойство или имя файла).
+    /// Строки, где источник пуст, не меняются. Возвращает число изменённых строк.
+    /// </summary>
+    public int SetSource(ImportSession session, IEnumerable<ImportCandidate> candidates, DesignationSource source)
+    {
+        if (source == DesignationSource.Manual)
+            throw new ArgumentException("Ручной ввод выбирается правкой обозначения.", nameof(source));
+        var changed = 0;
+        foreach (var c in candidates.Where(c => c.SourceText(source) is not null))
+        {
+            Prepare(c, session, source, resetKind: true);
+            changed++;
+        }
+        Validate(session);
+        return changed;
+    }
+
+    /// <summary>
+    /// Перечитывает правила из базы и заново готовит обозначения всех строк, кроме исправленных
+    /// вручную (после изменения правил).
+    /// </summary>
+    public async Task ReloadRulesAsync(ImportSession session, CancellationToken ct = default)
+    {
+        await using (var db = database.CreateContext())
+            session.Rules = new DesignationRuleSet(await db.DesignationRules.AsNoTracking().ToListAsync(ct).ConfigureAwait(false));
+        foreach (var c in session.Candidates.Where(c => c.Source != DesignationSource.Manual))
+            Prepare(c, session, c.Source, resetKind: true);
+        Validate(session);
+    }
+
+    /// <summary>
+    /// Поиск и замена в обозначениях выбранных строк (обычный текст или регулярное выражение).
+    /// Изменённые строки считаются исправленными вручную. Возвращает число изменённых строк.
+    /// </summary>
+    public int ReplaceInDesignations(ImportSession session, IEnumerable<ImportCandidate> candidates, string find, string replace, bool isRegex)
+    {
+        if (string.IsNullOrEmpty(find))
+            throw new ArgumentException("Не указано, что искать.", nameof(find));
+        var regex = isRegex
+            ? new System.Text.RegularExpressions.Regex(find, System.Text.RegularExpressions.RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250))
+            : null;
+
+        var changed = 0;
+        foreach (var c in candidates)
+        {
+            var next = DesignationNormalizer.ToCanonical(regex is null ? c.Designation.Replace(find, replace, StringComparison.Ordinal) : regex.Replace(c.Designation, replace));
+            if (next == c.Designation)
+                continue;
+            c.Designation = next;
+            c.Source = DesignationSource.Manual;
+            c.AppliedRules = [];
+            changed++;
+        }
+        Validate(session);
+        return changed;
+    }
+
+    /// <summary>Сохраняет список подготовки с правками пользователя.</summary>
+    public void SaveList(ImportSession session, string path) => ImportList.From(session).Save(path);
+
+    /// <summary>
+    /// Открывает сохранённый список: файлы анализируются заново (они могли измениться),
+    /// затем восстанавливаются правки. Пропавшие файлы попадают в «Пропущенные».
+    /// </summary>
+    public async Task<ImportSession> LoadListAsync(string path, IProgress<ImportProgress>? progress = null, CancellationToken ct = default)
+    {
+        var list = ImportList.Load(path);
+        var session = await CreateSessionAsync(ct).ConfigureAwait(false);
+
+        var present = new List<ImportListEntry>();
+        foreach (var entry in list.Items)
+        {
+            if (File.Exists(entry.Path))
+                present.Add(entry);
+            else
+                session.Skipped.Add(new SkippedFile(entry.Path, "Файл из списка не найден"));
+        }
+
+        await AddAsync(session, present.Select(e => e.Path), progress, ct).ConfigureAwait(false);
+
+        var byPath = session.Candidates.ToDictionary(c => c.SourcePath, StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in present)
+        {
+            if (!byPath.TryGetValue(Path.GetFullPath(entry.Path), out var c))
+                continue; // файл теперь в папке библиотеки и т.п. — причина уже в «Пропущенных»
+
+            c.Include = entry.Include;
+            if (entry.Source == DesignationSource.Manual)
+            {
+                c.Designation = entry.Designation;
+                c.Source = DesignationSource.Manual;
+                c.AppliedRules = [];
+            }
+            else if (entry.Source != c.Source && c.SourceText(entry.Source) is not null)
+            {
+                Prepare(c, session, entry.Source, resetKind: true);
+            }
+
+            if (!c.KindFromFile)
+                c.Kind = entry.Kind;
+            c.Manufacturer = entry.Manufacturer;
+            c.ManualStandard = entry.ManualStandard;
+            if (entry.CategoryChosen && entry.CategoryPath is not null && session.Catalog.FindByPath(entry.CategoryPath) is { } category)
+                c.CategoryId = category.Id;
+        }
+
+        Validate(session);
+        return session;
     }
 
     /// <summary>Проверяет все кандидаты. Вызывается после анализа и после каждой правки пользователя.</summary>
@@ -205,8 +344,9 @@ public sealed class LibraryImportService(
         var placements = new Dictionary<ImportCandidate, LibraryPlacement>();
         foreach (var c in session.Candidates)
         {
+            c.ManualStandard = LibraryRules.NormalizeStandard(c.ManualStandard);
             var placement = LibraryRules.Place(session.Catalog, storage, c.Designation, c.Kind, c.Manufacturer,
-                c.CategoryId, Path.GetExtension(c.SourcePath));
+                c.CategoryId, Path.GetExtension(c.SourcePath), c.ManualStandard);
             c.Designation = placement.Designation;
             c.Standard = placement.Standard;
             c.Issues.Clear();
@@ -257,6 +397,8 @@ public sealed class LibraryImportService(
 
             if (c.KindFromFile)
                 Info($"Тип «{(c.Kind == LibraryItemKind.Standard ? "стандартное" : "покупное")}» взят из свойства {LibraryProperties.SpecSection} в файле.");
+            if (c.AppliedRules.Count > 0)
+                Info("Применены правила: " + string.Join("; ", c.AppliedRules) + ".");
 
             if (DesignationNormalizer.ToKey(Path.GetFileNameWithoutExtension(c.SourcePath)) != key)
                 Info("Имя файла не совпадает с обозначением — в библиотеке файл будет назван по обозначению.");
@@ -344,6 +486,7 @@ public sealed class LibraryImportService(
                     Designation = c.Designation,
                     DesignationKey = key,
                     Standard = c.Standard,
+                    StandardIsManual = c.ManualStandard is not null && c.Kind == LibraryItemKind.Standard,
                     Manufacturer = string.IsNullOrWhiteSpace(c.Manufacturer) ? null : c.Manufacturer.Trim(),
                     RelativePath = c.TargetRelativePath!,
                     FileHash = hash,

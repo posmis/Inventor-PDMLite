@@ -23,6 +23,9 @@ public sealed class ImportSession
 
     public LibraryCatalog Catalog { get; }
 
+    /// <summary>Правила обозначений (замены и шаблоны) на момент анализа или последнего обновления.</summary>
+    public Rules.DesignationRuleSet Rules { get; internal set; } = PdmLite.Library.Rules.DesignationRuleSet.Empty;
+
     public List<ImportCandidate> Candidates { get; } = [];
     public List<SkippedFile> Skipped { get; } = [];
 

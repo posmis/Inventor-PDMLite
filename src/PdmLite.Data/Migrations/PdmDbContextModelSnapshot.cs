@@ -22,6 +22,52 @@ namespace PdmLite.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("PdmLite.Data.Library.DesignationRule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("comment");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<bool>("IsRegex")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_regex");
+
+                    b.Property<string>("Pattern")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("pattern");
+
+                    b.Property<string>("Replacement")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("replacement");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.HasKey("Id")
+                        .HasName("pk_designation_rules");
+
+                    b.HasIndex("SortOrder")
+                        .HasDatabaseName("ix_designation_rules_sort_order");
+
+                    b.ToTable("designation_rules", "library");
+                });
+
             modelBuilder.Entity("PdmLite.Data.Library.LibraryCategory", b =>
                 {
                     b.Property<int>("Id")
@@ -176,6 +222,10 @@ namespace PdmLite.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("standard");
+
+                    b.Property<bool>("StandardIsManual")
+                        .HasColumnType("boolean")
+                        .HasColumnName("standard_is_manual");
 
                     b.Property<int>("Version")
                         .HasColumnType("integer")

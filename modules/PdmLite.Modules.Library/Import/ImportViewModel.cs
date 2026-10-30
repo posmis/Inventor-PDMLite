@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using PdmLite.Core.Documents;
 using PdmLite.Core.Events;
+using PdmLite.Data.Library;
 using PdmLite.Library.Catalog;
 using PdmLite.Library.Import;
 using PdmLite.UI.Shared;
@@ -104,6 +105,7 @@ public sealed partial class ImportViewModel : ObservableObject
             {
                 _session = await _service.AnalyzeAsync(inputs, progress);
                 OnPropertyChanged(nameof(Categories));
+                OnPropertyChanged(nameof(HasSession));
             }
             else
             {
@@ -143,6 +145,89 @@ public sealed partial class ImportViewModel : ObservableObject
 
     [RelayCommand]
     private void Recheck() => Revalidate();
+
+    public bool HasSession => _session is not null;
+
+    /// <summary>Путь последнего сохранённого или открытого списка подготовки.</summary>
+    [ObservableProperty] private string? _listPath;
+
+    /// <summary>Обозначение выделенных строк — из другого свойства или имени файла. Возвращает число изменённых строк.</summary>
+    public int SetSource(IEnumerable<ImportRowViewModel> rows, DesignationSource source)
+    {
+        if (_session is null)
+            return 0;
+        var changed = _service.SetSource(_session, rows.Select(r => r.Candidate).ToList(), source);
+        RefreshAll();
+        return changed;
+    }
+
+    /// <summary>Поиск и замена в обозначениях выделенных строк.</summary>
+    public int ReplaceInDesignations(IEnumerable<ImportRowViewModel> rows, string find, string replace, bool isRegex)
+    {
+        if (_session is null)
+            return 0;
+        var changed = _service.ReplaceInDesignations(_session, rows.Select(r => r.Candidate).ToList(), find, replace, isRegex);
+        RefreshAll();
+        return changed;
+    }
+
+    /// <summary>Правка выделенных строк разом; <c>null</c> — поле не менять.</summary>
+    public void BulkEdit(IEnumerable<ImportRowViewModel> rows, LibraryItemKind? kind, string? manufacturer, CategoryInfo? category)
+    {
+        foreach (var c in rows.Select(r => r.Candidate))
+        {
+            if (kind is { } k)
+                c.Kind = k;
+            if (manufacturer is not null)
+                c.Manufacturer = manufacturer.Trim().Length == 0 ? null : manufacturer.Trim();
+            if (category is not null)
+                c.CategoryId = category.Id;
+        }
+        Revalidate();
+    }
+
+    /// <summary>После изменения правил: перечитать их и подготовить обозначения заново (кроме ручных).</summary>
+    public async Task ReloadRulesAsync()
+    {
+        if (_session is null)
+            return;
+        await RunAsync("Применение правил", async _ => await _service.ReloadRulesAsync(_session));
+        RefreshAll();
+    }
+
+    public void SaveList(string path)
+    {
+        if (_session is null)
+            return;
+        try
+        {
+            _service.SaveList(_session, path);
+            ListPath = path;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Не удалось сохранить список {Path}", path);
+            UiMessages.Error("Не удалось сохранить список.", ex);
+        }
+    }
+
+    /// <summary>Открывает список подготовки вместо текущего.</summary>
+    public async Task LoadListAsync(string path)
+    {
+        ImportSession? loaded = null;
+        await RunAsync("Открытие списка", async progress => loaded = await _service.LoadListAsync(path, progress));
+        if (loaded is null)
+            return;
+
+        _session = loaded;
+        ListPath = path;
+        Rows.Clear();
+        foreach (var candidate in _session.Candidates)
+            Rows.Add(new ImportRowViewModel(candidate, this));
+        OnPropertyChanged(nameof(Categories));
+        OnPropertyChanged(nameof(HasSession));
+        RefreshAll();
+    }
 
     [RelayCommand(CanExecute = nameof(CanCommit))]
     private async Task CommitAsync()

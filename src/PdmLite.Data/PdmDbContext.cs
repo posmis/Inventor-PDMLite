@@ -15,6 +15,7 @@ public sealed class PdmDbContext(DbContextOptions<PdmDbContext> options) : DbCon
     public DbSet<LibraryItemReference> LibraryItemReferences => Set<LibraryItemReference>();
     public DbSet<LibraryCategoryRule> LibraryCategoryRules => Set<LibraryCategoryRule>();
     public DbSet<LibraryLogEntry> LibraryLog => Set<LibraryLogEntry>();
+    public DbSet<DesignationRule> DesignationRules => Set<DesignationRule>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -79,6 +80,15 @@ public sealed class PdmDbContext(DbContextOptions<PdmDbContext> options) : DbCon
             e.Property(x => x.Pattern).HasMaxLength(200);
             e.HasIndex(x => new { x.Kind, x.Pattern }).IsUnique();
             e.HasOne(x => x.Category).WithMany().HasForeignKey(x => x.CategoryId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<DesignationRule>(e =>
+        {
+            e.ToTable("designation_rules", LibrarySchema);
+            e.Property(x => x.Pattern).HasMaxLength(500);
+            e.Property(x => x.Replacement).HasMaxLength(500);
+            e.Property(x => x.Comment).HasMaxLength(500);
+            e.HasIndex(x => x.SortOrder);
         });
 
         model.Entity<LibraryLogEntry>(e =>

@@ -111,4 +111,34 @@ public class ItemTests
         Assert.Empty(await items.ListAsync(catalog));
         Assert.False(Directory.Exists(Path.Combine(folders.Library, "Электротехника")));
     }
+    [PostgresFact]
+    public async Task Edit_ManualStandard_AndKindChange_RewriteSpecSection()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        using var folders = new TempFolders();
+        var store = new FakePropertyStore();
+        var (import, items) = Services(db, store, folders);
+        await ImportAsync(import, [folders.AddFile("Стопорное кольцо 15x1 DIN 471-1.ipt", "r")]);
+
+        var catalog = await items.LoadCatalogAsync();
+        var item = Assert.Single(await items.ListAsync(catalog));
+        Assert.Equal("DIN 471-1", item.Standard); // распознано неверно — исправим вручную
+
+        await items.ApplyEditAsync(catalog, item.Id, new LibraryItemEdit(item.Designation, item.Kind, null, item.CategoryId, " DIN  471 "));
+        item = Assert.Single(await items.ListAsync(catalog));
+        Assert.Equal("DIN 471", item.Standard);
+        Assert.True(item.StandardIsManual);
+        Assert.EndsWith("/DIN 471/Стопорное кольцо 15x1 DIN 471-1.ipt", item.RelativePath);
+        var full = Path.Combine(folders.Library, item.RelativePath);
+        Assert.Equal("DIN 471", store.Written[full].Custom[LibraryProperties.Standard]);
+        Assert.Equal("StandardProducts", store.Written[full].Custom[LibraryProperties.SpecSection]);
+
+        // Смена типа меняет SPEC_Section в файле.
+        await items.ApplyEditAsync(catalog, item.Id, new LibraryItemEdit(item.Designation, LibraryItemKind.Purchased, "Seeger", item.CategoryId));
+        item = Assert.Single(await items.ListAsync(catalog));
+        Assert.False(item.StandardIsManual);
+        full = Path.Combine(folders.Library, item.RelativePath);
+        Assert.Equal("OtherProducts", store.Written[full].Custom[LibraryProperties.SpecSection]);
+        Assert.Equal("OtherProducts", store.Files[full].Custom[LibraryProperties.SpecSection]);
+    }
 }

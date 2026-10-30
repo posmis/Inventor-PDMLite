@@ -61,6 +61,41 @@
                             <TextBlock Text="Проверить" Margin="5,0,2,0" />
                         </StackPanel>
                     </Button>
+                    <Rectangle Style="{StaticResource Pdm.ToolSeparator}" />
+                    <Button x:Name="SourceButton" Style="{StaticResource Pdm.ToolButton}" Click="Source_OnClick"
+                            IsEnabled="{Binding HasSession}"
+                            ToolTip="Взять обозначение выделенных строк из другого свойства файла или из имени файла">
+                        <TextBlock Text="Обозначение из ▾" Margin="2,0" />
+                        <Button.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="«Обозначение» (Part Number)" Tag="PartNumber" Click="SourceItem_OnClick" />
+                                <MenuItem Header="«Описание» (Description)" Tag="Description" Click="SourceItem_OnClick" />
+                                <MenuItem Header="«Наименование» (Title)" Tag="Title" Click="SourceItem_OnClick" />
+                                <MenuItem Header="Имени файла" Tag="FileName" Click="SourceItem_OnClick" />
+                            </ContextMenu>
+                        </Button.ContextMenu>
+                    </Button>
+                    <Button Style="{StaticResource Pdm.ToolButton}" Click="BulkEdit_OnClick" IsEnabled="{Binding HasSession}"
+                            ToolTip="Тип, производитель, раздел и замена в обозначении — для всех выделенных строк">
+                        <TextBlock Text="Правка выделенных…" Margin="2,0" />
+                    </Button>
+                    <Button Style="{StaticResource Pdm.ToolButton}" Click="Rules_OnClick" ToolTip="Правила замены в обозначениях (применяются ко всем файлам)">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Pdm.Icon.Cmd.Settings}" Style="{StaticResource Pdm.Icon16}" />
+                            <TextBlock Text="Правила…" Margin="5,0,2,0" />
+                        </StackPanel>
+                    </Button>
+                    <Rectangle Style="{StaticResource Pdm.ToolSeparator}" />
+                    <Button Style="{StaticResource Pdm.ToolButton}" Click="OpenList_OnClick" ToolTip="Открыть сохранённый список подготовки">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Pdm.Icon.Cmd.Open}" Style="{StaticResource Pdm.Icon16}" />
+                            <TextBlock Text="Открыть список…" Margin="5,0,2,0" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource Pdm.ToolButton}" Click="SaveList_OnClick" IsEnabled="{Binding HasSession}"
+                            ToolTip="Сохранить список с правками, чтобы продолжить позже">
+                        <TextBlock Text="Сохранить список…" Margin="2,0" />
+                    </Button>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <TextBlock Text="Показать:" Style="{StaticResource Pdm.Text.Hint}" VerticalAlignment="Center" Margin="0,0,6,0" />
@@ -162,7 +197,14 @@
                         </DataGridTemplateColumn.CellEditingTemplate>
                     </DataGridTemplateColumn>
 
-                    <DataGridTextColumn Header="Стандарт" Width="140" Binding="{Binding Standard, Mode=OneWay}" IsReadOnly="True" />
+                    <DataGridTextColumn Header="Источник" Width="100" Binding="{Binding SourceName, Mode=OneWay}" IsReadOnly="True" />
+                    <DataGridTextColumn Header="Стандарт" Width="140" Binding="{Binding Standard}">
+                        <DataGridTextColumn.CellStyle>
+                            <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
+                                <Setter Property="ToolTip" Value="Если стандарт распознан неверно — исправьте. Пустое значение — распознать из обозначения." />
+                            </Style>
+                        </DataGridTextColumn.CellStyle>
+                    </DataGridTextColumn>
                     <DataGridTextColumn Header="Производитель" Width="120" Binding="{Binding Manufacturer}" />
 
                     <DataGridTemplateColumn Header="Раздел" Width="220" SortMemberPath="Category.Path">

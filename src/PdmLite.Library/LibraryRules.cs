@@ -26,16 +26,18 @@ public static class LibraryRules
     /// <summary>
     /// Приводит обозначение к единому виду, определяет стандарт и путь файла,
     /// проверяет обязательные поля и длину пути. Дубликаты и занятость пути проверяет вызывающий.
+    /// <paramref name="manualStandard"/> — стандарт, указанный пользователем (если распознан неверно).
     /// </summary>
     public static LibraryPlacement Place(LibraryCatalog catalog, LibraryStorage storage, string? designation,
-        LibraryItemKind kind, string? manufacturer, int? categoryId, string extension)
+        LibraryItemKind kind, string? manufacturer, int? categoryId, string extension, string? manualStandard = null)
     {
         var issues = new List<ImportIssue>();
         void Error(string m) => issues.Add(new ImportIssue(ImportSeverity.Error, m));
         void Warn(string m) => issues.Add(new ImportIssue(ImportSeverity.Warning, m));
 
         var canonical = DesignationNormalizer.ToCanonical(designation ?? "");
-        var standard = kind == LibraryItemKind.Standard ? StandardParser.Find(canonical) : null;
+        var manual = NormalizeStandard(manualStandard);
+        var standard = kind != LibraryItemKind.Standard ? null : manual ?? StandardParser.Find(canonical);
         var maker = string.IsNullOrWhiteSpace(manufacturer) ? null : manufacturer.Trim();
         var category = catalog.Get(categoryId);
 
@@ -46,7 +48,9 @@ public static class LibraryRules
         }
 
         if (kind == LibraryItemKind.Standard && standard is null)
-            Error("В обозначении не найден стандарт (ГОСТ, ISO, DIN…). Исправьте обозначение или выберите тип «Покупное».");
+            Error("В обозначении не найден стандарт (ГОСТ, ISO, DIN…). Укажите стандарт вручную или выберите тип «Покупное».");
+        if (manual is not null && kind == LibraryItemKind.Standard && manual != StandardParser.Find(canonical))
+            issues.Add(new ImportIssue(ImportSeverity.Info, $"Стандарт указан вручную: {manual}."));
         if (kind == LibraryItemKind.Purchased && maker is null)
             Warn($"Не указан производитель — компонент попадёт в папку «{LibraryStorage.NoManufacturerFolder}».");
 
@@ -70,4 +74,10 @@ public static class LibraryRules
 
         return new LibraryPlacement(canonical, standard, maker, category, relativePath, issues);
     }
+
+    /// <summary>Стандарт, введённый вручную: пробелы схлопнуты; пустой — <c>null</c>.</summary>
+    public static string? NormalizeStandard(string? standard) =>
+        string.IsNullOrWhiteSpace(standard)
+            ? null
+            : DesignationNormalizer.ToCanonical(string.Join(' ', standard.Split(' ', StringSplitOptions.RemoveEmptyEntries)));
 }

@@ -24,7 +24,8 @@ public sealed record LibraryItemSummary(
     string RelativePath,
     int Version,
     DateTime ModifiedAt,
-    string ModifiedBy);
+    string ModifiedBy,
+    bool StandardIsManual = false);
 
 /// <summary>Расхождение одного свойства: сейчас в файле и как должно быть.</summary>
 public sealed record PropertyChange(string Property, string? Current, string Expected);
@@ -39,7 +40,8 @@ public sealed record PropertyDiff(Guid ItemId, string Designation, string Relati
 public sealed record RewriteResult(int Checked, int Updated, int UpToDate, IReadOnlyList<string> Failed);
 
 /// <summary>Новые значения карточки компонента.</summary>
-public sealed record LibraryItemEdit(string Designation, LibraryItemKind Kind, string? Manufacturer, int? CategoryId);
+/// <param name="ManualStandard">Стандарт вручную; <c>null</c> — распознаётся из обозначения.</param>
+public sealed record LibraryItemEdit(string Designation, LibraryItemKind Kind, string? Manufacturer, int? CategoryId, string? ManualStandard = null);
 
 /// <summary>Результат проверки изменения: замечания и путь файла после изменения.</summary>
 public sealed record LibraryItemEditCheck(IReadOnlyList<ImportIssue> Issues, string? NewRelativePath, string CanonicalDesignation, string? Standard)
@@ -72,7 +74,7 @@ public sealed class LibraryItemService(
         await using var db = database.CreateContext();
         var items = await db.LibraryItems.AsNoTracking().OrderBy(i => i.Designation).ToListAsync(ct).ConfigureAwait(false);
         return items.Select(i => new LibraryItemSummary(i.Id, i.Designation, i.Kind, i.DocumentType, i.Standard, i.Manufacturer,
-            i.CategoryId, catalog.Get(i.CategoryId)?.Path ?? "?", i.RelativePath, i.Version, i.ModifiedAt, i.ModifiedBy)).ToList();
+            i.CategoryId, catalog.Get(i.CategoryId)?.Path ?? "?", i.RelativePath, i.Version, i.ModifiedAt, i.ModifiedBy, i.StandardIsManual)).ToList();
     }
 
     /// <summary>Обозначения сборок библиотеки, в которые входит компонент.</summary>
@@ -92,7 +94,7 @@ public sealed class LibraryItemService(
         var storage = storageFactory();
 
         var placement = LibraryRules.Place(catalog, storage, edit.Designation, edit.Kind, edit.Manufacturer, edit.CategoryId,
-            Path.GetExtension(item.RelativePath));
+            Path.GetExtension(item.RelativePath), edit.ManualStandard);
         var issues = new List<ImportIssue>();
         if (!properties.IsAvailable)
             issues.Add(new ImportIssue(ImportSeverity.Error, $"Нет доступа к свойствам файлов Inventor: {properties.UnavailableReason}"));
@@ -169,6 +171,7 @@ public sealed class LibraryItemService(
             item.DesignationKey = DesignationNormalizer.ToKey(check.CanonicalDesignation);
             item.Kind = edit.Kind;
             item.Standard = check.Standard;
+            item.StandardIsManual = edit.Kind == LibraryItemKind.Standard && LibraryRules.NormalizeStandard(edit.ManualStandard) is not null;
             item.Manufacturer = manufacturer;
             item.CategoryId = category.Id;
             item.RelativePath = check.NewRelativePath!;

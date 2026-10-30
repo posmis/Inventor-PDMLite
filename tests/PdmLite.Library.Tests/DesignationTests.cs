@@ -37,6 +37,10 @@ public class DesignationTests
     [InlineData("Подшипник 2880086 ГОСТ Р 71547-2024", "ГОСТ Р 71547-2024")]
     [InlineData("Гайка самоконтрящаяся DIN 985 - M6 - 10", "DIN 985")]
     [InlineData("Пробка M12x1.25 исп.3 ОСТ 26-04-2000-77", "ОСТ 26-04-2000-77")]
+    [InlineData("Стопорное кольцо DIN 471-15x1", "DIN 471")]
+    [InlineData("Шайба DIN 6798-8,4", "DIN 6798")]
+    [InlineData("Болт M12-6gx60.58 (S18) ГОСТ 7798-70", "ГОСТ 7798-70")]
+    [InlineData("Кольцо ГОСТ 13942-86-А.40", "ГОСТ 13942-86")]
     [InlineData("Цепь привода левая 428 - 15 - 25", null)]
     [InlineData("Кабельный ввод SKINTOP MS-M 20x1,5 Lapp", null)]
     public void StandardParser_FindsStandard(string designation, string? expected) =>
