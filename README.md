@@ -34,6 +34,8 @@
 Требуется Windows, **.NET 8 SDK** и **Inventor 2025** (для сборки плагина нужна
 `Autodesk.Inventor.Interop.dll` из папки Inventor).
 
+Установка «как у пользователя» (в `%LOCALAPPDATA%\PdmLite`, без Visual Studio):
+
 ```powershell
 # сборка и установка для текущего пользователя (Inventor и Explorer должны быть закрыты)
 powershell -ExecutionPolicy Bypass -File deploy\install.ps1
@@ -43,15 +45,24 @@ powershell -ExecutionPolicy Bypass -File deploy\install.ps1
 `%LOCALAPPDATA%\PdmLite\Explorer\PdmLite.Explorer.exe`.
 Журналы: `%LOCALAPPDATA%\PdmLite\logs`. Удаление: `deploy\uninstall.ps1`.
 
-Разработка:
+### Разработка в Visual Studio
 
-```powershell
-dotnet build PdmLite.sln
-dotnet test
-```
+1. Откройте `PdmLite.sln` (Visual Studio 2022 17.8+, Inventor 2025 закрыт).
+2. **Соберите решение** (Ctrl+Shift+B). Плагин регистрируется в Inventor автоматически:
+   сборка пишет `%APPDATA%\Autodesk\Inventor 2025\Addins\PdmLite.addin` со ссылкой на
+   только что собранную `PdmLite.AddIn.dll`.
+3. Запуск:
+   - **Inventor с плагином** — проект `PdmLite.AddIn` как запускаемый, F5 (профиль «Inventor 2025»
+     запускает Inventor; точки останова в плагине работают);
+   - **Explorer** — проект `PdmLite.Explorer`, F5;
+   - **оба сразу** — «Настроить запускаемые проекты» → «Несколько запускаемых проектов».
 
-Если Inventor установлен не в стандартную папку:
-`dotnet build -p:InventorInteropPath="D:\...\Autodesk.Inventor.Interop.dll"`.
+Если Inventor запущен, сборка остановится с понятной ошибкой: он держит файлы плагина.
+Отключить автоматическую регистрацию: `-p:PdmLiteRegisterAddIn=false`.
+Если Inventor установлен не в стандартную папку: `-p:InventorInteropPath="D:\...\Autodesk.Inventor.Interop.dll"`
+(и поправьте путь к `Inventor.exe` в `src/PdmLite.AddIn/Properties/launchSettings.json`).
+
+Тесты: `dotnet test` или «Тест → Обозреватель тестов».
 
 ## Структура
 

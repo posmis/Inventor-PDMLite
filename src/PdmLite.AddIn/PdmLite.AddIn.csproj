@@ -10,6 +10,15 @@
     <AssemblyName>PdmLite.AddIn</AssemblyName>
     <Description>Плагин PdmLite для Autodesk Inventor 2025.</Description>
 
+    <!--
+      Регистрация плагина при сборке: после каждой сборки в папку плагинов Inventor
+      пишется PdmLite.addin, указывающий на только что собранную DLL. Собрали в Visual Studio —
+      Inventor при следующем запуске загрузит эту сборку. Отключить: -p:PdmLiteRegisterAddIn=false.
+    -->
+    <PdmLiteRegisterAddIn Condition="'$(PdmLiteRegisterAddIn)' == '' and '$(OS)' == 'Windows_NT'">true</PdmLiteRegisterAddIn>
+    <PdmLiteAddinFolder Condition="'$(PdmLiteAddinFolder)' == ''">$(APPDATA)\Autodesk\Inventor 2025\Addins</PdmLiteAddinFolder>
+    <PdmLiteAddinTemplate>$(MSBuildThisFileDirectory)..\..\deploy\PdmLite.addin.template</PdmLiteAddinTemplate>
+
     <!-- Путь к сборке Inventor API. Можно переопределить: dotnet build -p:InventorInteropPath=... -->
     <InventorInteropPath Condition="'$(InventorInteropPath)' == ''">$(ProgramW6432)\Autodesk\Inventor 2025\Bin\Public Assemblies\Autodesk.Inventor.Interop.dll</InventorInteropPath>
   </PropertyGroup>
@@ -44,6 +53,26 @@
   <ItemGroup>
     <None Update="modules.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!-- Запущенный Inventor держит DLL плагина: понятная ошибка вместо «файл занят». -->
+  <Target Name="CheckInventorNotRunning" BeforeTargets="CopyFilesToOutputDirectory" Condition="'$(OS)' == 'Windows_NT'">
+    <Exec Command="tasklist /FI &quot;IMAGENAME eq Inventor.exe&quot; /NH | find /I &quot;Inventor.exe&quot; &gt; NUL"
+          IgnoreExitCode="true" StandardOutputImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="_InventorRunningExitCode" />
+    </Exec>
+    <Error Condition="'$(_InventorRunningExitCode)' == '0'"
+           Text="Inventor запущен и держит файлы плагина. Закройте Inventor и соберите снова (или запускайте его из Visual Studio по F5 после сборки)." />
+  </Target>
+
+  <Target Name="RegisterAddIn" AfterTargets="Build" Condition="'$(PdmLiteRegisterAddIn)' == 'true'">
+    <PropertyGroup>
+      <_AddinManifest>$([System.IO.File]::ReadAllText('$(PdmLiteAddinTemplate)').Replace('{ASSEMBLY_PATH}', '$(TargetPath)'))</_AddinManifest>
+    </PropertyGroup>
+    <MakeDir Directories="$(PdmLiteAddinFolder)" />
+    <WriteLinesToFile File="$(PdmLiteAddinFolder)\PdmLite.addin" Lines="$(_AddinManifest)" Overwrite="true"
+                      Encoding="utf-8" WriteOnlyWhenDifferent="true" />
+    <Message Importance="high" Text="PdmLite: плагин зарегистрирован в Inventor → $(TargetPath)" />
+  </Target>
 
   <Target Name="CheckInventorInterop" BeforeTargets="ResolveAssemblyReferences" Condition="!Exists('$(InventorInteropPath)')">
     <Error Text="Не найдена сборка Inventor API: $(InventorInteropPath). Установите Inventor 2025 или укажите путь: dotnet build -p:InventorInteropPath=..." />

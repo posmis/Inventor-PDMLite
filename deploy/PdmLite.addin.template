@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Манифест плагина PdmLite. Файл PdmLite.addin создаётся из этого шаблона скриптом install.ps1. -->
+<!-- Манифест плагина PdmLite. PdmLite.addin создаётся из этого шаблона при сборке PdmLite.AddIn и скриптом install.ps1. -->
 <Addin Type="Standard">
   <ClassId>{DAF7F48D-0F53-40EA-8861-0D3FE0627C14}</ClassId>
   <ClientId>{DAF7F48D-0F53-40EA-8861-0D3FE0627C14}</ClientId>

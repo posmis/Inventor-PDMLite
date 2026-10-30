@@ -55,6 +55,11 @@ public sealed class ExplorerLauncher(ILogger<ExplorerLauncher> logger)
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PdmLite", "Explorer", ExeName),
         };
 
+        // Сборка из Visual Studio: ...\src\PdmLite.AddIn\bin\{Config}\{TFM} → ...\src\PdmLite.Explorer\bin\{Config}\{TFM}
+        var output = new DirectoryInfo(Path.GetDirectoryName(typeof(ExplorerLauncher).Assembly.Location)!);
+        if (output.Parent?.Parent?.Parent?.Parent is { } src)
+            candidates.Add(Path.Combine(src.FullName, "PdmLite.Explorer", "bin", output.Parent.Name, output.Name, ExeName));
+
         return candidates
             .Where(p => !string.IsNullOrWhiteSpace(p))
             .Select(p => Path.GetFullPath(p!))
