@@ -35,9 +35,7 @@ public sealed record LibraryItemEditCheck(IReadOnlyList<ImportIssue> Issues, str
     public bool HasErrors => Issues.Any(i => i.Severity == ImportSeverity.Error);
 }
 
-/// <summary>
-/// Просмотр, изменение и удаление компонентов библиотеки.
-/// </summary>
+/// <summary>Просмотр, изменение и удаление компонентов библиотеки.</summary>
 /// <remarks>
 /// Изменение обозначения, типа, производителя или раздела переименовывает и при необходимости
 /// переносит файл, перезаписывает свойства в нём и перевязывает сборки библиотеки, которые
@@ -79,68 +77,42 @@ public sealed class LibraryItemService(
     {
         await using var db = database.CreateContext();
         var item = await db.LibraryItems.AsNoTracking().SingleAsync(i => i.Id == id, ct).ConfigureAwait(false);
+        var storage = storageFactory();
+
+        var placement = LibraryRules.Place(catalog, storage, edit.Designation, edit.Kind, edit.Manufacturer, edit.CategoryId,
+            Path.GetExtension(item.RelativePath));
         var issues = new List<ImportIssue>();
-        void Error(string m) => issues.Add(new ImportIssue(ImportSeverity.Error, m));
-        void Warn(string m) => issues.Add(new ImportIssue(ImportSeverity.Warning, m));
-
-        var designation = DesignationNormalizer.ToCanonical(edit.Designation ?? "");
-        var standard = edit.Kind == LibraryItemKind.Standard ? StandardParser.Find(designation) : null;
-
         if (!properties.IsAvailable)
-            Error($"Нет доступа к свойствам файлов Inventor: {properties.UnavailableReason}");
-        if (designation.Length == 0)
+            issues.Add(new ImportIssue(ImportSeverity.Error, $"Нет доступа к свойствам файлов Inventor: {properties.UnavailableReason}"));
+        issues.AddRange(placement.Issues);
+
+        if (placement.Designation.Length > 0)
         {
-            Error("Не указано обозначение.");
-            return new LibraryItemEditCheck(issues, null, designation, standard);
+            var key = DesignationNormalizer.ToKey(placement.Designation);
+            var other = await db.LibraryItems.AsNoTracking().Where(i => i.DesignationKey == key && i.Id != id)
+                .Select(i => i.Designation).FirstOrDefaultAsync(ct).ConfigureAwait(false);
+            if (other is not null)
+                issues.Add(new ImportIssue(ImportSeverity.Error, $"В библиотеке уже есть «{other}»."));
         }
 
-        var key = DesignationNormalizer.ToKey(designation);
-        var other = await db.LibraryItems.AsNoTracking().Where(i => i.DesignationKey == key && i.Id != id)
-            .Select(i => i.Designation).FirstOrDefaultAsync(ct).ConfigureAwait(false);
-        if (other is not null)
-            Error($"В библиотеке уже есть «{other}».");
-
-        if (edit.Kind == LibraryItemKind.Standard && standard is null)
-            Error("В обозначении не найден стандарт (ГОСТ, ISO, DIN…). Исправьте обозначение или выберите тип «Покупное».");
-        if (edit.Kind == LibraryItemKind.Purchased && string.IsNullOrWhiteSpace(edit.Manufacturer))
-            Warn($"Не указан производитель — компонент попадёт в папку «{LibraryStorage.NoManufacturerFolder}».");
-
-        var category = catalog.Get(edit.CategoryId);
-        string? newPath = null;
-        if (category is null)
-            Error("Не выбран раздел библиотеки.");
-        else if (!category.IsLeaf)
-            Error($"«{category.Path}» — раздел; выберите группу внутри него.");
-        else
+        if (placement.RelativePath is { } newPath && !SamePath(newPath, item.RelativePath))
         {
-            var subfolder = edit.Kind == LibraryItemKind.Standard
-                ? standard
-                : string.IsNullOrWhiteSpace(edit.Manufacturer) ? LibraryStorage.NoManufacturerFolder : edit.Manufacturer.Trim();
-            newPath = LibraryStorage.BuildRelativePath(category.PathParts, subfolder, designation, Path.GetExtension(item.RelativePath));
+            if (File.Exists(storage.GetFullPath(newPath)))
+                issues.Add(new ImportIssue(ImportSeverity.Error, $"В папке библиотеки уже есть файл {newPath}."));
 
-            var storage = storageFactory();
-            var full = storage.GetFullPath(newPath);
-            var moved = !string.Equals(newPath, item.RelativePath, StringComparison.OrdinalIgnoreCase);
-            if (full.Length > LibraryStorage.MaxPathLength)
-                Error($"Слишком длинный путь в библиотеке ({full.Length} символов, допустимо {LibraryStorage.MaxPathLength}).");
-            else if (moved && File.Exists(full))
-                Error($"В папке библиотеки уже есть файл {newPath}.");
-
-            if (moved)
-            {
-                var usedIn = await UsedInAsync(id, ct).ConfigureAwait(false);
-                if (usedIn.Count > 0)
-                    issues.Add(new ImportIssue(ImportSeverity.Info,
-                        "Сборки библиотеки, в которые входит компонент, будут перевязаны на новый файл: " + string.Join(", ", usedIn) + "."));
-                Warn("Файл будет переименован или перенесён. Если вы уже вставляли этот компонент в сборки проектов, " +
-                     "в них придётся заменить ссылку (автоматическое обновление — в следующих шагах).");
-            }
+            var usedIn = await UsedInAsync(id, ct).ConfigureAwait(false);
+            if (usedIn.Count > 0)
+                issues.Add(new ImportIssue(ImportSeverity.Info,
+                    "Сборки библиотеки, в которые входит компонент, будут перевязаны на новый файл: " + string.Join(", ", usedIn) + "."));
+            issues.Add(new ImportIssue(ImportSeverity.Warning,
+                "Файл будет переименован или перенесён. Если вы уже вставляли этот компонент в сборки проектов, " +
+                "в них придётся заменить ссылку (автоматическое обновление — в следующих шагах)."));
         }
 
-        return new LibraryItemEditCheck(issues, newPath, designation, standard);
+        return new LibraryItemEditCheck(issues, placement.RelativePath, placement.Designation, placement.Standard);
     }
 
-    /// <summary>Применяет изменение карточки. При ошибке всё возвращается как было.</summary>
+    /// <summary>Применяет изменение карточки. При ошибке файл, сборки и база остаются как были.</summary>
     public async Task ApplyEditAsync(LibraryCatalog catalog, Guid id, LibraryItemEdit edit, CancellationToken ct = default)
     {
         var check = await CheckEditAsync(catalog, id, edit, ct).ConfigureAwait(false);
@@ -150,60 +122,34 @@ public sealed class LibraryItemService(
         var storage = storageFactory();
         var user = Environment.UserName;
         var category = catalog.Get(edit.CategoryId)!;
+        var manufacturer = string.IsNullOrWhiteSpace(edit.Manufacturer) ? null : edit.Manufacturer.Trim();
 
         await using var db = database.CreateContext();
         var item = await db.LibraryItems.Include(i => i.Versions).SingleAsync(i => i.Id == id, ct).ConfigureAwait(false);
-        var before = new { item.Designation, item.Kind, item.Standard, item.Manufacturer, Category = catalog.Get(item.CategoryId)?.Path, item.RelativePath };
+        var before = Snapshot(item, catalog.Get(item.CategoryId)?.Path);
 
         var oldFull = storage.GetFullPath(item.RelativePath);
         var newFull = storage.GetFullPath(check.NewRelativePath!);
-        var moved = !string.Equals(oldFull, newFull, StringComparison.OrdinalIgnoreCase);
-        var manufacturer = string.IsNullOrWhiteSpace(edit.Manufacturer) ? null : edit.Manufacturer.Trim();
+        var moved = !SamePath(check.NewRelativePath!, item.RelativePath);
 
-        // Резервная копия файла на время операции: свойства в нём перезаписываются.
-        var backup = MakeBackup(oldFull);
-        var relinked = new List<(string Path, string Backup)>();
+        // Резервные копии на время операции: свойства в файле перезаписываются, сборки перевязываются.
+        var backups = new List<(string Path, string Backup)> { (oldFull, LibraryStorage.Backup(oldFull)) };
         try
         {
-            ClearReadOnly(oldFull);
+            LibraryStorage.ClearReadOnly(oldFull);
             if (moved)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(newFull)!);
                 File.Move(oldFull, newFull);
             }
 
-            await properties.WriteAsync(newFull, new DocumentPropertyChanges
-            {
-                PartNumber = check.CanonicalDesignation,
-                Description = check.CanonicalDesignation,
-                Title = check.CanonicalDesignation,
-                Custom = new Dictionary<string, string>
-                {
-                    [LibraryImportService.PropertyStandard] = check.Standard ?? "",
-                    [LibraryImportService.PropertyManufacturer] = manufacturer ?? "",
-                    [LibraryImportService.PropertyCategory] = category.Path,
-                },
-            }, ct).ConfigureAwait(false);
+            await properties.WriteAsync(newFull, LibraryProperties.For(check.CanonicalDesignation, check.Standard, manufacturer, category.Path, id), ct)
+                .ConfigureAwait(false);
             LibraryStorage.MakeReadOnly(newFull);
             var (hash, size) = await LibraryStorage.HashAsync(newFull, ct).ConfigureAwait(false);
 
-            // Сборки библиотеки, ссылающиеся на компонент, — на новый путь.
             if (moved)
-            {
-                var assemblies = await db.LibraryItemReferences.Where(r => r.ComponentId == id)
-                    .Join(db.LibraryItems, r => r.AssemblyId, i => i.Id, (_, i) => i).ToListAsync(ct).ConfigureAwait(false);
-                foreach (var assembly in assemblies)
-                {
-                    var asmPath = storage.GetFullPath(assembly.RelativePath);
-                    relinked.Add((asmPath, MakeBackup(asmPath)));
-                    ClearReadOnly(asmPath);
-                    await properties.ReplaceReferencesAsync(asmPath, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [oldFull] = newFull }, ct).ConfigureAwait(false);
-                    LibraryStorage.MakeReadOnly(asmPath);
-                    var (asmHash, asmSize) = await LibraryStorage.HashAsync(asmPath, ct).ConfigureAwait(false);
-                    assembly.FileHash = asmHash;
-                    assembly.FileSize = asmSize;
-                }
-            }
+                await RelinkAssembliesAsync(db, storage, id, oldFull, newFull, backups, ct).ConfigureAwait(false);
 
             var now = DateTime.UtcNow;
             var categoryChanged = item.CategoryId != category.Id;
@@ -231,11 +177,7 @@ public sealed class LibraryItemService(
                 User = user,
                 Action = "edit",
                 ItemId = id,
-                Details = JsonSerializer.Serialize(new
-                {
-                    before,
-                    after = new { item.Designation, item.Kind, item.Standard, item.Manufacturer, Category = category.Path, item.RelativePath },
-                }),
+                Details = JsonSerializer.Serialize(new { before, after = Snapshot(item, category.Path) }),
             });
             if (categoryChanged)
                 await LibraryCatalog.LearnAsync(db, item.Designation, item.Standard, category.Id, ct).ConfigureAwait(false);
@@ -245,21 +187,20 @@ public sealed class LibraryItemService(
         }
         catch
         {
-            // Откат: исходный файл и перевязанные сборки — из резервных копий.
-            TryRestore(backup, oldFull, moved ? newFull : null);
-            foreach (var (path, copy) in relinked)
-                TryRestore(copy, path, null);
+            if (moved)
+                TryDelete(newFull);
+            foreach (var (path, backup) in backups)
+                TryRestore(backup, path);
             throw;
         }
         finally
         {
-            TryDelete(backup);
-            foreach (var (_, copy) in relinked)
-                TryDelete(copy);
+            foreach (var (_, backup) in backups)
+                TryDelete(backup);
         }
 
         if (moved)
-            RemoveEmptyFolders(storage, Path.GetDirectoryName(oldFull)!);
+            storage.RemoveEmptyFolders(Path.GetDirectoryName(oldFull)!);
     }
 
     /// <summary>Удаляет компонент: файл и запись в базе. Нельзя, если он входит в сборку библиотеки.</summary>
@@ -285,71 +226,60 @@ public sealed class LibraryItemService(
         });
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
 
-        storage.Remove(full);
-        RemoveEmptyFolders(storage, Path.GetDirectoryName(full)!);
+        LibraryStorage.Delete(full);
+        storage.RemoveEmptyFolders(Path.GetDirectoryName(full)!);
         logger.LogInformation("Компонент удалён из библиотеки: {Designation}", item.Designation);
     }
 
-    private static void ClearReadOnly(string path) =>
-        File.SetAttributes(path, File.GetAttributes(path) & ~FileAttributes.ReadOnly);
-
-    /// <summary>
-    /// Временная копия файла на случай отката. Копия наследует «только чтение» от файла
-    /// библиотеки — снимаем, иначе Windows не даст её удалить.
-    /// </summary>
-    private static string MakeBackup(string path)
+    /// <summary>Сборки библиотеки, в которые входит компонент, — на новый путь файла.</summary>
+    private async Task RelinkAssembliesAsync(PdmDbContext db, LibraryStorage storage, Guid componentId, string oldFull, string newFull,
+        List<(string Path, string Backup)> backups, CancellationToken ct)
     {
-        var backup = Path.Combine(Path.GetTempPath(), $"pdmlite-{Guid.NewGuid():N}{Path.GetExtension(path)}");
-        File.Copy(path, backup);
-        ClearReadOnly(backup);
-        return backup;
+        var assemblies = await db.LibraryItemReferences.Where(r => r.ComponentId == componentId)
+            .Join(db.LibraryItems, r => r.AssemblyId, i => i.Id, (_, i) => i).ToListAsync(ct).ConfigureAwait(false);
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [oldFull] = newFull };
+
+        foreach (var assembly in assemblies)
+        {
+            var path = storage.GetFullPath(assembly.RelativePath);
+            backups.Add((path, LibraryStorage.Backup(path)));
+            LibraryStorage.ClearReadOnly(path);
+            await properties.ReplaceReferencesAsync(path, map, ct).ConfigureAwait(false);
+            LibraryStorage.MakeReadOnly(path);
+            (assembly.FileHash, assembly.FileSize) = await LibraryStorage.HashAsync(path, ct).ConfigureAwait(false);
+        }
     }
 
-    private void TryRestore(string backup, string original, string? moved)
+    /// <summary>Карточка «было/стало» для журнала.</summary>
+    private sealed record ItemSnapshot(string Designation, LibraryItemKind Kind, string? Standard, string? Manufacturer, string? Category, string RelativePath);
+
+    private static ItemSnapshot Snapshot(LibraryItem item, string? categoryPath) =>
+        new(item.Designation, item.Kind, item.Standard, item.Manufacturer, categoryPath, item.RelativePath);
+
+    private static bool SamePath(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+    private void TryRestore(string backup, string path)
     {
         try
         {
-            if (moved is not null && File.Exists(moved))
-            {
-                ClearReadOnly(moved);
-                File.Delete(moved);
-            }
-            if (File.Exists(original))
-                ClearReadOnly(original);
-            File.Copy(backup, original, overwrite: true);
-            LibraryStorage.MakeReadOnly(original);
+            LibraryStorage.Restore(backup, path);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Не удалось восстановить {Path} из резервной копии {Backup}", original, backup);
+            logger.LogError(ex, "Не удалось восстановить {Path} из резервной копии {Backup}", path, backup);
         }
     }
 
-    /// <summary>Удаляет временный файл. Не удалось — не ошибка операции, только запись в журнал.</summary>
+    /// <summary>Удаляет файл. Не удалось — не ошибка операции, только запись в журнал.</summary>
     private void TryDelete(string path)
     {
         try
         {
-            if (!File.Exists(path))
-                return;
-            File.SetAttributes(path, FileAttributes.Normal);
-            File.Delete(path);
+            LibraryStorage.Delete(path);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            logger.LogWarning(ex, "Не удалось удалить временный файл {Path}", path);
-        }
-    }
-
-    /// <summary>Убирает опустевшие папки до корня библиотеки.</summary>
-    private static void RemoveEmptyFolders(LibraryStorage storage, string folder)
-    {
-        var dir = new DirectoryInfo(folder);
-        while (dir is not null && storage.Contains(dir.FullName) && dir.Exists && !dir.EnumerateFileSystemInfos().Any())
-        {
-            var parent = dir.Parent;
-            dir.Delete();
-            dir = parent;
+            logger.LogWarning(ex, "Не удалось удалить файл {Path}", path);
         }
     }
 }

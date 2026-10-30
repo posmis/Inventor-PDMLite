@@ -57,7 +57,12 @@ public sealed class LibraryCatalog
     {
         var categories = await db.LibraryCategories.AsNoTracking().ToListAsync(ct);
         var rules = await db.LibraryCategoryRules.AsNoTracking().ToListAsync(ct);
+        return Create(categories, rules);
+    }
 
+    /// <summary>Классификатор из готовых записей (база не нужна — для проверок и тестов).</summary>
+    internal static LibraryCatalog Create(IReadOnlyCollection<LibraryCategory> categories, IEnumerable<LibraryCategoryRule> rules)
+    {
         var byId = categories.ToDictionary(c => c.Id);
         string PathOf(LibraryCategory c) => c.ParentId is { } p && byId.TryGetValue(p, out var parent) ? $"{PathOf(parent)}/{c.Name}" : c.Name;
         var parents = categories.Where(c => c.ParentId is not null).Select(c => c.ParentId!.Value).ToHashSet();

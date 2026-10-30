@@ -38,6 +38,9 @@ public sealed class ImportCandidate
     public DocumentProperties? Properties { get; init; }
     public string? PropertiesError { get; init; }
 
+    /// <summary>Файл не удалось прочитать целиком (занят, нет доступа) — внести нельзя.</summary>
+    public string? ReadError { get; init; }
+
     public string FileHash { get; init; } = "";
     public long FileSize { get; init; }
 

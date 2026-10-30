@@ -20,45 +20,32 @@ public sealed class LibraryImportService(
     Func<LibraryStorage> storageFactory,
     ILogger<LibraryImportService> logger)
 {
-    public const string PropertyLibraryId = "PdmLite.LibraryId";
-    public const string PropertyStandard = "Стандарт";
-    public const string PropertyManufacturer = "Производитель";
-    public const string PropertyCategory = "Раздел библиотеки";
-
     private static readonly HashSet<string> SkippedFolders = new(StringComparer.OrdinalIgnoreCase) { "OldVersions" };
+    private static readonly string[] InventorExtensions = [".ipt", ".iam"];
 
     /// <summary>Сканирует файлы и папки, читает свойства, предлагает обозначение и раздел, проверяет.</summary>
     public async Task<ImportSession> AnalyzeAsync(IEnumerable<string> inputs, IProgress<ImportProgress>? progress = null,
         CancellationToken ct = default)
     {
         var session = await CreateSessionAsync(ct).ConfigureAwait(false);
-        var storage = storageFactory();
-        var files = Enumerate(inputs, storage, session.Skipped);
-
-        for (var i = 0; i < files.Count; i++)
-        {
-            ct.ThrowIfCancellationRequested();
-            progress?.Report(new ImportProgress(i, files.Count, Path.GetFileName(files[i])));
-            session.Candidates.Add(await AnalyzeFileAsync(files[i], session.Catalog, ct).ConfigureAwait(false));
-        }
-
-        progress?.Report(new ImportProgress(files.Count, files.Count, null));
-        Validate(session);
+        await AddAsync(session, inputs, progress, ct).ConfigureAwait(false);
         return session;
     }
 
-    /// <summary>Добавляет файлы к уже открытому сеансу (повторно выбранные пропускаются).</summary>
+    /// <summary>Добавляет файлы к сеансу (уже добавленные пропускаются) и перепроверяет список.</summary>
     public async Task AddAsync(ImportSession session, IEnumerable<string> inputs, IProgress<ImportProgress>? progress = null,
         CancellationToken ct = default)
     {
         var known = session.Candidates.Select(c => c.SourcePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var files = Enumerate(inputs, storageFactory(), session.Skipped).Where(f => !known.Contains(f)).ToList();
+        var files = Enumerate(inputs, storageFactory(), session.Skipped).Where(known.Add).ToList();
+
         for (var i = 0; i < files.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
             progress?.Report(new ImportProgress(i, files.Count, Path.GetFileName(files[i])));
             session.Candidates.Add(await AnalyzeFileAsync(files[i], session.Catalog, ct).ConfigureAwait(false));
         }
+
         progress?.Report(new ImportProgress(files.Count, files.Count, null));
         Validate(session);
     }
@@ -97,8 +84,7 @@ public sealed class LibraryImportService(
             if (!seen.Add(full))
                 return;
 
-            var ext = Path.GetExtension(full);
-            if (!ext.Equals(".ipt", StringComparison.OrdinalIgnoreCase) && !ext.Equals(".iam", StringComparison.OrdinalIgnoreCase))
+            if (!InventorExtensions.Contains(Path.GetExtension(full), StringComparer.OrdinalIgnoreCase))
                 skipped.Add(new SkippedFile(full, "Не деталь и не сборка Inventor"));
             else if (full.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Any(SkippedFolders.Contains))
                 skipped.Add(new SkippedFile(full, "Резервная копия Inventor (OldVersions)"));
@@ -112,9 +98,16 @@ public sealed class LibraryImportService(
         {
             if (Directory.Exists(input))
             {
-                foreach (var file in Directory.EnumerateFiles(input, "*.*", SearchOption.AllDirectories)
-                             .Where(f => f.EndsWith(".ipt", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".iam", StringComparison.OrdinalIgnoreCase))
-                             .Order(StringComparer.CurrentCultureIgnoreCase))
+                var files = Directory.EnumerateFiles(input, "*.*", new EnumerationOptions
+                    {
+                        RecurseSubdirectories = true,
+                        IgnoreInaccessible = true,
+                        // Ярлыки на папки (junction) могут зациклить обход.
+                        AttributesToSkip = FileAttributes.ReparsePoint | FileAttributes.Hidden | FileAttributes.System,
+                    })
+                    .Where(f => InventorExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
+                    .Order(StringComparer.CurrentCultureIgnoreCase);
+                foreach (var file in files)
                     Consider(file);
             }
             else if (File.Exists(input))
@@ -128,7 +121,23 @@ public sealed class LibraryImportService(
 
     private async Task<ImportCandidate> AnalyzeFileAsync(string path, LibraryCatalog catalog, CancellationToken ct)
     {
-        var (hash, size) = await LibraryStorage.HashAsync(path, ct).ConfigureAwait(false);
+        var documentType = Path.GetExtension(path).Equals(".iam", StringComparison.OrdinalIgnoreCase)
+            ? LibraryDocumentType.Assembly
+            : LibraryDocumentType.Part;
+
+        // Занятый или недоступный файл не должен прерывать анализ остальных.
+        string hash;
+        long size;
+        try
+        {
+            (hash, size) = await LibraryStorage.HashAsync(path, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(ex, "Не удалось прочитать файл {Path}", path);
+            var name = DesignationNormalizer.ToCanonical(Path.GetFileNameWithoutExtension(path));
+            return new ImportCandidate { SourcePath = path, DocumentType = documentType, ReadError = ex.Message, OriginalDesignation = name, Designation = name };
+        }
 
         DocumentProperties? props = null;
         string? error = null;
@@ -147,8 +156,17 @@ public sealed class LibraryImportService(
 
         var referenceHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var reference in props?.References ?? [])
-            if (File.Exists(reference))
-                referenceHashes[reference] = (await LibraryStorage.HashAsync(reference, ct).ConfigureAwait(false)).Hash;
+        {
+            try
+            {
+                if (File.Exists(reference))
+                    referenceHashes[reference] = (await LibraryStorage.HashAsync(reference, ct).ConfigureAwait(false)).Hash;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                logger.LogWarning(ex, "Не удалось прочитать компонент сборки {Path}", reference);
+            }
+        }
 
         var original = !string.IsNullOrWhiteSpace(props?.PartNumber) ? props.PartNumber! : Path.GetFileNameWithoutExtension(path);
         var designation = DesignationNormalizer.ToCanonical(original);
@@ -158,9 +176,7 @@ public sealed class LibraryImportService(
         return new ImportCandidate
         {
             SourcePath = path,
-            DocumentType = Path.GetExtension(path).Equals(".iam", StringComparison.OrdinalIgnoreCase)
-                ? LibraryDocumentType.Assembly
-                : LibraryDocumentType.Part,
+            DocumentType = documentType,
             Properties = props,
             PropertiesError = error,
             FileHash = hash,
@@ -175,29 +191,32 @@ public sealed class LibraryImportService(
         };
     }
 
-    /// <summary>
-    /// Проверяет все кандидаты. Вызывается после анализа и после каждой правки пользователя.
-    /// </summary>
+    /// <summary>Проверяет все кандидаты. Вызывается после анализа и после каждой правки пользователя.</summary>
     public void Validate(ImportSession session)
     {
         var storage = storageFactory();
         var included = session.Candidates.Where(c => c.Include).ToList();
-        var bySource = included.ToDictionary(c => c.SourcePath, StringComparer.OrdinalIgnoreCase);
+        var bySource = included.Select(c => c.SourcePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        // Размещение и обозначение — общими правилами (как при изменении карточки).
+        var placements = new Dictionary<ImportCandidate, LibraryPlacement>();
         foreach (var c in session.Candidates)
         {
+            var placement = LibraryRules.Place(session.Catalog, storage, c.Designation, c.Kind, c.Manufacturer,
+                c.CategoryId, Path.GetExtension(c.SourcePath));
+            c.Designation = placement.Designation;
+            c.Standard = placement.Standard;
             c.Issues.Clear();
-            c.TargetRelativePath = null;
-            c.Designation = DesignationNormalizer.ToCanonical(c.Designation ?? "");
-            if (c.Kind == LibraryItemKind.Standard)
-                c.Standard = StandardParser.Find(c.Designation);
-            else
-                c.Standard = null;
+            c.TargetRelativePath = c.Include ? placement.RelativePath : null;
+            placements[c] = placement;
         }
 
-        var keyCounts = included.Where(c => c.Designation.Length > 0)
+        var byKey = included.Where(c => c.Designation.Length > 0)
             .GroupBy(c => DesignationNormalizer.ToKey(c.Designation)).ToDictionary(g => g.Key, g => g.ToList());
-        var hashCounts = included.GroupBy(c => c.FileHash).ToDictionary(g => g.Key, g => g.ToList());
+        var byHash = included.Where(c => c.FileHash.Length > 0)
+            .GroupBy(c => c.FileHash).ToDictionary(g => g.Key, g => g.ToList());
+        var byTarget = included.Where(c => c.TargetRelativePath is not null)
+            .GroupBy(c => c.TargetRelativePath!, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
 
         foreach (var c in included)
         {
@@ -205,18 +224,17 @@ public sealed class LibraryImportService(
             void Warn(string m) => c.Issues.Add(new ImportIssue(ImportSeverity.Warning, m));
             void Info(string m) => c.Issues.Add(new ImportIssue(ImportSeverity.Info, m));
 
-            // Свойства
-            if (!session.CanWriteProperties)
+            // Чтение файла и свойств
+            if (c.ReadError is not null)
+                Error($"Файл не прочитан (занят другой программой или нет доступа): {c.ReadError}");
+            else if (!session.CanWriteProperties)
                 Error($"Нет доступа к свойствам файлов Inventor: {session.PropertiesUnavailableReason}");
             else if (c.Properties is null)
                 Error($"Не удалось прочитать файл: {c.PropertiesError}");
 
-            // Обозначение
+            c.Issues.AddRange(placements[c].Issues);
             if (c.Designation.Length == 0)
-            {
-                Error("Не указано обозначение.");
                 continue;
-            }
 
             var key = DesignationNormalizer.ToKey(c.Designation);
             if (c.OriginalDesignation.Length > 0 && c.OriginalDesignation != c.Designation)
@@ -237,35 +255,20 @@ public sealed class LibraryImportService(
             if (DesignationNormalizer.ToKey(Path.GetFileNameWithoutExtension(c.SourcePath)) != key)
                 Info("Имя файла не совпадает с обозначением — в библиотеке файл будет назван по обозначению.");
 
-            // Стандарт / производитель
-            if (c.Kind == LibraryItemKind.Standard && c.Standard is null)
-                Error("В обозначении не найден стандарт (ГОСТ, ISO, DIN…). Исправьте обозначение или выберите тип «Покупное».");
-            if (c.Kind == LibraryItemKind.Purchased && string.IsNullOrWhiteSpace(c.Manufacturer))
-                Warn($"Не указан производитель — компонент попадёт в папку «{LibraryStorage.NoManufacturerFolder}».");
-
-            // Раздел
-            var category = session.Catalog.Get(c.CategoryId);
-            if (category is null)
-                Error("Не выбран раздел библиотеки.");
-            else if (!category.IsLeaf)
-                Error($"«{category.Path}» — раздел; выберите группу внутри него.");
-
             // Дубликаты
             if (session.ExistingKeys.TryGetValue(key, out var existing))
                 Error($"В библиотеке уже есть «{existing}».");
-            if (keyCounts.TryGetValue(key, out var sameKey) && sameKey.Count > 1)
+            if (byKey.TryGetValue(key, out var sameKey) && sameKey.Count > 1)
                 Error("Обозначение повторяется в списке: " + string.Join(", ", sameKey.Where(x => x != c).Select(x => x.FileName)) + ".");
-            if (session.ExistingHashes.TryGetValue(c.FileHash, out var sameFile))
+            if (c.FileHash.Length > 0 && session.ExistingHashes.TryGetValue(c.FileHash, out var sameFile))
                 Error($"Этот файл уже добавлен в библиотеку как «{sameFile}».");
-            if (hashCounts.TryGetValue(c.FileHash, out var sameHash) && sameHash.Count > 1)
+            if (c.FileHash.Length > 0 && byHash.TryGetValue(c.FileHash, out var sameHash) && sameHash.Count > 1)
                 Error("Такой же файл в списке: " + string.Join(", ", sameHash.Where(x => x != c).Select(x => x.FileName)) + ".");
 
-            // Компоненты сборки
+            // Компоненты сборки: в папке библиотеки, в этом же списке или уже внесены из того же файла.
             if (c.DocumentType == LibraryDocumentType.Assembly && c.Properties is { } asm)
             {
-                // Компонент годится, если он в папке библиотеки, в этом же списке
-                // или уже внесён раньше из того же файла (узнаётся по содержимому).
-                var missing = asm.References.Where(r => !storage.Contains(r) && !bySource.ContainsKey(r)
+                var missing = asm.References.Where(r => !storage.Contains(r) && !bySource.Contains(r)
                     && !(c.ReferenceHashes.TryGetValue(r, out var h) && session.ExistingHashes.ContainsKey(h))).ToList();
                 if (missing.Count > 0)
                     Error("Компоненты сборки не в библиотеке и не в списке: "
@@ -273,25 +276,14 @@ public sealed class LibraryImportService(
             }
 
             // Путь в библиотеке
-            if (category is { IsLeaf: true })
+            if (c.TargetRelativePath is { } target)
             {
-                var subfolder = c.Kind == LibraryItemKind.Standard
-                    ? c.Standard
-                    : string.IsNullOrWhiteSpace(c.Manufacturer) ? LibraryStorage.NoManufacturerFolder : c.Manufacturer;
-                c.TargetRelativePath = LibraryStorage.BuildRelativePath(category.PathParts, subfolder, c.Designation, Path.GetExtension(c.SourcePath));
-                var full = storage.GetFullPath(c.TargetRelativePath);
-                if (full.Length > LibraryStorage.MaxPathLength)
-                    Error($"Слишком длинный путь в библиотеке ({full.Length} символов, допустимо {LibraryStorage.MaxPathLength}).");
-                else if (File.Exists(full))
-                    Error($"В папке библиотеки уже есть файл {c.TargetRelativePath}.");
+                if (File.Exists(storage.GetFullPath(target)))
+                    Error($"В папке библиотеки уже есть файл {target}.");
+                if (byTarget[target] > 1)
+                    Error($"Совпадает путь в библиотеке с другим файлом списка: {target}.");
             }
         }
-
-        // Совпадение путей у разных обозначений (например, отличаются только запрещёнными символами).
-        foreach (var group in included.Where(c => c.TargetRelativePath is not null)
-                     .GroupBy(c => c.TargetRelativePath!, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
-            foreach (var c in group)
-                c.Issues.Add(new ImportIssue(ImportSeverity.Error, $"Совпадает путь в библиотеке с другим файлом списка: {group.Key}."));
     }
 
     /// <summary>
@@ -325,27 +317,16 @@ public sealed class LibraryImportService(
                 var id = Guid.NewGuid();
 
                 await using var db = database.CreateContext();
-                var componentIds = new List<Guid>();
-                if (c.DocumentType == LibraryDocumentType.Assembly)
-                    componentIds = await RelinkAssemblyAsync(db, storage, c, copied, committed, ct).ConfigureAwait(false);
+                var componentIds = c.DocumentType == LibraryDocumentType.Assembly
+                    ? await RelinkAssemblyAsync(db, storage, c, copied, committed, ct).ConfigureAwait(false)
+                    : [];
 
-                await properties.WriteAsync(copied, new DocumentPropertyChanges
-                {
-                    PartNumber = c.Designation,
-                    Description = c.Designation,
-                    Title = c.Designation,
-                    Custom = new Dictionary<string, string>
-                    {
-                        [PropertyLibraryId] = id.ToString(),
-                        [PropertyStandard] = c.Standard ?? "",
-                        [PropertyManufacturer] = c.Manufacturer ?? "",
-                        [PropertyCategory] = category.Path,
-                    },
-                }, ct).ConfigureAwait(false);
-
+                await properties.WriteAsync(copied, LibraryProperties.For(c.Designation, c.Standard, c.Manufacturer, category.Path, id), ct)
+                    .ConfigureAwait(false);
                 LibraryStorage.MakeReadOnly(copied);
                 var (hash, size) = await LibraryStorage.HashAsync(copied, ct).ConfigureAwait(false);
                 var now = DateTime.UtcNow;
+                var key = DesignationNormalizer.ToKey(c.Designation);
 
                 await using var tx = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
                 db.LibraryItems.Add(new LibraryItem
@@ -355,7 +336,7 @@ public sealed class LibraryImportService(
                     Kind = c.Kind,
                     DocumentType = c.DocumentType,
                     Designation = c.Designation,
-                    DesignationKey = DesignationNormalizer.ToKey(c.Designation),
+                    DesignationKey = key,
                     Standard = c.Standard,
                     Manufacturer = string.IsNullOrWhiteSpace(c.Manufacturer) ? null : c.Manufacturer.Trim(),
                     RelativePath = c.TargetRelativePath!,
@@ -367,7 +348,14 @@ public sealed class LibraryImportService(
                     CreatedBy = user,
                     ModifiedAt = now,
                     ModifiedBy = user,
-                    Versions = [new LibraryItemVersion { Version = 1, RelativePath = c.TargetRelativePath!, FileHash = hash, FileSize = size, CreatedAt = now, CreatedBy = user, Comment = "Добавлен в библиотеку" }],
+                    Versions =
+                    [
+                        new LibraryItemVersion
+                        {
+                            Version = 1, RelativePath = c.TargetRelativePath!, FileHash = hash, FileSize = size,
+                            CreatedAt = now, CreatedBy = user, Comment = "Добавлен в библиотеку",
+                        },
+                    ],
                     References = componentIds.Distinct().Select(cid => new LibraryItemReference { AssemblyId = id, ComponentId = cid }).ToList(),
                 });
                 db.LibraryLog.Add(new LibraryLogEntry
@@ -385,13 +373,14 @@ public sealed class LibraryImportService(
                 await tx.CommitAsync(ct).ConfigureAwait(false);
 
                 committed[c.SourcePath] = (id, copied);
+                session.Remember(key, c.Designation, c.FileHash, hash);
                 logger.LogInformation("В библиотеку добавлен {Designation} ({Path})", c.Designation, c.TargetRelativePath);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 logger.LogError(ex, "Не удалось добавить {Path}", c.SourcePath);
                 if (copied is not null)
-                    TryRemove(storage, copied);
+                    TryDelete(copied);
                 failed.Add((c, ex is DbUpdateException { InnerException: { } inner } ? inner.Message : ex.Message));
             }
         }
@@ -438,13 +427,13 @@ public sealed class LibraryImportService(
         return ids;
     }
 
-    private void TryRemove(LibraryStorage storage, string path)
+    private void TryDelete(string path)
     {
         try
         {
-            storage.Remove(path);
+            LibraryStorage.Delete(path);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             logger.LogWarning(ex, "Не удалось удалить {Path} после ошибки", path);
         }

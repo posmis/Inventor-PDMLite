@@ -49,4 +49,40 @@ public class DesignationTests
     [InlineData("Кабельный ввод SKINTOP MS-M 20x1,5 Lapp", "кабельный ввод")]
     public void LeadingWords_StopAtFirstCode(string designation, string expected) =>
         Assert.Equal(expected, string.Join(' ', DesignationNormalizer.LeadingWords(designation)));
+
+    [Theory]
+    [InlineData("Болт М10-6gх25.109 ГОСТ 7798-70")]
+    [InlineData("Шайба А.10.01.08кп.016 ГОСТ 11371-78")]
+    [InlineData("Ось 6-10 h11x30.Ст3сп ГОСТ 9650-80")]
+    [InlineData("Винт ГОСТ Р ИСО 4017 -М5 х 12-8.8-A2U")]
+    public void ToCanonical_IsIdempotent(string input)
+    {
+        var once = DesignationNormalizer.ToCanonical(input);
+        Assert.Equal(once, DesignationNormalizer.ToCanonical(once));
+    }
+
+    [Theory]
+    [InlineData("Гвоздь К 2,5x50 ГОСТ 4028-63", "Гвоздь K 2,5x50 ГОСТ 4028-63")]
+    [InlineData("Рым-болт М12.019 ГОСТ 4751-73", "Рым-болт M12.019 ГОСТ 4751-73")]
+    [InlineData("Гайка М5-6Н.10.016 (S8) ГОСТ 5927-70", "Гайка M5-6H.10.016 (S8) ГОСТ 5927-70")]
+    [InlineData("Табличка 63x20 ГОСТ 12971-67", "Табличка 63x20 ГОСТ 12971-67")]
+    [InlineData("Кабельный ввод SKINTOP MS-M 20x1,5 Lapp", "Кабельный ввод SKINTOP MS-M 20x1,5 Lapp")]
+    public void ToCanonical_MoreCases(string input, string expected) =>
+        Assert.Equal(expected, DesignationNormalizer.ToCanonical(input));
+
+    [Fact]
+    public void ToKey_TreatsDashesAndTimesSignAlike()
+    {
+        Assert.Equal(DesignationNormalizer.ToKey("Болт M14-6g×140"), DesignationNormalizer.ToKey("Болт M14–6gx140"));
+        Assert.Equal(DesignationNormalizer.ToKey("ЗАКЛЕПКА 2 2X4"), DesignationNormalizer.ToKey("заклепка 2 2х4"));
+    }
+
+    [Theory]
+    [InlineData("Рым-болт M12.019 ГОСТ 4751-73", "ГОСТ 4751-73")]
+    [InlineData("Винт с потайной головкой ГОСТ Р ИСО 10642 -M4x35-8.8-A2U", "ГОСТ Р ИСО 10642")]
+    [InlineData("Винт DIN EN ISO 4762 M6x20", "DIN EN ISO 4762")]
+    [InlineData("Изделие ТУ 3-7-2010", "ТУ 3-7-2010")]
+    [InlineData("ГОСТОВСКИЙ узел 12", null)]
+    public void StandardParser_MoreCases(string designation, string? expected) =>
+        Assert.Equal(expected, StandardParser.Find(designation));
 }
