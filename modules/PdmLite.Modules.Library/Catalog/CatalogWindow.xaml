@@ -7,7 +7,7 @@
         xmlns:ui="clr-namespace:PdmLite.UI.Shared;assembly=PdmLite.UI.Shared"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance local:CatalogViewModel}"
-        Title="Каталог библиотеки" Width="1100" Height="650" MinWidth="700" MinHeight="350"
+        Title="Каталог библиотеки" Width="1450" Height="900" MinWidth="700" MinHeight="350"
         WindowStartupLocation="CenterOwner">
 
     <Window.Resources>
@@ -26,7 +26,11 @@
     <DockPanel>
         <Border DockPanel.Dock="Top" Style="{StaticResource Pdm.Toolbar}" BorderBrush="{StaticResource Pdm.Brush.Border}">
             <DockPanel>
-                <StackPanel Orientation="Horizontal">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="8,0,0,0">
+                    <TextBox Style="{StaticResource Pdm.SearchBox}" Tag="Поиск в выбранной папке" Width="240"
+                             Text="{Binding Search, UpdateSourceTrigger=PropertyChanged, Delay=250}" />
+                </StackPanel>
+                <ui:ToolbarPanel>
                     <Button Style="{StaticResource Pdm.ToolButton}" Click="Edit_OnClick" ToolTip="Изменить обозначение, тип, производителя или раздел (двойной щелчок)">
                         <StackPanel Orientation="Horizontal">
                             <Image Source="{StaticResource Pdm.Icon.Cmd.Settings}" Style="{StaticResource Pdm.Icon16}" />
@@ -67,11 +71,7 @@
                             <TextBlock Text="Обслуживание…" Margin="5,0,2,0" />
                         </StackPanel>
                     </Button>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <TextBox Style="{StaticResource Pdm.SearchBox}" Tag="Поиск в выбранной папке" Width="240"
-                             Text="{Binding Search, UpdateSourceTrigger=PropertyChanged, Delay=250}" />
-                </StackPanel>
+                </ui:ToolbarPanel>
             </DockPanel>
         </Border>
 

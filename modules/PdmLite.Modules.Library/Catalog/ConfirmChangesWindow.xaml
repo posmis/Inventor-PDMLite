@@ -1,7 +1,7 @@
 <Window x:Class="PdmLite.Modules.Library.Catalog.ConfirmChangesWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Width="980" Height="560" MinWidth="600" MinHeight="300"
+        Width="1250" Height="750" MinWidth="600" MinHeight="300"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
 
     <Window.Resources>

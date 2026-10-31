@@ -7,7 +7,7 @@
         xmlns:ui="clr-namespace:PdmLite.UI.Shared;assembly=PdmLite.UI.Shared"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance local:AssemblyCheckViewModel}"
-        Title="Проверка сборки: стандартные компоненты" Width="1050" Height="560" MinWidth="700" MinHeight="300"
+        Title="Проверка сборки: стандартные компоненты" Width="1450" Height="800" MinWidth="700" MinHeight="300"
         WindowStartupLocation="CenterScreen" ShowInTaskbar="False">
 
     <Window.Resources>
