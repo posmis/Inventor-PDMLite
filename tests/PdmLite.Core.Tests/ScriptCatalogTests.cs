@@ -78,5 +78,26 @@ public sealed class ScriptCatalogTests : IDisposable
         Assert.Equal("версия 2", File.ReadAllText(Path.Combine(folder, "collect", "Collect.ps1")));
     }
 
+    [Fact]
+    public void Seed_RemovesNoLongerShipped_IfUnchanged()
+    {
+        var bundled = Path.Combine(_root, "bundled");
+        var folder = Path.Combine(_root, "Scripts");
+        Add("bundled/collect/Collect.ps1", "скрипт");
+        Add("bundled/collect/Collect.cmd", "запуск");
+        ScriptCatalog.Seed(folder, bundled);
+        File.WriteAllText(Path.Combine(folder, "collect", "Collect.cmd"), "мой запуск");
+
+        // Новая версия: скрипт заменён программой.
+        File.Delete(Path.Combine(bundled, "collect", "Collect.ps1"));
+        File.Delete(Path.Combine(bundled, "collect", "Collect.cmd"));
+        Add("bundled/collect/Collect.exe", "программа");
+        ScriptCatalog.Seed(folder, bundled);
+
+        Assert.False(File.Exists(Path.Combine(folder, "collect", "Collect.ps1"))); // не меняли — убран
+        Assert.True(File.Exists(Path.Combine(folder, "collect", "Collect.cmd"))); // меняли — оставлен
+        Assert.True(File.Exists(Path.Combine(folder, "collect", "Collect.exe")));
+    }
+
     public void Dispose() => Directory.Delete(_root, true);
 }

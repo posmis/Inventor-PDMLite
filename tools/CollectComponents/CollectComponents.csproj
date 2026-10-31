@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>CollectComponents</AssemblyName>
+    <RootNamespace>CollectComponents</RootNamespace>
+    <Description>Отдельная утилита: собрать файлы Inventor по списку имён вместе с зависимостями сборок. Не связана с PdmLite.</Description>
+  </PropertyGroup>
+
+</Project>

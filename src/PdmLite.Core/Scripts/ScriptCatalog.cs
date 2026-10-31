@@ -73,7 +73,8 @@ public static class ScriptCatalog
     /// <summary>
     /// Поставляемые с PdmLite утилиты (<paramref name="bundled"/>) — в папку утилит пользователя:
     /// новые копируются; обновлённые заменяют старые, если пользователь их не менял; изменённые пользователем
-    /// не трогаются; удалённые пользователем не возвращаются. Учёт — в <c>.bundled.json</c> в папке утилит.
+    /// не трогаются; удалённые пользователем не возвращаются; больше не поставляемые — убираются, если их не меняли.
+    /// Учёт — в <c>.bundled.json</c> в папке утилит.
     /// </summary>
     public static void Seed(string folder, string bundled)
     {
@@ -117,6 +118,20 @@ public static class ScriptCatalog
                 installed[relative] = shipped;
             }
             // Есть в учёте, но файла нет — пользователь удалил: не возвращаем.
+        }
+
+        // Утилита больше не поставляется (заменена) — убираем её файлы, если пользователь их не менял.
+        var shippedNow = Directory.EnumerateFiles(bundled, "*", SearchOption.AllDirectories)
+            .Select(f => System.IO.Path.GetRelativePath(bundled, f).Replace('\\', '/')).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var (relative, hash) in installed.Where(i => !shippedNow.Contains(i.Key)).ToList())
+        {
+            var target = System.IO.Path.Combine(folder, relative);
+            if (File.Exists(target) && Hash(target) == hash)
+            {
+                File.SetAttributes(target, FileAttributes.Normal);
+                File.Delete(target);
+            }
+            installed.Remove(relative);
         }
 
         File.WriteAllText(manifestPath, JsonSerializer.Serialize(installed, new JsonSerializerOptions { WriteIndented = true }));

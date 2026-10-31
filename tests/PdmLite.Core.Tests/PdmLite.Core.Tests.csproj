@@ -23,4 +23,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- Логика отдельной утилиты сбора файлов (без Inventor и окон) — для тестов. -->
+  <ItemGroup>
+    <Compile Include="..\..\tools\CollectComponents\Collector.cs" Link="CollectComponents\Collector.cs" />
+  </ItemGroup>
+
 </Project>

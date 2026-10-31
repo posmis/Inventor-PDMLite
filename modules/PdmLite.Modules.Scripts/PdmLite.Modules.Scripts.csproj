@@ -17,6 +17,22 @@
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- «Сбор файлов по списку» — отдельная программа; собирается вместе с модулем и кладётся к утилитам. -->
+  <PropertyGroup>
+    <CollectOutput>..\..\tools\CollectComponents\bin\$(Configuration)\net8.0-windows\</CollectOutput>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\tools\CollectComponents\CollectComponents.csproj" ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+
+  <!-- Файлы программы известны только после её сборки — добавляем их при сборке (а не при чтении проекта). -->
+  <Target Name="AddCollectComponents" AfterTargets="ResolveProjectReferences" BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <_CollectFiles Include="$(CollectOutput)CollectComponents.*" Exclude="$(CollectOutput)CollectComponents.pdb" />
+      <None Include="@(_CollectFiles)" Link="Scripts\collect-components\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
   <ItemGroup>
     <Using Include="System.IO" />
   </ItemGroup>
