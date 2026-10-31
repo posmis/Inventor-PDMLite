@@ -104,7 +104,8 @@ public partial class CatalogWindow : Window
     {
         if (_viewModel.Catalog is not { } catalog)
             return;
-        var window = new MaintenanceWindow(new MaintenanceViewModel(_viewModel.Service, catalog, selected, _viewModel.Items.Count)) { Owner = this };
+        var window = new MaintenanceWindow(new MaintenanceViewModel(_viewModel.Service, catalog, selected, _viewModel.Items.Count,
+            _services.GetService<PdmLite.Library.Backup.LibraryBackupService>())) { Owner = this };
         window.ShowDialog();
         if (window.Changed)
             await _viewModel.OnEditedAsync();

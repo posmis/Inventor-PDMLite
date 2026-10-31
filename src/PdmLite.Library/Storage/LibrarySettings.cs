@@ -11,4 +11,14 @@ public sealed class LibrarySettings
 
     /// <summary>Предупреждать при вставке компонента из Content Center (и предлагать замену из библиотеки).</summary>
     public bool WarnOnContentCenter { get; set; } = true;
+
+    /// <summary>Папка резервных копий библиотеки (ZIP-архивы).</summary>
+    public string BackupFolder { get; set; } =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "PdmLite", "Backups");
+
+    /// <summary>Сколько автоматических копий хранить (ручные не удаляются).</summary>
+    public int BackupKeep { get; set; } = 10;
+
+    /// <summary>Автоматическая копия раз в столько дней (при запуске Explorer); 0 — не делать.</summary>
+    public int BackupIntervalDays { get; set; } = 7;
 }

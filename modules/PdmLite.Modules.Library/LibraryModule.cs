@@ -4,11 +4,14 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using PdmLite.Core.Modularity;
 using PdmLite.Core.UI;
 using PdmLite.Hosting;
+using PdmLite.Core.Threading;
+using PdmLite.Library.Backup;
 using PdmLite.Library.Import;
 using PdmLite.Library.Items;
 using PdmLite.Library.Rules;
 using PdmLite.Library.Storage;
 using PdmLite.Core.Documents;
+using PdmLite.Modules.Library.Backup;
 using PdmLite.Modules.Library.Catalog;
 using PdmLite.Modules.Library.Checks;
 using PdmLite.Modules.Library.Import;
@@ -39,6 +42,14 @@ public sealed class LibraryModule : IPdmModule
             return () => new LibraryStorage(settings.Value.RootFolder);
         });
         services.AddSingleton<LibraryImportService>();
+        services.AddSingleton(sp =>
+        {
+            var settings = sp.GetRequiredService<JsonSettings<LibrarySettings>>();
+            return new LibraryBackupService(sp.GetRequiredService<PdmLite.Data.IPdmDatabase>(), sp.GetRequiredService<Func<LibraryStorage>>(),
+                () => new BackupOptions(settings.Value.BackupFolder, settings.Value.BackupKeep, settings.Value.BackupIntervalDays),
+                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<LibraryBackupService>>());
+        });
+        services.AddTransient<BackupViewModel>();
         services.AddSingleton<DesignationRuleService>();
         services.AddTransient<RulesViewModel>();
         services.AddSingleton<LibraryItemService>();
@@ -120,6 +131,41 @@ public sealed class LibraryModule : IPdmModule
                 return Task.CompletedTask;
             },
             Order: 10, Group: "1-library", Icon: IconKeys.Settings));
+
+        context.Ui.RegisterCommand(new CommandDescriptor(
+            "Library.Backups", "Резервные копии…", CommandPlacement.Toolbar,
+            _ =>
+            {
+                new BackupWindow(services.GetRequiredService<BackupViewModel>(), services) { Owner = Application.Current?.MainWindow }.Show();
+                return Task.CompletedTask;
+            },
+            Order: 15, Group: "1-library", Icon: IconKeys.Database));
+
+        ScheduleBackup(services);
+    }
+
+    /// <summary>
+    /// Копия по расписанию: через минуту после запуска Explorer, если последняя копия старше интервала.
+    /// В фоне: ошибка только записывается в журнал (база могла быть ещё не настроена).
+    /// </summary>
+    private static void ScheduleBackup(IServiceProvider services)
+    {
+        var database = services.GetRequiredService<PdmLite.Data.IPdmDatabase>();
+        var backup = services.GetRequiredService<LibraryBackupService>();
+        var logger = services.GetRequiredService<Microsoft.Extensions.Logging.ILogger<LibraryModule>>();
+        Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromMinutes(1));
+                if (database.IsConfigured && backup.IsScheduledDue())
+                    await backup.CreateAsync(PdmLite.Library.Backup.BackupReason.Scheduled);
+            }
+            catch (Exception ex)
+            {
+                Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, ex, "Резервная копия по расписанию не сделана");
+            }
+        }).Forget();
     }
 
     public void Shutdown()

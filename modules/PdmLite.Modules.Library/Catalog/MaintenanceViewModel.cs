@@ -4,6 +4,7 @@ using System.Windows.Data;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PdmLite.Core.UI;
+using PdmLite.Library.Backup;
 using PdmLite.Library.Catalog;
 using PdmLite.Library.Items;
 using PdmLite.UI.Shared;
@@ -21,9 +22,13 @@ public sealed partial class MaintenanceViewModel : ObservableObject
     private readonly IReadOnlyCollection<Guid> _selectedIds;
     private CancellationTokenSource? _cts;
 
-    public MaintenanceViewModel(LibraryItemService service, LibraryCatalog catalog, IReadOnlyCollection<Guid> selectedIds, int totalCount)
+    private readonly LibraryBackupService? _backup;
+
+    public MaintenanceViewModel(LibraryItemService service, LibraryCatalog catalog, IReadOnlyCollection<Guid> selectedIds, int totalCount,
+        LibraryBackupService? backup = null)
     {
         _service = service;
+        _backup = backup;
         _catalog = catalog;
         _selectedIds = selectedIds;
         TotalCount = totalCount;
@@ -111,10 +116,13 @@ public sealed partial class MaintenanceViewModel : ObservableObject
         var confirm = new ConfirmChangesWindow("Обслуживание: подтверждение записи",
             $"Будут изменены свойства в {Files(chosen.Count)} библиотеки ({lines.Count} изменений).",
             totals,
-            "Перед записью каждый файл проверяется ещё раз (если уже в порядке — не изменяется) и копируется; при ошибке " +
+            "Сначала делается резервная копия всей библиотеки. Перед записью каждый файл проверяется ещё раз (если уже в порядке — не изменяется) и копируется; при ошибке " +
             "файл восстанавливается из копии. Остановить можно в любой момент — обработанные файлы останутся обновлёнными.",
             "Записать в файлы", ("Компонент", "Свойство", "Сейчас в файле", "Будет записано"), lines);
         if (!Ask(confirm))
+            return;
+
+        if (!await BackupAsync(BackupReason.BeforeMaintenance))
             return;
 
         RewriteResult? result = null;
@@ -223,10 +231,13 @@ public sealed partial class MaintenanceViewModel : ObservableObject
         var confirm = new ConfirmChangesWindow("Обслуживание: объединение дубликатов",
             $"Будет удалено компонентов: {lines.Count} (групп: {chosen.Count}).",
             "Сборки библиотеки, где стоит удаляемый компонент, будут перевязаны на оставляемый.",
-            "Сборки проектов не изменяются: при открытии в Inventor ссылка на удалённый файл будет подменена оставленным " +
-            "компонентом — после этого сохраните сборку. Удалённые файлы не восстанавливаются.",
+            "Сначала делается резервная копия всей библиотеки — из неё можно вернуть удалённое. Сборки проектов не изменяются: " +
+            "при открытии в Inventor ссылка на удалённый файл будет подменена оставленным компонентом — после этого сохраните сборку.",
             "Объединить", ("Удаляется", "Действие", "Было", "Вместо него — оставляемый"), lines);
         if (!Ask(confirm))
+            return;
+
+        if (!await BackupAsync(BackupReason.BeforeMerge))
             return;
 
         var failed = new List<string>();
@@ -258,6 +269,22 @@ public sealed partial class MaintenanceViewModel : ObservableObject
     private void UpdateMergeCount() => ToMerge = _groups.Count(g => g.Merge);
 
     // ---------- Общее ----------
+
+    /// <summary>Резервная копия библиотеки перед изменением. Не удалась — операция не выполняется.</summary>
+    private async Task<bool> BackupAsync(BackupReason reason)
+    {
+        if (_backup is null)
+            return true;
+        var done = false;
+        await RunAsync("Резервная копия библиотеки", async (progress, ct) =>
+        {
+            await _backup.CreateAsync(reason, progress, ct);
+            done = true;
+        });
+        if (!done)
+            UiMessages.Error("Резервная копия не сделана — файлы не изменялись. Проверьте папку копий (Резервные копии… → настройки).");
+        return done;
+    }
 
     private bool CanStop() => IsRunning;
 
