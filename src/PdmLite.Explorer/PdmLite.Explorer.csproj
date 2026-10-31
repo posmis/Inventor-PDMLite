@@ -31,6 +31,7 @@
     <ProjectReference Include="..\..\modules\PdmLite.Modules.InventorLink\PdmLite.Modules.InventorLink.csproj" />
     <ProjectReference Include="..\..\modules\PdmLite.Modules.Library\PdmLite.Modules.Library.csproj" />
     <ProjectReference Include="..\..\modules\PdmLite.Modules.References\PdmLite.Modules.References.csproj" />
+    <ProjectReference Include="..\..\modules\PdmLite.Modules.Scripts\PdmLite.Modules.Scripts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -5,6 +5,7 @@
     { "Id": "Properties", "Enabled": true },
     { "Id": "InventorLink", "Enabled": true },
     { "Id": "Library", "Enabled": true },
-    { "Id": "References", "Enabled": true }
+    { "Id": "References", "Enabled": true },
+    { "Id": "Scripts", "Enabled": true }
   ]
 }

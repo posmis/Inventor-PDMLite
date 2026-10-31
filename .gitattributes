@@ -10,3 +10,8 @@
 *.dwg binary
 *.ipj binary
 *.ps1    text eol=crlf
+
+# Скрипты Windows — всегда с CRLF (cmd с LF может неверно разбирать строки)
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
