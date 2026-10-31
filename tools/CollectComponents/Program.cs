@@ -89,7 +89,9 @@ internal static class Program
 
         Console.WriteLine();
         Title("Итог");
-        Ok($"Найдено файлов: {result.Found.Count} (из списка: {result.Found.Count(f => f.Reason is null)}, зависимостей: {result.Found.Count(f => f.Reason is not null)})");
+        Ok($"Найдено: из списка {result.Found.Count(f => f.Root is null)}, в составе {result.Found.Count(f => f.Root is not null)} (по папкам компонентов)");
+        foreach (var group in result.Found.Where(f => f.Root is not null).GroupBy(f => f.Root!))
+            Console.WriteLine($"  {Path.GetFileNameWithoutExtension(group.Key)}\\ — {group.Count()} файлов");
         if (result.Missing.Count > 0)
         {
             Error($"Не найдено: {result.Missing.Count}");
@@ -110,7 +112,7 @@ internal static class Program
             return 1;
         }
         Console.WriteLine();
-        Console.Write($"Скопировать {result.Found.Count} файлов в «{target}»? (Д/Н): ");
+        Console.Write($"Скопировать в «{target}» (компоненты списка — в папку, их состав — в подпапки, каждый файл один раз)? (Д/Н): ");
         var answer = Console.ReadLine()?.Trim().ToLowerInvariant();
         if (answer is not ("д" or "да" or "y" or "yes" or "l"))
         {

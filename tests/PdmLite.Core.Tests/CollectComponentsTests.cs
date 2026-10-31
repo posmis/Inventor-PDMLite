@@ -89,5 +89,40 @@ public sealed class CollectComponentsTests : IDisposable
         File.SetAttributes(newer, FileAttributes.Normal);
     }
 
+    [Fact]
+    public void Copy_ListedTogether_CompositionInFolders_EachFileOnce()
+    {
+        var source = Path.Combine(_root, "Компоненты");
+        Add("Компоненты/Жгут А.iam");
+        Add("Компоненты/Жгут Б.iam");
+        Add("Компоненты/Деталь.ipt");
+        Add("Компоненты/sub/Узел.iam");
+        Add("Компоненты/Разъём.ipt");
+        var references = new FakeReferences(new()
+        {
+            ["Жгут А.iam"] = [new("Узел.iam", null), new("Разъём.ipt", null)],
+            ["Жгут Б.iam"] = [new("Разъём.ipt", null)], // общий разъём
+            ["Узел.iam"] = [new("Деталь.ipt", null)],
+        });
+        var collector = new Collector(source);
+
+        var result = collector.Collect(["Жгут А.iam", "Жгут Б.iam", "Деталь.ipt"], references, _ => { });
+        var target = Path.Combine(_root, "Собрано");
+        collector.Copy(result, target);
+
+        string[] expected =
+        [
+            "Деталь.ipt", "Жгут А.iam", "Жгут Б.iam", // из списка — вместе и только здесь
+            Path.Combine("Жгут А", "Разъём.ipt"), Path.Combine("Жгут А", "Узел.iam"), // состав; «Деталь» уже наверху
+            // «Разъём» общий — только у первого («Жгут А»); у «Жгут Б» своего нового ничего — папки нет
+        ];
+        var files = Directory.EnumerateFiles(target, "*", SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(target, f)).Where(f => !f.StartsWith('_')).Order(StringComparer.Ordinal).ToList();
+        Assert.Equal(expected.Order(StringComparer.Ordinal), files);
+        Assert.Single(result.Found, f => Path.GetFileName(f.Path) == "Разъём.ipt"); // каждый файл — один раз
+        Assert.False(Directory.Exists(Path.Combine(target, "Жгут Б")));
+        Assert.False(Directory.Exists(Path.Combine(target, "Деталь")));
+    }
+
     public void Dispose() => Directory.Delete(_root, true);
 }

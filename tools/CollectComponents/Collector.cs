@@ -11,8 +11,16 @@ internal interface IReferenceReader
     IReadOnlyList<DocumentReference> Read(string path);
 }
 
-/// <summary>Найденный файл; <paramref name="Reason"/> — чья зависимость (<c>null</c> — из списка).</summary>
-internal sealed record FoundFile(string Path, string? Reason);
+/// <summary>Найденный файл.</summary>
+/// <param name="Reason">Чья зависимость (<c>null</c> — из списка).</param>
+/// <param name="Root">Компонент из списка, в состав которого входит (<c>null</c> — сам из списка).</param>
+internal sealed record FoundFile(string Path, string? Reason, string? Root = null)
+{
+    /// <summary>Куда копировать относительно папки результата: из списка — в неё, состав — в папку компонента.</summary>
+    public string RelativeTarget => Root is null
+        ? System.IO.Path.GetFileName(Path)
+        : System.IO.Path.Combine(System.IO.Path.GetFileNameWithoutExtension(Root), System.IO.Path.GetFileName(Path));
+}
 
 internal sealed record CollectResult(IReadOnlyList<FoundFile> Found, IReadOnlyList<string> Missing, IReadOnlyList<string> Warnings);
 
@@ -62,56 +70,101 @@ internal sealed class Collector
     }
 
     /// <summary>
-    /// Файлы списка и все зависимости найденных документов (на всех уровнях) — только из папки компонентов.
-    /// Несколько файлов с одним именем — берётся самый новый (с предупреждением). Ход — в <paramref name="log"/>.
+    /// Файлы списка и состав каждого из них (все уровни) — только из папки компонентов. Каждый файл — один раз:
+    /// файл из списка — только наверху; общая деталь — в папке первого компонента списка, которому она нужна.
+    /// Несколько файлов с одним именем — берётся самый новый (с предупреждением). Ссылки каждого документа читаются один раз.
     /// </summary>
     public CollectResult Collect(IReadOnlyList<string> names, IReferenceReader? references, Action<string> log)
     {
         var found = new List<FoundFile>();
-        var foundNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var missing = new List<string>();
-        var missingNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var missingKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var warnings = new List<string>();
-        var queue = new Queue<(string Name, string? Reason, string? Expected)>(names.Select(n => (n, (string?)null, (string?)null)));
+        var warned = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var cache = new Dictionary<string, IReadOnlyList<DocumentReference>?>(StringComparer.OrdinalIgnoreCase);
 
-        while (queue.Count > 0)
+        FileInfo? Find(string name)
         {
-            var (name, reason, expected) = queue.Dequeue();
-            if (foundNames.Contains(name) || missingNames.Contains(name))
-                continue;
-
             if (!_byName.TryGetValue(name, out var candidates))
-            {
-                missingNames.Add(name);
-                missing.Add(reason is null ? $"{name} (из списка)" : $"{name} (зависимость {reason}" + (expected is null ? ")" : $"; сборка ждала её в {expected})"));
-                continue;
-            }
-
+                return null;
             var file = candidates.OrderByDescending(f => f.LastWriteTimeUtc).First();
-            if (candidates.Count > 1)
+            if (candidates.Count > 1 && warned.Add(name))
                 warnings.Add($"{name}: найдено {candidates.Count} файлов, взят самый новый — {file.FullName}");
-            foundNames.Add(name);
-            found.Add(new FoundFile(file.FullName, reason));
+            return file;
+        }
 
+        void Missing(string name, string text)
+        {
+            if (missingKeys.Add(name + "|" + text))
+                missing.Add(text);
+        }
+
+        // Ссылки документа — один раз за запуск (общие детали читаются один раз, а копируются в каждую папку).
+        IReadOnlyList<DocumentReference>? Read(FileInfo file)
+        {
             if (references is null || !IsInventorFile(file.FullName))
-                continue;
+                return [];
+            if (cache.TryGetValue(file.FullName, out var known))
+                return known;
+            IReadOnlyList<DocumentReference>? result = null;
             try
             {
-                var dependencies = references.Read(file.FullName);
-                log(dependencies.Count == 0
-                    ? $"{file.Name}: зависимостей нет"
-                    : $"{file.Name}: зависимостей {dependencies.Count}");
-                foreach (var dependency in dependencies)
+                result = references.Read(file.FullName);
+                log(result.Count == 0 ? $"{file.Name}: зависимостей нет" : $"{file.Name}: зависимостей {result.Count}");
+                foreach (var dependency in result)
                 {
                     var here = _byName.ContainsKey(dependency.Name);
                     log($"    {(here ? "+" : "-")} {dependency.Name}{(here ? "" : "  (нет в папке)")}");
-                    queue.Enqueue((dependency.Name, file.Name, dependency.ExpectedPath));
                 }
             }
             catch (Exception ex)
             {
                 warnings.Add($"{file.Name}: зависимости не прочитаны — {ex.Message}");
                 log($"{file.Name}: зависимости НЕ прочитаны — {ex.Message}");
+            }
+            cache[file.FullName] = result;
+            return result;
+        }
+
+        // Сначала все компоненты списка — наверх; каждый файл копируется один раз (учёт по имени).
+        var placed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var tops = new List<FileInfo>();
+        foreach (var name in names)
+        {
+            var top = Find(name);
+            if (top is null)
+            {
+                Missing(name, $"{name} (из списка)");
+                continue;
+            }
+            if (!placed.Add(top.Name))
+                continue;
+            found.Add(new FoundFile(top.FullName, null));
+            tops.Add(top);
+        }
+
+        foreach (var top in tops)
+        {
+            // Состав компонента — обход вширь. Уже размещённое (из списка или в составе предыдущего) не повторяется,
+            // и его состав здесь не обходится — он уже лежит там, где этот файл.
+            var queue = new Queue<FileInfo>([top]);
+            while (queue.Count > 0)
+            {
+                var document = queue.Dequeue();
+                foreach (var dependency in Read(document) ?? [])
+                {
+                    if (!placed.Add(dependency.Name))
+                        continue;
+                    var file = Find(dependency.Name);
+                    if (file is null)
+                    {
+                        Missing(dependency.Name, $"{dependency.Name} (зависимость {document.Name}"
+                                                 + (dependency.ExpectedPath is null ? ")" : $"; сборка ждала её в {dependency.ExpectedPath})"));
+                        continue;
+                    }
+                    found.Add(new FoundFile(file.FullName, document.Name, top.Name));
+                    queue.Enqueue(file);
+                }
             }
         }
 
@@ -121,13 +174,17 @@ internal sealed class Collector
     public static bool IsInventorFile(string path) =>
         InventorExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Копирует найденное в одну папку (снимая «только чтение» у копий) и пишет отчёт. Возвращает путь отчёта.</summary>
+    /// <summary>
+    /// Копирует: компоненты списка — в папку результата, их состав — в подпапки с именами компонентов
+    /// (снимая «только чтение» у копий). Пишет отчёт; возвращает его путь.
+    /// </summary>
     public string Copy(CollectResult result, string target)
     {
         Directory.CreateDirectory(target);
         foreach (var file in result.Found)
         {
-            var destination = Path.Combine(target, Path.GetFileName(file.Path));
+            var destination = Path.Combine(target, file.RelativeTarget);
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             File.Copy(file.Path, destination, overwrite: true);
             File.SetAttributes(destination, File.GetAttributes(destination) & ~FileAttributes.ReadOnly);
         }
@@ -139,7 +196,7 @@ internal sealed class Collector
             .AppendLine()
             .AppendLine($"СКОПИРОВАНО ({result.Found.Count}):");
         foreach (var file in result.Found)
-            report.AppendLine($"  {Path.GetFileName(file.Path)}  ←  {file.Path}" + (file.Reason is null ? "" : $"  [зависимость {file.Reason}]"));
+            report.AppendLine($"  {file.RelativeTarget}  ←  {file.Path}" + (file.Reason is null ? "" : $"  [зависимость {file.Reason}]"));
         report.AppendLine().AppendLine($"НЕ НАЙДЕНО ({result.Missing.Count}):");
         foreach (var line in result.Missing)
             report.AppendLine($"  {line}");
