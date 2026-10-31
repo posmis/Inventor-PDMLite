@@ -27,6 +27,9 @@ public sealed partial class TreeNodeViewModel : ObservableObject
     [ObservableProperty] private bool _isSelected;
     [ObservableProperty] private bool _isVisible = true;
 
+    /// <summary>Входит в выделение нескольких элементов (Ctrl/Shift + щелчок).</summary>
+    [ObservableProperty] private bool _isMarked;
+
     /// <summary>Документ активен в Inventor.</summary>
     [ObservableProperty] private bool _isActive;
 
@@ -35,6 +38,19 @@ public sealed partial class TreeNodeViewModel : ObservableObject
         yield return this;
         foreach (var child in Children)
             foreach (var node in child.Descendants())
+                yield return node;
+    }
+
+    /// <summary>Узлы, которые сейчас видны в дереве (родители раскрыты, фильтр не скрыл), по порядку сверху вниз.</summary>
+    public IEnumerable<TreeNodeViewModel> VisibleDescendants()
+    {
+        if (!IsVisible)
+            yield break;
+        yield return this;
+        if (!IsExpanded)
+            yield break;
+        foreach (var child in Children)
+            foreach (var node in child.VisibleDescendants())
                 yield return node;
     }
 

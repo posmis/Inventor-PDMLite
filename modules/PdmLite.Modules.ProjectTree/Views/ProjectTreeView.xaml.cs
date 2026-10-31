@@ -47,6 +47,8 @@ public partial class ProjectTreeView : UserControl
         // Правый щелчок выделяет узел, чтобы контекстное меню относилось к нему.
         if (sender is TreeViewItem item && ReferenceEquals(ItemsControl.ContainerFromElement(item, (DependencyObject)e.OriginalSource), null))
         {
+            if (item.DataContext is TreeNodeViewModel node)
+                ViewModel?.RightClick(node);
             item.IsSelected = true;
             item.Focus();
             e.Handled = true;
@@ -83,6 +85,27 @@ public partial class ProjectTreeView : UserControl
         _dragNode = e.OriginalSource is DependencyObject source && FindAncestor<System.Windows.Controls.Primitives.ScrollBar>(source) is null
             ? FindNode(source)
             : null;
+
+        // Выделение нескольких: Ctrl — добавить/убрать, Shift — диапазон. Щелчок по стрелке раскрытия выделение не меняет.
+        if (_dragNode is null || ViewModel is not { } vm || FindAncestor<System.Windows.Controls.Primitives.ToggleButton>(e.OriginalSource as DependencyObject) is not null)
+            return;
+        var ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
+        var shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+        if (!ctrl && !shift && _dragNode.IsMarked && vm.Marked.Count > 1)
+            return; // щелчок по уже выделенному — может начаться перетаскивание всех выделенных
+        vm.Click(_dragNode, ctrl, shift);
+        if (ctrl || shift)
+        {
+            e.Handled = true; // выделенный (текущий) элемент не меняем
+            Tree.Focus();
+        }
+    }
+
+    private void Tree_OnPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        // Щелчок без перетаскивания по одному из нескольких выделенных — теперь выделен только он.
+        if (ViewModel is { } vm && _dragNode is { IsMarked: true } node && Keyboard.Modifiers == ModifierKeys.None && vm.Marked.Count > 1)
+            vm.Click(node, ctrl: false, shift: false);
     }
 
     private void Tree_OnPreviewMouseMove(object sender, MouseEventArgs e)
@@ -93,7 +116,10 @@ public partial class ProjectTreeView : UserControl
         if (Math.Abs(delta.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance)
             return;
         _dragNode = null;
-        DragDrop.DoDragDrop(Tree, new DataObject(DragFormat, node.Item.Path), DragDropEffects.Move);
+        var paths = node.IsMarked && ViewModel is { } vm && vm.Marked.Count > 1
+            ? vm.Marked.Select(n => n.Item.Path).ToArray()
+            : [node.Item.Path];
+        DragDrop.DoDragDrop(Tree, new DataObject(DragFormat, string.Join("\n", paths)), DragDropEffects.Move);
     }
 
     private void Tree_OnDragOver(object sender, DragEventArgs e)
@@ -104,17 +130,18 @@ public partial class ProjectTreeView : UserControl
 
     private void Tree_OnDrop(object sender, DragEventArgs e)
     {
-        if (DropTarget(e) is not { } target || e.Data.GetData(DragFormat) is not string path)
+        if (DropTarget(e) is not { } target || e.Data.GetData(DragFormat) is not string data)
             return;
         e.Handled = true;
-        ViewModel?.RequestMove([path], target.Item.Path);
+        ViewModel?.RequestMove(data.Split('\n'), target.Item.Path);
     }
 
     /// <summary>Папка под курсором, куда можно перенести перетаскиваемое (не в себя и не туда, где оно уже лежит).</summary>
     private TreeNodeViewModel? DropTarget(DragEventArgs e)
     {
-        if (e.Data.GetData(DragFormat) is not string path || (e.OriginalSource as DependencyObject) is not { } source)
+        if (e.Data.GetData(DragFormat) is not string data || (e.OriginalSource as DependencyObject) is not { } source)
             return null;
+        var paths = data.Split('\n');
         var node = FindNode(source);
         if (node is null)
             return null;
@@ -122,8 +149,9 @@ public partial class ProjectTreeView : UserControl
         if (folder is null)
             return null;
         var target = folder.Item.Path;
-        if (string.Equals(Path.GetDirectoryName(path), target, StringComparison.OrdinalIgnoreCase)
-            || (target + Path.DirectorySeparatorChar).StartsWith(path + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        // Не в саму себя (и не в свою вложенную) и не туда, где всё уже лежит.
+        if (paths.Any(p => (target + Path.DirectorySeparatorChar).StartsWith(p + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            || paths.All(p => string.Equals(Path.GetDirectoryName(p), target, StringComparison.OrdinalIgnoreCase)))
             return null;
         return folder;
     }

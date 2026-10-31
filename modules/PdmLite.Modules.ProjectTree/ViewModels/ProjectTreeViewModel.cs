@@ -54,8 +54,74 @@ public sealed partial class ProjectTreeViewModel(
         _subscriptions.Clear();
     }
 
-    public CommandContext CurrentContext() =>
-        SelectedNode is { } node ? new CommandContext([node.Item]) : CommandContext.Empty;
+    /// <summary>
+    /// Команды меню — для всех отмеченных элементов (Ctrl/Shift + щелчок), если щёлкнули по одному из них;
+    /// иначе — для выделенного.
+    /// </summary>
+    public CommandContext CurrentContext()
+    {
+        var marked = Marked;
+        if (marked.Count > 1 && (SelectedNode is null || SelectedNode.IsMarked))
+            return new CommandContext(marked.Select(n => n.Item).ToList());
+        return SelectedNode is { } node ? new CommandContext([node.Item]) : CommandContext.Empty;
+    }
+
+    /// <summary>Отмеченные элементы — в порядке дерева.</summary>
+    public IReadOnlyList<TreeNodeViewModel> Marked =>
+        Nodes.SelectMany(n => n.Descendants()).Where(n => n.IsMarked).ToList();
+
+    private TreeNodeViewModel? _anchor;
+
+    /// <summary>
+    /// Щелчок по узлу: без клавиш — выделен только он; Ctrl — добавить или убрать; Shift — диапазон видимых узлов
+    /// от последнего щелчка. Корень проекта в выделение нескольких не входит.
+    /// </summary>
+    public void Click(TreeNodeViewModel node, bool ctrl, bool shift)
+    {
+        if (shift && _anchor is not null)
+        {
+            var visible = Nodes.SelectMany(n => n.VisibleDescendants()).ToList();
+            var from = visible.IndexOf(_anchor);
+            var to = visible.IndexOf(node);
+            if (from >= 0 && to >= 0)
+            {
+                if (!ctrl)
+                    ClearMarks();
+                for (var i = Math.Min(from, to); i <= Math.Max(from, to); i++)
+                    if (visible[i].Parent is not null)
+                        visible[i].IsMarked = true;
+                return;
+            }
+        }
+        if (ctrl)
+        {
+            // Первый Ctrl-щелчок: выделенный до этого элемент тоже входит в выделение.
+            if (Marked.Count == 0 && SelectedNode is { Parent: not null } selected && selected != node)
+                selected.IsMarked = true;
+            node.IsMarked = !node.IsMarked && node.Parent is not null;
+            _anchor = node;
+            return;
+        }
+        ClearMarks();
+        node.IsMarked = node.Parent is not null;
+        _anchor = node;
+    }
+
+    /// <summary>Правый щелчок: по отмеченному — меню для всех отмеченных; по другому — только для него.</summary>
+    public void RightClick(TreeNodeViewModel node)
+    {
+        if (node.IsMarked)
+            return;
+        ClearMarks();
+        node.IsMarked = node.Parent is not null;
+        _anchor = node;
+    }
+
+    public void ClearMarks()
+    {
+        foreach (var marked in Marked)
+            marked.IsMarked = false;
+    }
 
     /// <summary>Перетаскивание в дереве: переместить файл или папку (выполняет модуль переименования, с проверкой и подтверждением).</summary>
     public void RequestMove(IReadOnlyList<string> paths, string targetFolder) =>
@@ -107,8 +173,17 @@ public sealed partial class ProjectTreeViewModel(
             node.ApplyFilter(filter);
     }
 
-    partial void OnSelectedNodeChanged(TreeNodeViewModel? value) =>
+    partial void OnSelectedNodeChanged(TreeNodeViewModel? value)
+    {
+        // Выделение сменилось не щелчком (стрелками на клавиатуре, из Inventor) — выделение нескольких сбрасывается.
+        if (value is { IsMarked: false })
+        {
+            ClearMarks();
+            value.IsMarked = value.Parent is not null;
+            _anchor = value;
+        }
         events.Publish(new SelectionChanged(value is null ? [] : [value.Item]));
+    }
 
     partial void OnFollowActiveDocumentChanged(bool value)
     {
@@ -136,6 +211,7 @@ public sealed partial class ProjectTreeViewModel(
         Nodes.Add(rootNode);
         _byPath = rootNode.Descendants().ToDictionary(n => n.Item.Path, StringComparer.OrdinalIgnoreCase);
         _activeNode = null;
+        _anchor = null;
         foreach (var node in _byPath.Values.Where(n => n.IsFolder && expanded.Contains(n.Item.Path)))
             node.IsExpanded = true;
 
@@ -222,5 +298,8 @@ public sealed partial class ProjectTreeViewModel(
         node.ExpandAncestors();
         node.IsSelected = true;
         SelectedNode = node;
+        ClearMarks();
+        node.IsMarked = node.Parent is not null;
+        _anchor = node;
     }
 }

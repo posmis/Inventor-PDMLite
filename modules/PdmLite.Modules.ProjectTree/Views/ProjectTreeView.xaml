@@ -18,7 +18,7 @@
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
 
             <HierarchicalDataTemplate DataType="{x:Type vm:TreeNodeViewModel}" ItemsSource="{Binding Children}">
-                <StackPanel Orientation="Horizontal">
+                <StackPanel x:Name="Row" Orientation="Horizontal">
                     <StackPanel.ToolTip>
                         <StackPanel>
                             <TextBlock Text="{Binding KindName}" FontWeight="SemiBold" />
@@ -33,6 +33,10 @@
                     <TextBlock x:Name="Title" Text="{Binding Name}" VerticalAlignment="Center" />
                 </StackPanel>
                 <HierarchicalDataTemplate.Triggers>
+                    <!-- Выделение нескольких (Ctrl/Shift + щелчок) -->
+                    <DataTrigger Binding="{Binding IsMarked}" Value="True">
+                        <Setter TargetName="Row" Property="Background" Value="{StaticResource Pdm.Brush.Selected}" />
+                    </DataTrigger>
                     <DataTrigger Binding="{Binding IsActive}" Value="True">
                         <Setter TargetName="ActiveMark" Property="Visibility" Value="Visible" />
                         <Setter TargetName="Title" Property="FontWeight" Value="Bold" />
@@ -84,6 +88,7 @@
         <Grid>
             <TreeView x:Name="Tree" ItemsSource="{Binding Nodes}" AllowDrop="True"
                       PreviewMouseLeftButtonDown="Tree_OnPreviewMouseLeftButtonDown" PreviewMouseMove="Tree_OnPreviewMouseMove"
+                      PreviewMouseLeftButtonUp="Tree_OnPreviewMouseLeftButtonUp"
                       DragOver="Tree_OnDragOver" Drop="Tree_OnDrop"
                       SelectedItemChanged="Tree_OnSelectedItemChanged"
                       ContextMenuOpening="Tree_OnContextMenuOpening">
