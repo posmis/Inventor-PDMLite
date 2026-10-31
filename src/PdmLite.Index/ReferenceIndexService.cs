@@ -26,6 +26,15 @@ public sealed record IndexedDocument(string Path, DocumentKind Kind, string? Par
 /// <summary>Ссылка на файл, которого нет на диске.</summary>
 public sealed record BrokenReference(string Document, string Target);
 
+/// <summary>Файл, которого нет на диске, и документы, которые на него ссылаются.</summary>
+/// <param name="Target">Путь, по которому его ищут.</param>
+/// <param name="UsedIn">Документы со ссылкой на него (полные пути).</param>
+public sealed record MissingFile(string Target, IReadOnlyList<string> UsedIn)
+{
+    public string Name => System.IO.Path.GetFileName(Target);
+    public string Folder => System.IO.Path.GetDirectoryName(Target) ?? "";
+}
+
 /// <summary>
 /// Индекс ссылок проекта в базе: для каждого документа (.ipt, .iam, .idw, .dwg, .ipn) — на какие
 /// файлы он ссылается. Отсюда «из чего состоит» и «где используется». Документы читаются через
@@ -216,6 +225,50 @@ public sealed class ReferenceIndexService(IPdmDatabase database, IDocumentProper
                 : new IndexedDocument(t.TargetPath, DocumentKinds.FromPath(t.TargetPath), null, null, 1, File.Exists(t.TargetPath)))
             .OrderBy(d => d.Exists).ThenBy(d => d.Kind).ThenBy(d => d.Name, NaturalComparer.Instance).ToList();
     }
+
+    /// <summary>
+    /// Ненайденные файлы сборки (или чертежа) — на всех уровнях вложенности, каждый один раз, по имени.
+    /// Подсборки обходятся по индексу; ненайденная подсборка — сама в списке (её состав неизвестен).
+    /// </summary>
+    public async Task<IReadOnlyList<MissingFile>> MissingComponentsAsync(string path, CancellationToken ct = default)
+    {
+        await database.MigrateAsync(ct).ConfigureAwait(false);
+        await using var db = database.CreateContext();
+        var missing = new Dictionary<string, (string Target, HashSet<string> UsedIn)>();
+        var visited = new HashSet<string> { Key(path) };
+        var level = new List<string> { Key(path) };
+        for (var depth = 0; level.Count > 0 && depth < 50; depth++)
+        {
+            var current = level;
+            var references = await db.IndexedReferences
+                .Join(db.IndexedFiles.Where(f => current.Contains(f.PathKey)), r => r.FileId, f => f.Id, (r, f) => new { f.Path, r.TargetPath, r.TargetKey })
+                .AsNoTracking().ToListAsync(ct).ConfigureAwait(false);
+            level = [];
+            foreach (var reference in references)
+            {
+                if (!File.Exists(reference.TargetPath))
+                {
+                    if (!missing.TryGetValue(reference.TargetKey, out var entry))
+                        missing[reference.TargetKey] = entry = (reference.TargetPath, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+                    entry.UsedIn.Add(reference.Path);
+                }
+                else if (visited.Add(reference.TargetKey))
+                {
+                    level.Add(reference.TargetKey);
+                }
+            }
+        }
+        return missing.Values
+            .Select(m => new MissingFile(m.Target, m.UsedIn.Order(NaturalComparer.Instance).ToList()))
+            .OrderBy(m => m.Name, NaturalComparer.Instance).ToList();
+    }
+
+    /// <summary>Ненайденные файлы всего проекта: по одному на файл, с документами, где он используется.</summary>
+    public async Task<IReadOnlyList<MissingFile>> MissingFilesAsync(string root, CancellationToken ct = default) =>
+        (await BrokenReferencesAsync(root, ct).ConfigureAwait(false))
+        .GroupBy(r => Key(r.Target))
+        .Select(g => new MissingFile(g.First().Target, g.Select(r => r.Document).Distinct(StringComparer.OrdinalIgnoreCase).Order(NaturalComparer.Instance).ToList()))
+        .OrderBy(m => m.Name, NaturalComparer.Instance).ToList();
 
     /// <summary>Ссылки документов проекта на файлы, которых нет на диске.</summary>
     public async Task<IReadOnlyList<BrokenReference>> BrokenReferencesAsync(string root, CancellationToken ct = default)

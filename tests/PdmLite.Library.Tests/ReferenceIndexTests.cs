@@ -97,4 +97,28 @@ public class ReferenceIndexTests
     public void Key_IgnoresCaseAndSeparators() =>
         Assert.Equal(ReferenceIndexService.Key(Path.Combine(Path.GetTempPath(), "A", "b.ipt")),
             ReferenceIndexService.Key(Path.Combine(Path.GetTempPath(), "a", "B.IPT") + Path.DirectorySeparatorChar));
+
+    [PostgresFact]
+    public async Task MissingComponents_OfOneAssembly_AllLevels_NamesOnce()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        using var folders = new TempFolders();
+        var store = new FakePropertyStore();
+        var board = Path.Combine(folders.Source, "Электроника", "Плата.ipt"); // перенесли — файла нет
+        var connector = Path.Combine(folders.Source, "Электроника", "Разъём X1.ipt");
+        var block = folders.AddFile("Блок.iam", "b");
+        var top = folders.AddFile("Изделие.iam", "t");
+        var other = folders.AddFile("Другое.iam", "o");
+        store.Files[block] = new DocumentProperties { References = [board, connector] };
+        store.Files[top] = new DocumentProperties { References = [block, board] }; // плата и в изделии, и в блоке
+        store.Files[other] = new DocumentProperties { References = [Path.Combine(folders.Source, "Чужое.ipt")] };
+        var index = Service(db, store);
+        await index.ScanAsync(folders.Source);
+
+        var missing = await index.MissingComponentsAsync(top);
+
+        Assert.Equal(["Плата.ipt", "Разъём X1.ipt"], missing.Select(m => m.Name)); // только для этой сборки, без «Чужое.ipt»
+        Assert.Equal([block, top], missing[0].UsedIn);
+        Assert.Equal(3, (await index.MissingFilesAsync(folders.Source)).Count); // по проекту — каждый файл один раз
+    }
 }

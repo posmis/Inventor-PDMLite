@@ -62,5 +62,15 @@ public partial class AssemblyCheckWindow : Window
             row.Choose(item);
     }
 
+    private void CopyMissing_OnClick(object sender, RoutedEventArgs e)
+    {
+        var names = Grid.Items.OfType<CheckRow>().Where(r => r.Check.Finding == PdmLite.Library.Checks.ComponentFinding.MissingFile)
+            .Select(r => r.FileName).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (names.Count == 0)
+            UiMessages.Info("Ненайденных файлов в сборке нет.");
+        else
+            UiClipboard.SetText(string.Join(Environment.NewLine, names));
+    }
+
     private void Close_OnClick(object sender, RoutedEventArgs e) => Close();
 }

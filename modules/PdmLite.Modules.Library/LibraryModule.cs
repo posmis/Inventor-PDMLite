@@ -29,6 +29,10 @@ public sealed class LibraryModule : IPdmModule
 {
     public ModuleInfo Info { get; } = new("Library", "Стандартная библиотека", new Version(0, 2, 0));
 
+    /// <summary>Панели ленты Inventor.</summary>
+    public const string LibraryPanel = "Библиотека";
+    public const string DiagnosticsPanel = "Диагностика сборки";
+
     private LibraryPanelViewModel? _panel;
     private ContentCenterPrompt? _contentCenter;
     private LibraryFileResolver? _resolver;
@@ -60,6 +64,7 @@ public sealed class LibraryModule : IPdmModule
         services.AddSingleton<ContentCenterPrompt>();
         services.AddSingleton<LibraryFileResolver>();
         services.AddTransient<AddFromAssembly>();
+        services.AddTransient<OccurrenceNamesCommand>();
         services.AddSingleton<IMissingFileResolver>(sp => sp.GetRequiredService<LibraryFileResolver>());
         services.AddTransient<LibrarySettingsViewModel>();
     }
@@ -86,6 +91,12 @@ public sealed class LibraryModule : IPdmModule
             _resolver = services.GetRequiredService<LibraryFileResolver>();
             _resolver.Attach();
 
+            // Лента Inventor: панель «Библиотека» и панель «Диагностика сборки» (по всей открытой сборке).
+            context.Ui.RegisterCommand(new CommandDescriptor(
+                "Library.AddSelected", "Добавить в библиотеку", CommandPlacement.Toolbar,
+                _ => services.GetRequiredService<AddFromAssembly>().RunAsync(),
+                Order: 1, Group: "1-library", Icon: IconKeys.LibraryAdd, Panel: LibraryPanel));
+
             context.Ui.RegisterCommand(new CommandDescriptor(
                 "Library.CheckAssembly", "Проверить сборку", CommandPlacement.Toolbar,
                 _ =>
@@ -93,12 +104,22 @@ public sealed class LibraryModule : IPdmModule
                     new AssemblyCheckWindow(services.GetRequiredService<AssemblyCheckViewModel>()).Show();
                     return Task.CompletedTask;
                 },
-                Order: 0, Group: "1-library", Icon: IconKeys.Check));
+                Order: 0, Group: "1-library", Icon: IconKeys.Check, Panel: DiagnosticsPanel));
 
             context.Ui.RegisterCommand(new CommandDescriptor(
-                "Library.AddSelected", "Добавить в библиотеку", CommandPlacement.Toolbar,
-                _ => services.GetRequiredService<AddFromAssembly>().RunAsync(),
-                Order: 1, Group: "1-library", Icon: IconKeys.LibraryAdd));
+                "Library.MissingFiles", "Ненайденные файлы", CommandPlacement.Toolbar,
+                _ =>
+                {
+                    new MissingFilesWindow(services.GetRequiredService<IAssemblyComponents>(),
+                        services.GetRequiredService<Microsoft.Extensions.Logging.ILogger<MissingFilesWindow>>()).Show();
+                    return Task.CompletedTask;
+                },
+                Order: 1, Group: "1-library", Icon: IconKeys.Warning, Panel: DiagnosticsPanel));
+
+            context.Ui.RegisterCommand(new CommandDescriptor(
+                "Library.OccurrenceNames", "Имена в обозревателе", CommandPlacement.Toolbar,
+                _ => services.GetRequiredService<OccurrenceNamesCommand>().RunAsync(),
+                Order: 2, Group: "1-library", Icon: IconKeys.ProjectTree, Panel: DiagnosticsPanel));
         }
 
         // Добавление, каталог и настройки — только в Explorer (свойства файлов читаются через Apprentice).

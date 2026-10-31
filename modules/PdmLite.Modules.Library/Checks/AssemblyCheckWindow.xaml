@@ -48,6 +48,8 @@
                             <Run Text="Обновить имена в обозревателе (" /><Run Text="{Binding NamesToFix, Mode=OneWay}" /><Run Text=")…" />
                         </TextBlock>
                     </Button>
+                    <Button Content="Копировать имена ненайденных" Click="CopyMissing_OnClick" Margin="0,0,8,0"
+                            ToolTip="Имена файлов со строк «Файл не найден» — по одному на строку" />
                     <Button Content="Проверить заново" Command="{Binding RunCommand}" Margin="0,0,8,0" />
                     <Button Content="Закрыть" IsCancel="True" Click="Close_OnClick" />
                 </StackPanel>

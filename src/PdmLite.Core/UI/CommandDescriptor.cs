@@ -31,6 +31,7 @@ public sealed record CommandContext(IReadOnlyList<ProjectItem> Selection)
 /// <param name="Group">Группа: между группами в меню ставится разделитель.</param>
 /// <param name="IsDefault">Команда по двойному щелчку (выделяется жирным).</param>
 /// <param name="Icon">Ключ иконки из <see cref="IconKeys"/>.</param>
+/// <param name="Panel">Панель ленты Inventor (например, «Диагностика сборки»); <c>null</c> — основная панель PdmLite.</param>
 public sealed record CommandDescriptor(
     string Id,
     string Title,
@@ -40,7 +41,11 @@ public sealed record CommandDescriptor(
     int Order = 0,
     string Group = "",
     bool IsDefault = false,
-    string? Icon = null)
+    string? Icon = null,
+    string? Panel = null)
 {
+    /// <summary>Панель ленты Inventor по умолчанию (команды проекта).</summary>
+    public const string MainPanel = "PdmLite";
+
     public bool IsAvailable(CommandContext context) => CanExecute?.Invoke(context) ?? true;
 }

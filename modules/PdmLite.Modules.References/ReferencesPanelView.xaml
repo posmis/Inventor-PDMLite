@@ -83,6 +83,8 @@
                     <RowDefinition Height="*" MinHeight="60" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" MinHeight="60" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <DockPanel Margin="0,6,0,4">
@@ -104,6 +106,46 @@
                          SelectionChanged="List_OnSelectionChanged" MouseDoubleClick="List_OnMouseDoubleClick"
                          ContextMenu="{StaticResource RowMenu}" HorizontalContentAlignment="Stretch"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+
+                <!-- Ненайденные файлы на всех уровнях — только имена -->
+                <DockPanel Grid.Row="4" Margin="0,10,0,4">
+                    <DockPanel.Style>
+                        <Style TargetType="DockPanel">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Missing.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DockPanel.Style>
+                    <Button DockPanel.Dock="Right" Style="{StaticResource Pdm.ToolButton}" Command="{Binding CopyMissingNamesCommand}"
+                            ToolTip="Имена ненайденных файлов — по одному на строку">
+                        <StackPanel Orientation="Horizontal">
+                            <Image Source="{StaticResource Pdm.Icon.Cmd.CopyPath}" Style="{StaticResource Pdm.Icon16}" />
+                            <TextBlock Text="Копировать имена" Margin="4,0,2,0" />
+                        </StackPanel>
+                    </Button>
+                    <TextBlock Style="{StaticResource Pdm.Text.Section}" Foreground="#B3261E" VerticalAlignment="Center">
+                        <Run Text="Не найдено, все уровни (" /><Run Text="{Binding Missing.Count, Mode=OneWay}" /><Run Text=")" />
+                    </TextBlock>
+                </DockPanel>
+                <ListBox Grid.Row="5" ItemsSource="{Binding Missing}" MaxHeight="160" HorizontalContentAlignment="Stretch"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.Style>
+                        <Style TargetType="ListBox">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Missing.Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ListBox.Style>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Name}" ToolTip="{Binding Target}" TextTrimming="CharacterEllipsis" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
             </Grid>
         </DockPanel>
     </Grid>

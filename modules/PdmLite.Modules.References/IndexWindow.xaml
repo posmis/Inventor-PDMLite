@@ -63,39 +63,35 @@
         <TabControl Margin="6">
             <TabItem>
                 <TabItem.Header>
-                    <TextBlock><Run Text="Битые ссылки (" /><Run Text="{Binding Broken.Count, Mode=OneWay}" /><Run Text=")" /></TextBlock>
+                    <TextBlock><Run Text="Ненайденные файлы (" /><Run Text="{Binding Broken.Count, Mode=OneWay}" /><Run Text=")" /></TextBlock>
                 </TabItem.Header>
-                <DataGrid ItemsSource="{Binding Broken}" SelectedItem="{Binding Selected}" IsReadOnly="True" SelectionMode="Single"
+                <DataGrid ItemsSource="{Binding Broken}" SelectedItem="{Binding Selected}" IsReadOnly="True" SelectionMode="Single" HorizontalScrollBarVisibility="Auto"
                           ui:RightClickSelect.IsEnabled="True" ui:NaturalSort.IsEnabled="True">
                     <DataGrid.ContextMenu>
                         <ContextMenu>
-                            <MenuItem Header="Показать документ" Command="{Binding ShowDocumentCommand}" FontWeight="SemiBold">
-                                <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.ShowInWindows}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
-                            </MenuItem>
-                            <MenuItem Header="Копировать список" Command="{Binding CopyListCommand}">
+                            <MenuItem Header="Копировать имена" Command="{Binding CopyNamesCommand}" FontWeight="SemiBold">
                                 <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.CopyPath}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem Header="Копировать таблицу (для Excel)" Command="{Binding CopyListCommand}" />
+                            <Separator />
+                            <MenuItem Header="Показать документ, где используется" Command="{Binding ShowDocumentCommand}">
+                                <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.ShowInWindows}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
                             </MenuItem>
                         </ContextMenu>
                     </DataGrid.ContextMenu>
                     <DataGrid.Columns>
-                        <DataGridTemplateColumn Header="Документ" Width="380" SortMemberPath="DocumentName">
+                        <DataGridTemplateColumn Header="Файл (нет на диске)" Width="340" SortMemberPath="Name">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" ToolTip="{Binding Document}" VerticalAlignment="Center">
-                                        <Image Source="{Binding Document, Converter={StaticResource FileIcon}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
-                                        <TextBlock Text="{Binding DocumentName}" VerticalAlignment="Center" />
+                                    <StackPanel Orientation="Horizontal" ToolTip="{Binding Path}" VerticalAlignment="Center">
+                                        <Image Source="{Binding Path, Converter={StaticResource FileIcon}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
+                                        <TextBlock Text="{Binding Name}" Foreground="#B3261E" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTextColumn Header="Ссылается на (файла нет)" Width="*" MinWidth="300" Binding="{Binding Target}">
-                            <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="#B3261E" />
-                                    <Setter Property="VerticalAlignment" Value="Center" />
-                                </Style>
-                            </DataGridTextColumn.ElementStyle>
-                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="Где используется" Width="*" MinWidth="250" Binding="{Binding UsedInText}" />
+                        <DataGridTextColumn Header="Где искали" Width="320" Binding="{Binding Folder}" />
                     </DataGrid.Columns>
                 </DataGrid>
             </TabItem>

@@ -31,6 +31,9 @@ public sealed partial class ReferencesPanelViewModel(
     public ObservableCollection<ReferenceRow> UsedIn { get; } = [];
     public ObservableCollection<ReferenceRow> Components { get; } = [];
 
+    /// <summary>Ненайденные файлы сборки на всех уровнях — только имена, каждый один раз.</summary>
+    public ObservableCollection<MissingFile> Missing { get; } = [];
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasItem), nameof(Title))]
     private ProjectItem? _item;
@@ -70,6 +73,7 @@ public sealed partial class ReferencesPanelViewModel(
         var version = ++_version;
         UsedIn.Clear();
         Components.Clear();
+        Missing.Clear();
         if (Item is not { } item)
         {
             Status = "";
@@ -87,6 +91,7 @@ public sealed partial class ReferencesPanelViewModel(
             var scanned = await index.ScannedAtAsync(item.Path);
             var usedIn = await index.WhereUsedAsync(item.Path, AllLevels);
             var components = await index.ComponentsAsync(item.Path);
+            var missing = await index.MissingComponentsAsync(item.Path);
             if (version != _version)
                 return; // пока загружали, выбрали другой документ
 
@@ -94,11 +99,12 @@ public sealed partial class ReferencesPanelViewModel(
                 UsedIn.Add(new ReferenceRow(document));
             foreach (var document in components)
                 Components.Add(new ReferenceRow(document));
+            foreach (var file in missing)
+                Missing.Add(file);
 
-            var missing = components.Count(c => !c.Exists);
             Status = scanned is null
                 ? "Документ не проиндексирован — обновите индекс проекта (PdmLite Explorer → «Индекс ссылок проекта…»)."
-                : $"Индекс от {scanned.Value.ToLocalTime():g}." + (missing > 0 ? $" Не найдено файлов: {missing}." : "");
+                : $"Индекс от {scanned.Value.ToLocalTime():g}.";
         }
         catch (Exception ex)
         {
@@ -135,6 +141,10 @@ public sealed partial class ReferencesPanelViewModel(
         if (Selected is { } row)
             UiClipboard.ShowInExplorer(row.Path);
     }
+
+    /// <summary>Имена ненайденных файлов — в буфер обмена, по одному на строку.</summary>
+    [RelayCommand]
+    private void CopyMissingNames() => UiClipboard.SetText(string.Join(Environment.NewLine, Missing.Select(m => m.Name)));
 
     private bool HasSelection() => Selected is not null;
 

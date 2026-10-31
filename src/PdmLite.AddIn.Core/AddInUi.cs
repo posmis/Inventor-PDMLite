@@ -49,11 +49,18 @@ internal sealed class AddInUi : IDisposable
         var refresh = AddButton("Обновить проект", "PdmLite.RefreshProject", "Перечитать дерево проекта",
             IconKeys.Refresh, RefreshProject);
 
-        // Команды модулей (размещение Toolbar) — тоже кнопками на вкладке PdmLite.
-        var buttons = new List<Inv.ButtonDefinition> { toggle, reveal, refresh };
+        // Команды модулей (размещение Toolbar) — тоже кнопками на вкладке PdmLite, по панелям ленты:
+        // панель задаёт модуль (например, «Диагностика сборки»), без неё — основная панель PdmLite.
+        var panels = new List<(string Title, List<Inv.ButtonDefinition> Buttons)> { (CommandDescriptor.MainPanel, [toggle, reveal, refresh]) };
         foreach (var command in _host.Ui.GetCommands(CommandPlacement.Toolbar))
-            buttons.Add(AddButton(command.Title.TrimEnd('…', '.'), "PdmLite.Cmd." + command.Id, command.Title, command.Icon ?? IconKeys.Info,
+        {
+            var title = command.Panel ?? CommandDescriptor.MainPanel;
+            var group = panels.FirstOrDefault(p => p.Title == title);
+            if (group.Buttons is null)
+                panels.Add(group = (title, []));
+            group.Buttons.Add(AddButton(command.Title.TrimEnd('…', '.'), "PdmLite.Cmd." + command.Id, command.Title, command.Icon ?? IconKeys.Info,
                 () => CommandMenuBuilder.RunAsync(command, CommandContext.Empty)));
+        }
 
         foreach (var ribbonName in Ribbons)
         {
@@ -61,10 +68,20 @@ internal sealed class AddInUi : IDisposable
             {
                 var ribbon = _inventor.UserInterfaceManager.Ribbons[ribbonName];
                 var tab = FindTab(ribbon) ?? ribbon.RibbonTabs.Add("PdmLite", TabId, _clientId);
-                var panel = FindPanel(tab) ?? tab.RibbonPanels.Add("PdmLite", PanelId, _clientId);
-                foreach (var button in buttons)
-                    if (!HasControl(panel, button.InternalName))
-                        panel.CommandControls.AddButton(button, true, true);
+                foreach (var (title, buttons) in panels)
+                {
+                    var panelId = title == CommandDescriptor.MainPanel ? PanelId : PanelId + "." + string.Concat(title.Where(char.IsLetterOrDigit));
+                    var panel = FindPanel(tab, panelId) ?? tab.RibbonPanels.Add(title, panelId, _clientId);
+                    // Кнопки, которые переехали на другую панель (лента Inventor помнит прошлую раскладку), — убираем отсюда.
+                    var own = buttons.Select(b => b.InternalName).ToHashSet();
+                    var elsewhere = panels.Where(p => p.Title != title).SelectMany(p => p.Buttons).Select(b => b.InternalName).ToHashSet();
+                    foreach (var control in panel.CommandControls.Cast<Inv.CommandControl>().ToList())
+                        if (elsewhere.Contains(control.InternalName) && !own.Contains(control.InternalName))
+                            control.Delete();
+                    foreach (var button in buttons)
+                        if (!HasControl(panel, button.InternalName))
+                            panel.CommandControls.AddButton(button, true, true);
+                }
             }
             catch (COMException ex)
             {
@@ -192,10 +209,10 @@ internal sealed class AddInUi : IDisposable
         return null;
     }
 
-    private static Inv.RibbonPanel? FindPanel(Inv.RibbonTab tab)
+    private static Inv.RibbonPanel? FindPanel(Inv.RibbonTab tab, string panelId)
     {
         foreach (Inv.RibbonPanel panel in tab.RibbonPanels)
-            if (panel.InternalName == PanelId)
+            if (panel.InternalName == panelId)
                 return panel;
         return null;
     }

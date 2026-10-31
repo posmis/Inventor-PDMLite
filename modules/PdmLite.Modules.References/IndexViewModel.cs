@@ -18,7 +18,7 @@ public sealed partial class IndexViewModel(
 {
     private CancellationTokenSource? _cts;
 
-    public ObservableCollection<BrokenRow> Broken { get; } = [];
+    public ObservableCollection<MissingRow> Broken { get; } = [];
     public ObservableCollection<string> Errors { get; } = [];
 
     public string? Root => session.Project?.RootFolder;
@@ -31,7 +31,7 @@ public sealed partial class IndexViewModel(
     [ObservableProperty] private double _progress;
     [ObservableProperty] private string _progressText = "";
     [ObservableProperty] private string _summary = "";
-    [ObservableProperty] private BrokenRow? _selected;
+    [ObservableProperty] private MissingRow? _selected;
 
     private bool CanScan() => !IsBusy && Root is not null;
 
@@ -91,8 +91,8 @@ public sealed partial class IndexViewModel(
         try
         {
             Broken.Clear();
-            foreach (var broken in await index.BrokenReferencesAsync(root))
-                Broken.Add(new BrokenRow(broken));
+            foreach (var missing in await index.MissingFilesAsync(root))
+                Broken.Add(new MissingRow(missing));
         }
         catch (Exception ex)
         {
@@ -104,17 +104,24 @@ public sealed partial class IndexViewModel(
     private void ShowDocument()
     {
         if (Selected is { } row)
-            UiClipboard.ShowInExplorer(row.Document);
+            UiClipboard.ShowInExplorer(row.File.UsedIn[0]);
     }
 
+    /// <summary>Только имена ненайденных файлов — по одному на строку.</summary>
     [RelayCommand]
-    private void CopyList() => UiClipboard.SetText(string.Join(Environment.NewLine, Broken.Select(b => $"{b.Document}\t{b.Target}")));
+    private void CopyNames() => UiClipboard.SetText(string.Join(Environment.NewLine, Broken.Select(b => b.Name)));
+
+    /// <summary>Таблица: имя, где искали, где используется (для Excel).</summary>
+    [RelayCommand]
+    private void CopyList() => UiClipboard.SetText(string.Join(Environment.NewLine, Broken.Select(b => $"{b.Name}\t{b.Folder}\t{b.UsedInText}")));
 }
 
-public sealed record BrokenRow(BrokenReference Reference)
+/// <summary>Ненайденный файл: имя, папка, где его ищут, и документы, где он используется (по именам).</summary>
+public sealed record MissingRow(MissingFile File)
 {
-    public string Document => Reference.Document;
-    public string DocumentName => Path.GetFileName(Reference.Document);
-    public string Target => Reference.Target;
-    public string TargetName => Path.GetFileName(Reference.Target);
+    public string Name => File.Name;
+    public string Path => File.Target;
+    public string Folder => File.Folder;
+    public int Count => File.UsedIn.Count;
+    public string UsedInText => string.Join(", ", File.UsedIn.Select(System.IO.Path.GetFileName));
 }
