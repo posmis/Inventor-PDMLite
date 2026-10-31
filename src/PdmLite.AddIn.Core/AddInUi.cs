@@ -51,15 +51,19 @@ internal sealed class AddInUi : IDisposable
 
         // Команды модулей (размещение Toolbar) — тоже кнопками на вкладке PdmLite, по панелям ленты:
         // панель задаёт модуль (например, «Диагностика сборки»), без неё — основная панель PdmLite.
-        var panels = new List<(string Title, List<Inv.ButtonDefinition> Buttons)> { (CommandDescriptor.MainPanel, [toggle, reveal, refresh]) };
+        // Компактные (обновления) — маленькими кнопками с подписью, столбиком в конце панели.
+        var panels = new List<(string Title, List<(Inv.ButtonDefinition Button, bool Compact)> Buttons)>
+        {
+            (CommandDescriptor.MainPanel, [(toggle, false), (reveal, false), (refresh, true)]),
+        };
         foreach (var command in _host.Ui.GetCommands(CommandPlacement.Toolbar))
         {
             var title = command.Panel ?? CommandDescriptor.MainPanel;
             var group = panels.FirstOrDefault(p => p.Title == title);
             if (group.Buttons is null)
                 panels.Add(group = (title, []));
-            group.Buttons.Add(AddButton(command.Title.TrimEnd('…', '.'), "PdmLite.Cmd." + command.Id, command.Title, command.Icon ?? IconKeys.Info,
-                () => CommandMenuBuilder.RunAsync(command, CommandContext.Empty)));
+            group.Buttons.Add((AddButton(command.Title.TrimEnd('…', '.'), "PdmLite.Cmd." + command.Id, command.Title, command.Icon ?? IconKeys.Info,
+                () => CommandMenuBuilder.RunAsync(command, CommandContext.Empty)), command.Compact));
         }
 
         foreach (var ribbonName in Ribbons)
@@ -72,15 +76,16 @@ internal sealed class AddInUi : IDisposable
                 {
                     var panelId = title == CommandDescriptor.MainPanel ? PanelId : PanelId + "." + string.Concat(title.Where(char.IsLetterOrDigit));
                     var panel = FindPanel(tab, panelId) ?? tab.RibbonPanels.Add(title, panelId, _clientId);
-                    // Кнопки, которые переехали на другую панель (лента Inventor помнит прошлую раскладку), — убираем отсюда.
-                    var own = buttons.Select(b => b.InternalName).ToHashSet();
-                    var elsewhere = panels.Where(p => p.Title != title).SelectMany(p => p.Buttons).Select(b => b.InternalName).ToHashSet();
+                    // Лента Inventor помнит прошлую раскладку (размеры, порядок, кнопки других панелей) — наши кнопки
+                    // каждый раз убираются и ставятся заново: большие по порядку, затем компактные столбиком.
+                    var ours = panels.SelectMany(p => p.Buttons).Select(b => b.Button.InternalName).ToHashSet();
                     foreach (var control in panel.CommandControls.Cast<Inv.CommandControl>().ToList())
-                        if (elsewhere.Contains(control.InternalName) && !own.Contains(control.InternalName))
+                        if (ours.Contains(control.InternalName))
                             control.Delete();
-                    foreach (var button in buttons)
-                        if (!HasControl(panel, button.InternalName))
-                            panel.CommandControls.AddButton(button, true, true);
+                    foreach (var (button, _) in buttons.Where(b => !b.Compact))
+                        panel.CommandControls.AddButton(button, true, true);
+                    foreach (var (button, _) in buttons.Where(b => b.Compact))
+                        panel.CommandControls.AddButton(button, false, true); // маленькая с подписью — Inventor ставит их столбиком
                 }
             }
             catch (COMException ex)
@@ -215,14 +220,6 @@ internal sealed class AddInUi : IDisposable
             if (panel.InternalName == panelId)
                 return panel;
         return null;
-    }
-
-    private static bool HasControl(Inv.RibbonPanel panel, string internalName)
-    {
-        foreach (Inv.CommandControl control in panel.CommandControls)
-            if (control.InternalName == internalName)
-                return true;
-        return false;
     }
 
     private static Inv.DockableWindow? FindWindow(Inv.DockableWindows windows)

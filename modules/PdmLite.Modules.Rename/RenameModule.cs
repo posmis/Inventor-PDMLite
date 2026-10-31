@@ -59,7 +59,7 @@ public sealed class RenameModule : IPdmModule
             "Rename.RepairLinks", "Обновить связи проекта…", CommandPlacement.ContextMenu | CommandPlacement.Toolbar,
             _ => OpenRepair(context),
             _ => session.Project is not null || context.Host == HostKind.Inventor,
-            Order: 32, Group: "2-change", Icon: IconKeys.Refresh));
+            Order: 32, Group: "2-change", Icon: IconKeys.Refresh, Compact: true));
 
         // Перетаскивание в дереве проекта.
         var ui = services.GetRequiredService<PdmLite.Core.Threading.IUiDispatcher>();

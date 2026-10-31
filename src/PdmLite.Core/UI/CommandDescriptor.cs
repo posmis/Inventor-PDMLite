@@ -32,6 +32,7 @@ public sealed record CommandContext(IReadOnlyList<ProjectItem> Selection)
 /// <param name="IsDefault">Команда по двойному щелчку (выделяется жирным).</param>
 /// <param name="Icon">Ключ иконки из <see cref="IconKeys"/>.</param>
 /// <param name="Panel">Панель ленты Inventor (например, «Диагностика сборки»); <c>null</c> — основная панель PdmLite.</param>
+/// <param name="Compact">На ленте Inventor — маленькая кнопка с подписью: такие кнопки панели стоят столбиком (построчный список).</param>
 public sealed record CommandDescriptor(
     string Id,
     string Title,
@@ -42,7 +43,8 @@ public sealed record CommandDescriptor(
     string Group = "",
     bool IsDefault = false,
     string? Icon = null,
-    string? Panel = null)
+    string? Panel = null,
+    bool Compact = false)
 {
     /// <summary>Панель ленты Inventor по умолчанию (команды проекта).</summary>
     public const string MainPanel = "PdmLite";
