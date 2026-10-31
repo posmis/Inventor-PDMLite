@@ -26,6 +26,7 @@ internal sealed class MainForm : Form
     private readonly ProgressBar _progress = new() { Style = ProgressBarStyle.Marquee, Width = 100, Visible = false };
     private readonly Button _rename = new() { Text = "Переименовать…", AutoSize = true, Enabled = false };
     private readonly Button _close = new() { Text = "Закрыть", AutoSize = true };
+    private readonly Button _relink = new() { Text = "Перепривязать по журналу…", AutoSize = true };
 
     private List<NameChange> _changes = [];
     private bool _busy;
@@ -63,15 +64,15 @@ internal sealed class MainForm : Form
                    "«Станет» можно поправить вручную. Ссылки перепривязываются во всех документах Inventor этой папки (с подпапками).",
         }, 1, 2);
 
-        var bottom = new TableLayoutPanel { Dock = DockStyle.Bottom, Height = 44, ColumnCount = 4, Padding = new Padding(8, 6, 8, 6) };
+        var bottom = new TableLayoutPanel { Dock = DockStyle.Bottom, Height = 44, ColumnCount = 5, Padding = new Padding(8, 6, 8, 6) };
         bottom.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        bottom.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        for (var i = 0; i < 4; i++)
+            bottom.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         bottom.Controls.Add(_status, 0, 0);
         bottom.Controls.Add(_progress, 1, 0);
-        bottom.Controls.Add(_rename, 2, 0);
-        bottom.Controls.Add(_close, 3, 0);
+        bottom.Controls.Add(_relink, 2, 0);
+        bottom.Controls.Add(_rename, 3, 0);
+        bottom.Controls.Add(_close, 4, 0);
 
         _grid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "Include", HeaderText = "", Width = 30 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "From", HeaderText = "Было", ReadOnly = true, AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill, FillWeight = 40 });
@@ -108,6 +109,7 @@ internal sealed class MainForm : Form
         _browse.Click += (_, _) => Browse();
         _find.Click += (_, _) => Find();
         _rename.Click += (_, _) => Rename();
+        _relink.Click += (_, _) => RelinkFromJournal();
         _close.Click += (_, _) => Close();
         AcceptButton = _find;
 
@@ -241,32 +243,115 @@ internal sealed class MainForm : Form
                 MessageBoxDefaultButton.Button2) != DialogResult.Yes)
             return;
 
-        Run(selected);
+        Run(selected, relinkOnly: false);
     }
 
-    private void Run(List<NameChange> changes)
+    /// <summary>
+    /// В фоне (Apprentice — в однопоточном апартаменте): чтение ссылок → подтверждение со списком документов →
+    /// переименование (или только перепривязка).
+    /// </summary>
+    private void Run(List<NameChange> changes, bool relinkOnly)
     {
         SetBusy(true);
         var root = Root;
-        Program.Log($"Переименование: {changes.Count} файлов в {root}");
+        Program.Log($"{(relinkOnly ? "Перепривязка по журналу" : "Переименование")}: {changes.Count} файлов в {root}");
         var thread = new Thread(() =>
         {
             RelinkResult? result = null;
             Exception? error = null;
+            var cancelled = false;
             try
             {
-                using var links = ApprenticeLinks.Start();
-                result = new Relinker(links, Report).Run(root, changes);
+                using var links = ApprenticeLinks.Start(Program.Log);
+                var relinker = new Relinker(links, Report);
+                var plan = relinker.Prepare(root, changes);
+                if ((bool)Invoke(() => ConfirmPlan(plan, changes.Count, relinkOnly)))
+                    result = relinker.Execute(root, changes, plan, relinkOnly);
+                else
+                    cancelled = true;
             }
             catch (Exception ex)
             {
                 error = ex;
             }
-            BeginInvoke(() => Finished(result, error));
+            BeginInvoke(() => Finished(result, error, cancelled, relinkOnly));
         });
         thread.SetApartmentState(ApartmentState.STA); // Apprentice — COM в однопоточном апартаменте
         thread.IsBackground = true;
         thread.Start();
+    }
+
+    /// <summary>Второе подтверждение: где будут заменены ссылки и что настораживает.</summary>
+    private bool ConfirmPlan(RelinkPlan plan, int files, bool relinkOnly)
+    {
+        static string List(IEnumerable<string> items) =>
+            string.Join(Environment.NewLine, items.Take(15).Select(i => "  " + i)) + (items.Count() > 15 ? $"{Environment.NewLine}  … и ещё {items.Count() - 15}" : "");
+
+        if (plan.Unreadable.Count > 0)
+        {
+            MessageBox.Show(this,
+                "Ссылки этих документов не прочитаны — они могут ссылаться на переименовываемые файлы, поэтому ничего не изменено:"
+                + Environment.NewLine + List(plan.Unreadable.Select(Path.GetFileName)!) + Environment.NewLine + Environment.NewLine
+                + "Закройте Inventor и повторите. Подробности — в журнале: " + Program.LogPath,
+                Caption, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return false;
+        }
+        var text = $"Ссылки будут заменены в документах ({plan.Parents.Count}):" + Environment.NewLine
+                   + (plan.Parents.Count == 0 ? "  (ни один документ папки не ссылается на эти файлы)" : List(plan.Parents.Select(p => Path.GetRelativePath(Root, p))))
+                   + Environment.NewLine;
+        if (plan.Unreferenced.Count > 0)
+            text += Environment.NewLine + $"На эти файлы ссылок в папке НЕ найдено ({plan.Unreferenced.Count}) — если их используют сборки " +
+                    "из другой папки, выберите папку выше:" + Environment.NewLine + List(plan.Unreferenced.Select(Path.GetFileName)!) + Environment.NewLine;
+        text += Environment.NewLine + (relinkOnly ? "Перепривязать ссылки?" : $"Переименовать файлы ({files}) и перепривязать ссылки?");
+        return MessageBox.Show(this, text, Caption, MessageBoxButtons.YesNo,
+            plan.Unreferenced.Count > 0 || plan.Parents.Count == 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Question,
+            MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+    }
+
+    /// <summary>Файлы уже переименованы прошлым запуском, а ссылки не перепривязались — перепривязать по его журналу.</summary>
+    private void RelinkFromJournal()
+    {
+        if (_busy)
+            return;
+        if (!Directory.Exists(_folder.Text.Trim()))
+        {
+            MessageBox.Show(this, "Сначала выберите папку проекта — в ней будут заменены ссылки.", Caption, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        using var dialog = new OpenFileDialog
+        {
+            Title = "Журнал прошлого переименования (_журнал.txt или _переименования.json)",
+            Filter = "Журнал|_журнал.txt;_переименования.json|Все файлы|*.*",
+            InitialDirectory = Directory.Exists(Relinker.DefaultBackupRoot) ? Relinker.DefaultBackupRoot : null,
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+        List<NameChange> changes;
+        try
+        {
+            changes = Relinker.LoadChanges(dialog.FileName).Where(c => c.To is not null && File.Exists(c.To)).ToList();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Журнал не прочитан: " + ex.Message, Caption, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+        if (changes.Count == 0)
+        {
+            MessageBox.Show(this, "В журнале нет переименованных файлов, которые сейчас есть на диске.", Caption, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+        _grid.Rows.Clear();
+        foreach (var change in changes)
+        {
+            var row = _grid.Rows[_grid.Rows.Add(true, change.FromName, change.ToName, Path.GetRelativePath(Root, Path.GetDirectoryName(change.From)!), "", "по журналу")];
+            row.Tag = change;
+            row.ReadOnly = true;
+        }
+        _changes = changes;
+        _rename.Enabled = false;
+        _status.Text = $"По журналу: {changes.Count} переименованных файлов. Ссылки на старые имена будут заменены на новые.";
+        Run(changes, relinkOnly: true);
     }
 
     private void Report(string text)
@@ -275,9 +360,14 @@ internal sealed class MainForm : Form
         BeginInvoke(() => _status.Text = text);
     }
 
-    private void Finished(RelinkResult? result, Exception? error)
+    private void Finished(RelinkResult? result, Exception? error, bool cancelled, bool relinkOnly)
     {
         SetBusy(false);
+        if (cancelled)
+        {
+            _status.Text = "Отменено — ничего не изменено.";
+            return;
+        }
         if (error is not null)
         {
             Program.Log("ОШИБКА: " + error);
@@ -286,7 +376,8 @@ internal sealed class MainForm : Form
             _status.Text = "Не выполнено.";
             return;
         }
-        var text = $"Переименовано файлов: {result!.Renamed}. Ссылки обновлены в документах: {result.Documents}." +
+        var text = (relinkOnly ? "" : $"Переименовано файлов: {result!.Renamed}. ")
+                   + $"Ссылки заменены: {result!.References} в документах: {result.Documents}." +
                    (result.Warnings.Count == 0 ? "" : Environment.NewLine + Environment.NewLine + string.Join(Environment.NewLine, result.Warnings.Take(20))) +
                    Environment.NewLine + Environment.NewLine + "Журнал и копии: " + result.BackupFolder;
         Program.Log(text);
@@ -301,6 +392,7 @@ internal sealed class MainForm : Form
         _rename.Enabled = !busy;
         _find.Enabled = !busy;
         _browse.Enabled = !busy;
+        _relink.Enabled = !busy;
         _grid.Enabled = !busy;
         UseWaitCursor = busy;
     }

@@ -9,16 +9,21 @@ namespace ShortenNames;
 internal sealed class ApprenticeLinks : IDocumentLinks, IDisposable
 {
     /// <summary>Путь, длиннее которого Inventor может не открыть файл.</summary>
-    private const int SafePath = 245;
+    private const int SafePath = Relinker.MaxDocumentPath;
 
     private static readonly string[] ProgIds = ["Inventor.ApprenticeServer", "Inventor.ApprenticeServerComponent"];
     private static readonly Guid ApprenticeClsid = new("C343ED84-A129-11D3-B799-0060B0F159EF");
 
     private dynamic? _server;
+    private readonly Action<string> _log;
 
-    private ApprenticeLinks(object server) => _server = server;
+    private ApprenticeLinks(object server, Action<string> log)
+    {
+        _server = server;
+        _log = log;
+    }
 
-    public static ApprenticeLinks Start()
+    public static ApprenticeLinks Start(Action<string> log)
     {
         var errors = new List<string>();
         var types = ProgIds.Select(id => (Name: id, Type: Type.GetTypeFromProgID(id)))
@@ -32,7 +37,7 @@ internal sealed class ApprenticeLinks : IDocumentLinks, IDisposable
             }
             try
             {
-                return new ApprenticeLinks(Activator.CreateInstance(type)!);
+                return new ApprenticeLinks(Activator.CreateInstance(type)!, log);
             }
             catch (Exception ex)
             {
@@ -42,7 +47,7 @@ internal sealed class ApprenticeLinks : IDocumentLinks, IDisposable
         throw new InvalidOperationException("Apprentice не запустился (" + string.Join("; ", errors) + "). Нужен установленный Inventor или Inventor View.");
     }
 
-    public IReadOnlyList<string> References(string path)
+    public IReadOnlyList<IReadOnlyList<string>> Links(string path)
     {
         string? proxy = null;
         var open = path;
@@ -58,15 +63,16 @@ internal sealed class ApprenticeLinks : IDocumentLinks, IDisposable
         {
             return WithDocument(open, document =>
             {
-                var result = new List<string>();
+                var result = new List<IReadOnlyList<string>>();
                 List<dynamic> descriptors = Descriptors(document);
                 foreach (var descriptor in descriptors)
                 {
-                    string? name = Name(descriptor);
-                    if (name is not null)
-                        result.Add(name);
+                    // Явный тип: с dynamic-аргументом результат тоже был бы dynamic.
+                    List<string> names = Names(descriptor);
+                    if (names.Count > 0)
+                        result.Add(names);
                 }
-                return result;
+                return (IReadOnlyList<IReadOnlyList<string>>)result;
             });
         }
         finally
@@ -76,7 +82,7 @@ internal sealed class ApprenticeLinks : IDocumentLinks, IDisposable
         }
     }
 
-    public int Replace(string path, IReadOnlyDictionary<string, string> byPath, IReadOnlyDictionary<string, string> byName)
+    public int Replace(string path, Func<IReadOnlyList<string>, string?> target)
     {
         if (path.Length > SafePath)
             throw new InvalidOperationException($"путь документа слишком длинный ({path.Length}) — сократите и его");
@@ -86,19 +92,12 @@ internal sealed class ApprenticeLinks : IDocumentLinks, IDisposable
             List<dynamic> descriptors = Descriptors(document);
             foreach (var descriptor in descriptors)
             {
-                string? target = null;
-                // Явные типы: с dynamic-аргументами результат тоже был бы dynamic.
-                IEnumerable<string> names = Names(descriptor);
-                foreach (var candidate in names)
-                {
-                    if (byPath.TryGetValue(candidate, out target))
-                        break;
-                    if (byName.TryGetValue(Path.GetFileName(candidate), out target))
-                        break;
-                }
-                if (target is null)
+                List<string> names = Names(descriptor);
+                var to = target(names);
+                if (to is null)
                     continue;
-                descriptor.ReplaceReference(target);
+                _log($"    {string.Join(" | ", names)}  →  {to}");
+                descriptor.ReplaceReference(to);
                 replaced++;
             }
             if (replaced > 0)
@@ -152,9 +151,10 @@ internal sealed class ApprenticeLinks : IDocumentLinks, IDisposable
         return result;
     }
 
-    /// <summary>Как ссылка записана: полный путь, относительное или логическое имя (что есть).</summary>
-    private static IEnumerable<string> Names(dynamic descriptor)
+    /// <summary>Как ссылка записана: полный путь, относительное и логическое имя (что есть), без повторов.</summary>
+    private static List<string> Names(dynamic descriptor)
     {
+        var result = new List<string>();
         foreach (var read in new Func<string?>[]
                  {
                      () => (string?)descriptor.FullFileName,
@@ -171,12 +171,11 @@ internal sealed class ApprenticeLinks : IDocumentLinks, IDisposable
             {
                 value = null; // у потерянной или слишком длинной ссылки свойства может не быть
             }
-            if (!string.IsNullOrWhiteSpace(value))
-                yield return value;
+            if (!string.IsNullOrWhiteSpace(value) && !result.Contains(value, StringComparer.OrdinalIgnoreCase))
+                result.Add(value);
         }
+        return result;
     }
-
-    private static string? Name(dynamic descriptor) => ((IEnumerable<string>)Names(descriptor)).FirstOrDefault();
 
     private static void TryDelete(string path)
     {
