@@ -15,14 +15,18 @@
   <ItemGroup>
     <None Include="..\..\tools\collect-components\*.*" Link="Scripts\collect-components\%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\tools\shorten-names\*.*" Link="Scripts\shorten-names\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- «Сбор файлов по списку» — отдельная программа; собирается вместе с модулем и кладётся к утилитам. -->
   <PropertyGroup>
     <CollectOutput>..\..\tools\CollectComponents\bin\$(Configuration)\net8.0-windows\</CollectOutput>
+    <ShortenOutput>..\..\tools\ShortenNames\bin\$(Configuration)\net8.0-windows\</ShortenOutput>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\tools\CollectComponents\CollectComponents.csproj" ReferenceOutputAssembly="false" Private="false" />
+    <ProjectReference Include="..\..\tools\ShortenNames\ShortenNames.csproj" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <!-- Файлы программы известны только после её сборки — добавляем их при сборке (а не при чтении проекта). -->
@@ -30,6 +34,8 @@
     <ItemGroup>
       <_CollectFiles Include="$(CollectOutput)CollectComponents.*" Exclude="$(CollectOutput)CollectComponents.pdb" />
       <None Include="@(_CollectFiles)" Link="Scripts\collect-components\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+      <_ShortenFiles Include="$(ShortenOutput)ShortenNames.*" Exclude="$(ShortenOutput)ShortenNames.pdb" />
+      <None Include="@(_ShortenFiles)" Link="Scripts\shorten-names\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
 
