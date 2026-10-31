@@ -121,8 +121,14 @@ public sealed partial class ProjectTreeViewModel(
         // Перестроение (обновление, переименование) не сворачивает дерево: раскрытые папки и выделение сохраняются,
         // переименованные и перемещённые — по новым путям.
         var selectedPath = Moved(SelectedNode?.Item.Path);
-        var expanded = Nodes.SelectMany(n => n.Descendants()).Where(n => n.IsFolder && n.IsExpanded)
-            .Select(n => Moved(n.Item.Path)!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // Раскрытые папки остаются раскрытыми; переименованная или перенесённая папка — под новым путём.
+        var expanded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var folder in Nodes.SelectMany(n => n.Descendants()).Where(n => n.IsFolder && n.IsExpanded))
+        {
+            expanded.Add(folder.Item.Path);
+            if (!Directory.Exists(folder.Item.Path) && Moved(folder.Item.Path) is { } now)
+                expanded.Add(now);
+        }
         _moved = null;
 
         var rootNode = new TreeNodeViewModel(root, null) { IsExpanded = true };
@@ -164,6 +170,9 @@ public sealed partial class ProjectTreeViewModel(
             return path;
         if (_moved.TryGetValue(path, out var to))
             return to;
+        // Папка, которая осталась на месте (из неё только вынесли файлы), — это не переименованная папка.
+        if (Directory.Exists(path) || File.Exists(path))
+            return path;
         var prefix = path.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         foreach (var (from, target) in _moved)
         {
