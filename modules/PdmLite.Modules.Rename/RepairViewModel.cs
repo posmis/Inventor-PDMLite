@@ -31,7 +31,7 @@ public sealed partial class BrokenLinkRow : ObservableObject
     private string? _chosen;
 
     public string State => Chosen is not null && Link.Library is not null && Chosen.Equals(Link.Library, StringComparison.OrdinalIgnoreCase)
-        ? "из библиотеки — будет восстановлена"
+        ? "найден (Inventor находит сам) — запишется текущий путь"
         : Chosen is not null ? "будет восстановлена"
         : Candidates.Count > 1 ? $"найдено {Candidates.Count} файла — выберите"
         : "не найден в проекте — укажите файл";

@@ -47,7 +47,10 @@ public sealed record FileOperationResult(int Moved, int ReferencesUpdated, int P
 /// <param name="Missing">Путь, по которому документы ищут файл.</param>
 /// <param name="UsedIn">Документы проекта с этой ссылкой.</param>
 /// <param name="Candidates">Файлы проекта с тем же именем (куда, вероятно, его перенесли).</param>
-/// <param name="Library">Файл найден в библиотеке (компонент переехал или переименован) — он и предлагается.</param>
+/// <param name="Library">
+/// Где файл на самом деле: в папках поиска проекта Inventor (Content Center, библиотеки проекта) или в библиотеке
+/// PdmLite (компонент переехал или переименован) — он и предлагается.
+/// </param>
 public sealed record BrokenLink(string Missing, IReadOnlyList<string> UsedIn, IReadOnlyList<string> Candidates, string? Library = null)
 {
     public string Name => Path.GetFileName(Missing);

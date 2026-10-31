@@ -96,11 +96,11 @@
             </TabItem>
             <TabItem>
                 <TabItem.Header>
-                    <TextBlock><Run Text="Найдены в библиотеке (" /><Run Text="{Binding FoundInLibrary.Count, Mode=OneWay}" /><Run Text=")" /></TextBlock>
+                    <TextBlock><Run Text="Найдены по другому пути (" /><Run Text="{Binding FoundInLibrary.Count, Mode=OneWay}" /><Run Text=")" /></TextBlock>
                 </TabItem.Header>
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Style="{StaticResource Pdm.Text.Hint}" TextWrapping="Wrap" Margin="4,4,4,6"
-                               Text="Этих файлов нет по пути, записанному в документах, но они есть в библиотеке (компонент переименован или переехал). Inventor с PdmLite находит их сам. Чтобы записать новые пути в сами документы — «Обновить связи проекта…» (лента PdmLite или меню дерева проекта)." />
+                               Text="Этих файлов нет по пути, записанному в документах, но Inventor их находит сам: в папках поиска проекта (Content Center, библиотеки проекта — по относительному пути) или в библиотеке PdmLite (компонент переименован или переехал). Это не потеря. Чтобы записать текущие пути в сами документы — «Обновить связи проекта…» (лента PdmLite или меню дерева проекта)." />
                     <DataGrid ItemsSource="{Binding FoundInLibrary}" IsReadOnly="True" SelectionMode="Single" HorizontalScrollBarVisibility="Auto"
                               ui:RightClickSelect.IsEnabled="True" ui:NaturalSort.IsEnabled="True">
                         <DataGrid.Columns>
@@ -114,7 +114,7 @@
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="Где сейчас (библиотека)" Width="*" MinWidth="250" Binding="{Binding FoundAt}" />
+                            <DataGridTextColumn Header="Где сейчас" Width="*" MinWidth="250" Binding="{Binding FoundAt}" />
                             <DataGridTextColumn Header="Где используется" Width="*" MinWidth="200" Binding="{Binding UsedInText}" />
                             <DataGridTextColumn Header="Где искали" Width="260" Binding="{Binding Folder}" />
                         </DataGrid.Columns>

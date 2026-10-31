@@ -24,6 +24,7 @@ public sealed class ReferencesModule : IPdmModule
 
     public void ConfigureServices(IServiceCollection services, HostKind host)
     {
+        services.TryAddSingleton<ProjectSearchPaths>();
         services.TryAddSingleton<ReferenceIndexService>();
         services.AddSingleton<ReferencesPanelViewModel>();
         services.AddTransient<IndexViewModel>();

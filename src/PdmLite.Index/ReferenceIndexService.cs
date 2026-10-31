@@ -51,25 +51,46 @@ public sealed class ReferenceIndexService
     private readonly IDocumentPropertyStore properties;
     private readonly ILogger<ReferenceIndexService> logger;
     private readonly IReadOnlyList<IMissingFileResolver> resolvers;
+    private readonly ProjectSearchPaths? searchPaths;
 
     public ReferenceIndexService(IPdmDatabase database, IDocumentPropertyStore properties, ILogger<ReferenceIndexService> logger)
         : this(database, properties, logger, [])
     {
     }
 
-    /// <param name="resolvers">Кто ещё умеет найти файл по ссылке (библиотека) — как плагин в Inventor при открытии.</param>
     public ReferenceIndexService(IPdmDatabase database, IDocumentPropertyStore properties, ILogger<ReferenceIndexService> logger,
         IEnumerable<IMissingFileResolver> resolvers)
+        : this(database, properties, logger, resolvers, null)
+    {
+    }
+
+    /// <param name="resolvers">Кто ещё умеет найти файл по ссылке (библиотека) — как плагин в Inventor при открытии.</param>
+    /// <param name="searchPaths">Папки поиска проекта Inventor (Content Center, библиотеки проекта) — как ищет сам Inventor.</param>
+    public ReferenceIndexService(IPdmDatabase database, IDocumentPropertyStore properties, ILogger<ReferenceIndexService> logger,
+        IEnumerable<IMissingFileResolver> resolvers, ProjectSearchPaths? searchPaths)
     {
         this.database = database;
         this.properties = properties;
         this.logger = logger;
         this.resolvers = resolvers.ToList();
+        this.searchPaths = searchPaths;
     }
 
-    /// <summary>Где на самом деле файл, которого нет по ссылке (найден библиотекой), или <c>null</c>.</summary>
+    /// <summary>
+    /// Где на самом деле файл, которого нет по ссылке, или <c>null</c>: в папках поиска проекта Inventor
+    /// (так его находит сам Inventor) или в библиотеке PdmLite (переехал или переименован).
+    /// </summary>
     public string? Locate(string reference)
     {
+        try
+        {
+            if (searchPaths?.Locate(reference) is { } inProject)
+                return inProject;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.LogDebug(ex, "Поиск файла {Reference} в папках проекта", reference);
+        }
         foreach (var resolver in resolvers)
         {
             try

@@ -32,4 +32,41 @@ public static class IpjReader
             return null;
         }
     }
+
+    /// <summary>
+    /// Папки поиска проекта Inventor — как Inventor ищет файлы по ссылкам: рабочее пространство, пути поиска,
+    /// библиотеки, папка Content Center (все элементы <c>…Path</c> файла проекта). Относительные — от папки .ipj;
+    /// несуществующие пропускаются.
+    /// </summary>
+    public static IReadOnlyList<string> SearchFolders(string ipjPath)
+    {
+        try
+        {
+            var doc = XDocument.Load(ipjPath);
+            var baseDir = Path.GetDirectoryName(Path.GetFullPath(ipjPath))!;
+            var result = new List<string>();
+            foreach (var element in doc.Descendants().Where(e => !e.HasElements && e.Name.LocalName.EndsWith("Path", StringComparison.OrdinalIgnoreCase)))
+            {
+                var value = element.Value.Trim();
+                if (value.Length == 0 || value.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
+                    continue;
+                string folder;
+                try
+                {
+                    folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.Combine(baseDir, value.Replace('\\', Path.DirectorySeparatorChar))));
+                }
+                catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+                {
+                    continue;
+                }
+                if (Directory.Exists(folder) && !result.Contains(folder, StringComparer.OrdinalIgnoreCase))
+                    result.Add(folder);
+            }
+            return result;
+        }
+        catch (Exception ex) when (ex is IOException or XmlException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
 }

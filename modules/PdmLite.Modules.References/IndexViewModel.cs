@@ -20,7 +20,7 @@ public sealed partial class IndexViewModel(
 
     public ObservableCollection<MissingRow> Broken { get; } = [];
 
-    /// <summary>Нет по записанному пути, но найдены в библиотеке (переехали или переименованы) — Inventor находит их сам.</summary>
+    /// <summary>Нет по записанному пути, но Inventor их находит (папки поиска проекта, библиотека PdmLite).</summary>
     public ObservableCollection<MissingRow> FoundInLibrary { get; } = [];
     public ObservableCollection<string> Errors { get; } = [];
 
