@@ -62,7 +62,7 @@ public sealed class ToolbarPanel : Panel
                 // Без текста команда узнаётся по подсказке.
                 if (child is FrameworkElement { ToolTip: null } element && visibility == Visibility.Collapsed)
                     element.ToolTip = label.Text;
-                child.Measure(new Size(double.PositiveInfinity, availableSize.Height));
+                Remeasure(child, label, availableSize.Height);
             }
         }
 
@@ -79,6 +79,19 @@ public sealed class ToolbarPanel : Panel
             x += child.DesiredSize.Width;
         }
         return finalSize;
+    }
+
+    /// <summary>
+    /// Кнопку — заново, с учётом скрытой (или снова показанной) подписи. Смена видимости внутри прохода измерения
+    /// сама не помечает кнопку как изменившуюся — без этого кнопка сохраняла прежнюю ширину (пустое место вместо текста),
+    /// а при следующем измерении ширина с текстом считалась дважды и подписи больше не возвращались.
+    /// </summary>
+    private static void Remeasure(UIElement child, TextBlock label, double height)
+    {
+        for (DependencyObject? element = label; element is not null && !ReferenceEquals(element, child); element = VisualTreeHelper.GetParent(element))
+            (element as UIElement)?.InvalidateMeasure();
+        child.InvalidateMeasure();
+        child.Measure(new Size(double.PositiveInfinity, height));
     }
 
     /// <summary>Подпись кнопки со значком: первый TextBlock рядом с Image в содержимом кнопки.</summary>
