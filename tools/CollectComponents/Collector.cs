@@ -28,6 +28,8 @@ internal sealed class Collector
 
     public Collector(string source)
     {
+        // Нормальный вид пути (без «\\\\» и лишнего «\\» в конце) — и в поиске, и в отчёте.
+        source = Path.TrimEndingDirectorySeparator(Path.GetFullPath(source));
         _source = source;
         var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint };
         foreach (var file in new DirectoryInfo(source).EnumerateFiles("*", options))

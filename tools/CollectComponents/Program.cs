@@ -118,6 +118,7 @@ internal static class Program
             return 0;
         }
 
+        target = Path.TrimEndingDirectorySeparator(Path.GetFullPath(target));
         var report = collector.Copy(result, target);
         File.Copy(LogPath, Path.Combine(target, "_журнал.txt"), overwrite: true);
         Ok($"Скопировано: {result.Found.Count}. Отчёт: {report}");
