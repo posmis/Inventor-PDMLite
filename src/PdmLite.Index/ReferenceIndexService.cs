@@ -29,10 +29,15 @@ public sealed record BrokenReference(string Document, string Target);
 /// <summary>Файл, которого нет на диске, и документы, которые на него ссылаются.</summary>
 /// <param name="Target">Путь, по которому его ищут.</param>
 /// <param name="UsedIn">Документы со ссылкой на него (полные пути).</param>
-public sealed record MissingFile(string Target, IReadOnlyList<string> UsedIn)
+/// <param name="FoundAt">
+/// Файла нет по записанному пути, но он найден (например, компонент библиотеки переехал или переименован):
+/// Inventor с плагином PdmLite подставит его сам, а записать новый путь в документы — «Обновить связи проекта».
+/// </param>
+public sealed record MissingFile(string Target, IReadOnlyList<string> UsedIn, string? FoundAt = null)
 {
     public string Name => System.IO.Path.GetFileName(Target);
     public string Folder => System.IO.Path.GetDirectoryName(Target) ?? "";
+    public bool IsFound => FoundAt is not null;
 }
 
 /// <summary>
@@ -40,8 +45,46 @@ public sealed record MissingFile(string Target, IReadOnlyList<string> UsedIn)
 /// файлы он ссылается. Отсюда «из чего состоит» и «где используется». Документы читаются через
 /// <see cref="IDocumentPropertyStore"/> (Apprentice); повторно — только изменившиеся.
 /// </summary>
-public sealed class ReferenceIndexService(IPdmDatabase database, IDocumentPropertyStore properties, ILogger<ReferenceIndexService> logger)
+public sealed class ReferenceIndexService
 {
+    private readonly IPdmDatabase database;
+    private readonly IDocumentPropertyStore properties;
+    private readonly ILogger<ReferenceIndexService> logger;
+    private readonly IReadOnlyList<IMissingFileResolver> resolvers;
+
+    public ReferenceIndexService(IPdmDatabase database, IDocumentPropertyStore properties, ILogger<ReferenceIndexService> logger)
+        : this(database, properties, logger, [])
+    {
+    }
+
+    /// <param name="resolvers">Кто ещё умеет найти файл по ссылке (библиотека) — как плагин в Inventor при открытии.</param>
+    public ReferenceIndexService(IPdmDatabase database, IDocumentPropertyStore properties, ILogger<ReferenceIndexService> logger,
+        IEnumerable<IMissingFileResolver> resolvers)
+    {
+        this.database = database;
+        this.properties = properties;
+        this.logger = logger;
+        this.resolvers = resolvers.ToList();
+    }
+
+    /// <summary>Где на самом деле файл, которого нет по ссылке (найден библиотекой), или <c>null</c>.</summary>
+    public string? Locate(string reference)
+    {
+        foreach (var resolver in resolvers)
+        {
+            try
+            {
+                if (resolver.Resolve(reference, null) is { } found && File.Exists(found))
+                    return found;
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(ex, "Поиск файла {Reference}", reference);
+            }
+        }
+        return null;
+    }
+
     private static readonly HashSet<string> SkippedFolders = new(StringComparer.OrdinalIgnoreCase) { "OldVersions" };
     private const int BatchSize = 50;
 
@@ -259,7 +302,7 @@ public sealed class ReferenceIndexService(IPdmDatabase database, IDocumentProper
             }
         }
         return missing.Values
-            .Select(m => new MissingFile(m.Target, m.UsedIn.Order(NaturalComparer.Instance).ToList()))
+            .Select(m => new MissingFile(m.Target, m.UsedIn.Order(NaturalComparer.Instance).ToList(), Locate(m.Target)))
             .OrderBy(m => m.Name, NaturalComparer.Instance).ToList();
     }
 
@@ -267,7 +310,8 @@ public sealed class ReferenceIndexService(IPdmDatabase database, IDocumentProper
     public async Task<IReadOnlyList<MissingFile>> MissingFilesAsync(string root, CancellationToken ct = default) =>
         (await BrokenReferencesAsync(root, ct).ConfigureAwait(false))
         .GroupBy(r => Key(r.Target))
-        .Select(g => new MissingFile(g.First().Target, g.Select(r => r.Document).Distinct(StringComparer.OrdinalIgnoreCase).Order(NaturalComparer.Instance).ToList()))
+        .Select(g => new MissingFile(g.First().Target, g.Select(r => r.Document).Distinct(StringComparer.OrdinalIgnoreCase).Order(NaturalComparer.Instance).ToList(),
+            Locate(g.First().Target)))
         .OrderBy(m => m.Name, NaturalComparer.Instance).ToList();
 
     /// <summary>Ссылки документов проекта на файлы, которых нет на диске.</summary>
@@ -279,7 +323,8 @@ public sealed class ReferenceIndexService(IPdmDatabase database, IDocumentProper
         var references = await db.IndexedReferences
             .Join(Under(db, rootKey), r => r.FileId, f => f.Id, (r, f) => new { f.Path, r.TargetPath })
             .AsNoTracking().ToListAsync(ct).ConfigureAwait(false);
-        return references.Where(r => !File.Exists(r.TargetPath))
+        // Документ удалили (а индекс ещё не обновлён) — его ссылки уже не потеря.
+        return references.Where(r => !File.Exists(r.TargetPath) && File.Exists(r.Path))
             .Select(r => new BrokenReference(r.Path, r.TargetPath))
             .OrderBy(r => r.Document, NaturalComparer.Instance).ToList();
     }

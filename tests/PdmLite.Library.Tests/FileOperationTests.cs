@@ -192,10 +192,23 @@ public sealed class FileOperationTests : IDisposable
     private string Project => Path.Combine(_root, "Проект");
     private string F(params string[] parts) => Path.Combine([Project, .. parts]);
 
+    /// <summary>Как библиотека: ссылка на пропавший файл → файл с тем же именем в папке библиотеки.</summary>
+    private sealed class LibraryByName(string folder) : IMissingFileResolver
+    {
+        public string? Resolve(string reference, string? libraryName)
+        {
+            var candidate = Path.Combine(folder, Path.GetFileName(reference));
+            return !File.Exists(reference) && File.Exists(candidate) ? candidate : null;
+        }
+    }
+
+    private string LibraryFolder => Path.Combine(_root, "Библиотека");
+
     private ProjectFileOperations Service(FileBackedStore store, IPdmDatabase? database = null, IOpenDocuments? open = null)
     {
         database ??= new PdmDatabase(new DatabaseSettings(), NullLoggerFactory.Instance);
-        return new ProjectFileOperations(database, store, new ReferenceIndexService(database, store, NullLogger<ReferenceIndexService>.Instance),
+        return new ProjectFileOperations(database, store, new ReferenceIndexService(database, store, NullLogger<ReferenceIndexService>.Instance,
+                [new LibraryByName(LibraryFolder)]),
             open ?? new NoOpenDocuments(), NullLogger<ProjectFileOperations>.Instance) { BackupRoot = Path.Combine(_root, "ops") };
     }
 
@@ -582,6 +595,88 @@ public sealed class FileOperationTests : IDisposable
         Assert.False(service.PlanRepair(Project, [link], new Dictionary<string, string>()).CanExecute);
         Assert.Contains(service.PlanRepair(Project, [link], new Dictionary<string, string> { [part] = top }).Problems, p => p.Contains("другого типа"));
         Assert.Contains(service.PlanRepair(Project, [link], new Dictionary<string, string> { [part] = F("нет.ipt") }).Problems, p => p.Contains("не найден"));
+    }
+
+    [Fact]
+    public async Task RepairLinks_LibraryComponentMoved_SuggestedAndRelinked()
+    {
+        // Сборка ссылается на болт библиотеки по старому пути (болт переименован/переехал в библиотеке).
+        var oldBolt = Path.Combine(LibraryFolder, "Старое", "Болт M8.ipt");
+        var bolt = Path.Combine(LibraryFolder, "Болт M8.ipt");
+        FileBackedStore.Create(bolt);
+        var assembly = F("Узел.iam");
+        FileBackedStore.Create(assembly, references: oldBolt);
+        var service = Service(new FileBackedStore());
+
+        var link = Assert.Single(await service.FindBrokenLinksAsync(Project));
+
+        Assert.Equal(bolt, link.Library);
+        Assert.Equal(bolt, link.Suggested);
+        await service.ExecuteAsync(service.PlanRepair(Project, [link], new Dictionary<string, string> { [link.Missing] = link.Suggested! }));
+        Assert.Equal([bolt], FileBackedStore.References(assembly));
+        Assert.Empty(await service.FindBrokenLinksAsync(Project));
+    }
+
+    [Fact]
+    public async Task RepairLinks_LibraryPreferredOverSameNameInProject()
+    {
+        var bolt = Path.Combine(LibraryFolder, "Болт M8.ipt");
+        FileBackedStore.Create(bolt);
+        FileBackedStore.Create(F("Копии", "Болт M8.ipt"));
+        FileBackedStore.Create(F("Узел.iam"), references: Path.Combine(_root, "нет", "Болт M8.ipt"));
+
+        var link = Assert.Single(await Service(new FileBackedStore()).FindBrokenLinksAsync(Project));
+
+        Assert.Equal(2, link.Candidates.Count);
+        Assert.Equal(bolt, link.Candidates[0]);
+        Assert.Equal(bolt, link.Suggested);
+    }
+
+    [PostgresFact]
+    public async Task Index_MissingFiles_FoundInLibrary_Marked()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        var bolt = Path.Combine(LibraryFolder, "Болт M8.ipt");
+        FileBackedStore.Create(bolt);
+        FileBackedStore.Create(F("Узел.iam"), references: [Path.Combine(_root, "нет", "Болт M8.ipt"), Path.Combine(_root, "нет", "Пропал.ipt")]);
+        var store = new FileBackedStore();
+        var index = new ReferenceIndexService(db.Database, store, NullLogger<ReferenceIndexService>.Instance, [new LibraryByName(LibraryFolder)]);
+        await index.ScanAsync(Project);
+
+        var missing = await index.MissingFilesAsync(Project);
+
+        Assert.Equal(bolt, missing.Single(m => m.Name == "Болт M8.ipt").FoundAt);
+        Assert.False(missing.Single(m => m.Name == "Пропал.ipt").IsFound);
+        Assert.Equal(bolt, (await index.MissingComponentsAsync(F("Узел.iam"))).Single(m => m.Name == "Болт M8.ipt").FoundAt);
+    }
+
+    [PostgresFact]
+    public async Task Index_DeletedDocument_NotListed_EvenBeforeRescan()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        var assembly = F("Стенка.iam");
+        FileBackedStore.Create(assembly, references: Path.Combine(_root, "нет", "Гайка M8.ipt"));
+        var index = new ReferenceIndexService(db.Database, new FileBackedStore(), NullLogger<ReferenceIndexService>.Instance);
+        await index.ScanAsync(Project);
+        Assert.Single(await index.MissingFilesAsync(Project));
+
+        File.Delete(assembly); // сборку удалили, индекс ещё не обновляли
+
+        Assert.Empty(await index.MissingFilesAsync(Project));
+        Assert.Empty(await index.BrokenReferencesAsync(Project));
+    }
+
+    [Fact]
+    public void Locate_ResolverThrows_Ignored()
+    {
+        var database = new PdmDatabase(new DatabaseSettings(), NullLoggerFactory.Instance);
+        var index = new ReferenceIndexService(database, new FileBackedStore(), NullLogger<ReferenceIndexService>.Instance, [new Throwing()]);
+        Assert.Null(index.Locate(Path.Combine(_root, "x.ipt")));
+    }
+
+    private sealed class Throwing : IMissingFileResolver
+    {
+        public string? Resolve(string reference, string? libraryName) => throw new InvalidOperationException("база недоступна");
     }
 
     [PostgresFact]

@@ -15,7 +15,7 @@ public sealed partial class BrokenLinkRow : ObservableObject
         Root = root;
         Link = link;
         Candidates = new ObservableCollection<string>(link.Candidates);
-        _chosen = link.Candidates.Count == 1 ? link.Candidates[0] : null;
+        _chosen = link.Suggested;
     }
 
     public string Root { get; }
@@ -30,7 +30,9 @@ public sealed partial class BrokenLinkRow : ObservableObject
     [NotifyPropertyChangedFor(nameof(State))]
     private string? _chosen;
 
-    public string State => Chosen is not null ? "будет восстановлена"
+    public string State => Chosen is not null && Link.Library is not null && Chosen.Equals(Link.Library, StringComparison.OrdinalIgnoreCase)
+        ? "из библиотеки — будет восстановлена"
+        : Chosen is not null ? "будет восстановлена"
         : Candidates.Count > 1 ? $"найдено {Candidates.Count} файла — выберите"
         : "не найден в проекте — укажите файл";
 

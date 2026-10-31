@@ -96,6 +96,33 @@
             </TabItem>
             <TabItem>
                 <TabItem.Header>
+                    <TextBlock><Run Text="Найдены в библиотеке (" /><Run Text="{Binding FoundInLibrary.Count, Mode=OneWay}" /><Run Text=")" /></TextBlock>
+                </TabItem.Header>
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Style="{StaticResource Pdm.Text.Hint}" TextWrapping="Wrap" Margin="4,4,4,6"
+                               Text="Этих файлов нет по пути, записанному в документах, но они есть в библиотеке (компонент переименован или переехал). Inventor с PdmLite находит их сам. Чтобы записать новые пути в сами документы — «Обновить связи проекта…» (лента PdmLite или меню дерева проекта)." />
+                    <DataGrid ItemsSource="{Binding FoundInLibrary}" IsReadOnly="True" SelectionMode="Single" HorizontalScrollBarVisibility="Auto"
+                              ui:RightClickSelect.IsEnabled="True" ui:NaturalSort.IsEnabled="True">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="Файл (как записан)" Width="300" SortMemberPath="Name">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" ToolTip="{Binding Path}" VerticalAlignment="Center">
+                                            <Image Source="{Binding Path, Converter={StaticResource Pdm.FileIcon}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
+                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTextColumn Header="Где сейчас (библиотека)" Width="*" MinWidth="250" Binding="{Binding FoundAt}" />
+                            <DataGridTextColumn Header="Где используется" Width="*" MinWidth="200" Binding="{Binding UsedInText}" />
+                            <DataGridTextColumn Header="Где искали" Width="260" Binding="{Binding Folder}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+            <TabItem>
+                <TabItem.Header>
                     <TextBlock><Run Text="Не прочитаны (" /><Run Text="{Binding Errors.Count, Mode=OneWay}" /><Run Text=")" /></TextBlock>
                 </TabItem.Header>
                 <ListBox ItemsSource="{Binding Errors}" ToolTip="Например, DWG из AutoCAD (не Inventor) или повреждённый файл" />

@@ -81,15 +81,17 @@ public sealed class LibraryModule : IPdmModule
             sp => new LibraryPanelView { DataContext = sp.GetRequiredService<LibraryPanelViewModel>() },
             Order: 10, Icon: IconKeys.Library));
 
+        // Где теперь компоненты библиотеки: в Inventor — подстановка ссылок при открытии сборок,
+        // в обоих хостах — индекс ссылок и «Обновить связи проекта» (переехавшие компоненты не считаются потерянными).
+        _resolver = services.GetRequiredService<LibraryFileResolver>();
+        _resolver.Attach();
+
         // Проверка сборок и отделение Content Center — там, где есть сборка Inventor (внутри Inventor).
         if (services.GetService<IAssemblyComponents>() is not null)
         {
             _contentCenter = services.GetRequiredService<ContentCenterPrompt>();
             _contentCenter.Attach();
 
-            // Ссылки сборок на переехавшие компоненты библиотеки подтягиваются при открытии.
-            _resolver = services.GetRequiredService<LibraryFileResolver>();
-            _resolver.Attach();
 
             // Лента Inventor: панель «Библиотека» и панель «Диагностика сборки» (по всей открытой сборке).
             context.Ui.RegisterCommand(new CommandDescriptor(

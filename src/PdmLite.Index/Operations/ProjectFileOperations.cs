@@ -47,9 +47,13 @@ public sealed record FileOperationResult(int Moved, int ReferencesUpdated, int P
 /// <param name="Missing">Путь, по которому документы ищут файл.</param>
 /// <param name="UsedIn">Документы проекта с этой ссылкой.</param>
 /// <param name="Candidates">Файлы проекта с тем же именем (куда, вероятно, его перенесли).</param>
-public sealed record BrokenLink(string Missing, IReadOnlyList<string> UsedIn, IReadOnlyList<string> Candidates)
+/// <param name="Library">Файл найден в библиотеке (компонент переехал или переименован) — он и предлагается.</param>
+public sealed record BrokenLink(string Missing, IReadOnlyList<string> UsedIn, IReadOnlyList<string> Candidates, string? Library = null)
 {
     public string Name => Path.GetFileName(Missing);
+
+    /// <summary>Что предложить: файл библиотеки, иначе единственный файл проекта с тем же именем.</summary>
+    public string? Suggested => Library ?? (Candidates.Count == 1 ? Candidates[0] : null);
 }
 
 /// <summary>Операция не выполнена; всё, что успело измениться, возвращено.</summary>
@@ -232,11 +236,17 @@ public sealed class ProjectFileOperations(
         }
 
         return broken.GroupBy(b => ReferenceIndexService.Key(b.Target))
-            .Select(g => new BrokenLink(g.First().Target,
-                g.Select(b => b.Document).Distinct(StringComparer.OrdinalIgnoreCase).Order(NaturalComparer.Instance).ToList(),
-                byName.GetValueOrDefault(Path.GetFileName(g.First().Target)) is { } same
-                    ? same.Order(NaturalComparer.Instance).ToList()
-                    : []))
+            .Select(g =>
+            {
+                var target = g.First().Target;
+                var library = index.Locate(target);
+                var candidates = (byName.GetValueOrDefault(Path.GetFileName(target)) ?? []).Order(NaturalComparer.Instance).ToList();
+                if (library is not null && !candidates.Contains(library, StringComparer.OrdinalIgnoreCase))
+                    candidates.Insert(0, library);
+                return new BrokenLink(target,
+                    g.Select(b => b.Document).Distinct(StringComparer.OrdinalIgnoreCase).Order(NaturalComparer.Instance).ToList(),
+                    candidates, library);
+            })
             .OrderBy(l => l.Name, NaturalComparer.Instance).ToList();
     }
 

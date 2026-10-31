@@ -19,6 +19,9 @@ public sealed partial class IndexViewModel(
     private CancellationTokenSource? _cts;
 
     public ObservableCollection<MissingRow> Broken { get; } = [];
+
+    /// <summary>Нет по записанному пути, но найдены в библиотеке (переехали или переименованы) — Inventor находит их сам.</summary>
+    public ObservableCollection<MissingRow> FoundInLibrary { get; } = [];
     public ObservableCollection<string> Errors { get; } = [];
 
     public string? Root => session.Project?.RootFolder;
@@ -91,8 +94,9 @@ public sealed partial class IndexViewModel(
         try
         {
             Broken.Clear();
-            foreach (var missing in await index.MissingFilesAsync(root))
-                Broken.Add(new MissingRow(missing));
+            FoundInLibrary.Clear();
+            foreach (var missing in await Task.Run(() => index.MissingFilesAsync(root)))
+                (missing.IsFound ? FoundInLibrary : Broken).Add(new MissingRow(missing));
         }
         catch (Exception ex)
         {
@@ -124,4 +128,5 @@ public sealed record MissingRow(MissingFile File)
     public string Folder => File.Folder;
     public int Count => File.UsedIn.Count;
     public string UsedInText => string.Join(", ", File.UsedIn.Select(System.IO.Path.GetFileName));
+    public string FoundAt => File.FoundAt ?? "";
 }

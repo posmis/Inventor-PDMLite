@@ -91,7 +91,7 @@ public sealed partial class ReferencesPanelViewModel(
             var scanned = await index.ScannedAtAsync(item.Path);
             var usedIn = await index.WhereUsedAsync(item.Path, AllLevels);
             var components = await index.ComponentsAsync(item.Path);
-            var missing = await index.MissingComponentsAsync(item.Path);
+            var missing = await Task.Run(() => index.MissingComponentsAsync(item.Path));
             if (version != _version)
                 return; // пока загружали, выбрали другой документ
 
@@ -99,7 +99,8 @@ public sealed partial class ReferencesPanelViewModel(
                 UsedIn.Add(new ReferenceRow(document));
             foreach (var document in components)
                 Components.Add(new ReferenceRow(document));
-            foreach (var file in missing)
+            // Найденные в библиотеке (переехали, переименованы) Inventor подставляет сам — это не потеря.
+            foreach (var file in missing.Where(m => !m.IsFound))
                 Missing.Add(file);
 
             Status = scanned is null
