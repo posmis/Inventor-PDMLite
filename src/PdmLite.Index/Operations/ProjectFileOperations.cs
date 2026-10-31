@@ -242,7 +242,7 @@ public sealed class ProjectFileOperations(
             .Select(g =>
             {
                 var target = g.First().Target;
-                var library = index.Locate(target);
+                var library = index.Locate(target, g.Select(b => b.Document));
                 var candidates = (byName.GetValueOrDefault(Path.GetFileName(target)) ?? []).Order(NaturalComparer.Instance).ToList();
                 if (library is not null && !candidates.Contains(library, StringComparer.OrdinalIgnoreCase))
                     candidates.Insert(0, library);

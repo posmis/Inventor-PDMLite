@@ -80,11 +80,12 @@ public sealed class ReferenceIndexService
     /// Где на самом деле файл, которого нет по ссылке, или <c>null</c>: в папках поиска проекта Inventor
     /// (так его находит сам Inventor) или в библиотеке PdmLite (переехал или переименован).
     /// </summary>
-    public string? Locate(string reference)
+    /// <param name="usedIn">Документы со ссылкой (Inventor ищет файл и рядом с ними).</param>
+    public string? Locate(string reference, IEnumerable<string>? usedIn = null)
     {
         try
         {
-            if (searchPaths?.Locate(reference) is { } inProject)
+            if (searchPaths?.Locate(reference, usedIn) is { } inProject)
                 return inProject;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -323,7 +324,7 @@ public sealed class ReferenceIndexService
             }
         }
         return missing.Values
-            .Select(m => new MissingFile(m.Target, m.UsedIn.Order(NaturalComparer.Instance).ToList(), Locate(m.Target)))
+            .Select(m => new MissingFile(m.Target, m.UsedIn.Order(NaturalComparer.Instance).ToList(), Locate(m.Target, m.UsedIn)))
             .OrderBy(m => m.Name, NaturalComparer.Instance).ToList();
     }
 
@@ -331,8 +332,11 @@ public sealed class ReferenceIndexService
     public async Task<IReadOnlyList<MissingFile>> MissingFilesAsync(string root, CancellationToken ct = default) =>
         (await BrokenReferencesAsync(root, ct).ConfigureAwait(false))
         .GroupBy(r => Key(r.Target))
-        .Select(g => new MissingFile(g.First().Target, g.Select(r => r.Document).Distinct(StringComparer.OrdinalIgnoreCase).Order(NaturalComparer.Instance).ToList(),
-            Locate(g.First().Target)))
+        .Select(g =>
+        {
+            var usedIn = g.Select(r => r.Document).Distinct(StringComparer.OrdinalIgnoreCase).Order(NaturalComparer.Instance).ToList();
+            return new MissingFile(g.First().Target, usedIn, Locate(g.First().Target, usedIn));
+        })
         .OrderBy(m => m.Name, NaturalComparer.Instance).ToList();
 
     /// <summary>Ссылки документов проекта на файлы, которых нет на диске.</summary>

@@ -90,6 +90,37 @@ public sealed class ProjectSearchPathsTests : IDisposable
         Assert.Equal(folders.Count, folders.Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 
+    private ProjectSearchPaths Search() => new(new Session(new ProjectInfo("Проект", Project)));
+
+    [Fact]
+    public void NextToReferencingDocument_Found()
+    {
+        var assembly = Create(Path.Combine(Project, "Сборка платформа", "Ящик.iam"));
+        var rivet = Create(Path.Combine(Project, "Сборка платформа", "Заклепка M5.ipt"));
+        Create(Path.Combine(Project, "Другое", "Заклепка M5.ipt")); // по имени — неоднозначно, но рядом со сборкой есть
+        Assert.Equal(rivet, Search().Locate(Path.Combine(Project, "Старая папка", "Заклепка M5.ipt"), [assembly]));
+    }
+
+    [Fact]
+    public void UniqueNameInProjectSubfolder_Found_Ambiguous_NotFound()
+    {
+        var rivet = Create(Path.Combine(Project, "Крепёж", "Покупные", "Заклепка M6.ipt"));
+        var search = Search();
+        Assert.Equal(rivet, search.Locate(Path.Combine(Project, "Сборка", "Заклепка M6.ipt")));
+
+        Create(Path.Combine(Project, "Ещё", "Заклепка M8.ipt"));
+        Create(Path.Combine(Project, "Ещё2", "Заклепка M8.ipt"));
+        Assert.Null(new ProjectSearchPaths(new Session(new ProjectInfo("Проект", Project))).Locate(Path.Combine(Project, "Сборка", "Заклепка M8.ipt")));
+    }
+
+    [Fact]
+    public void OldVersions_NotUsedForNameSearch()
+    {
+        Create(Path.Combine(Project, "OldVersions", "Заклепка M5.0001.ipt"));
+        Create(Path.Combine(Project, "OldVersions", "Заклепка M5.ipt"));
+        Assert.Null(Search().Locate(Path.Combine(Project, "Сборка", "Заклепка M5.ipt")));
+    }
+
     [Fact]
     public void NoProject_NothingFound() =>
         Assert.Null(new ProjectSearchPaths(new Session(null)).Locate(Path.Combine(_root, "a", "b.ipt")));

@@ -13,6 +13,7 @@ public sealed class ProjectSearchPaths(IProjectSession session)
     private static readonly TimeSpan MaxAge = TimeSpan.FromSeconds(30);
 
     private readonly object _gate = new();
+    private HashSet<string> _defaultContentCenter = new(StringComparer.OrdinalIgnoreCase);
     private (string? Project, DateTime At, IReadOnlyList<string> Folders) _cache = (null, DateTime.MinValue, []);
 
     /// <summary>Папки поиска текущего проекта (проект, папки из .ipj, стандартная папка Content Center).</summary>
@@ -33,7 +34,10 @@ public sealed class ProjectSearchPaths(IProjectSession session)
             ipj = Directory.EnumerateFiles(project.RootFolder, "*.ipj").FirstOrDefault();
         if (ipj is not null)
             folders.AddRange(IpjReader.SearchFolders(ipj));
-        folders.AddRange(DefaultContentCenterFolders());
+        var defaults = DefaultContentCenterFolders().ToList();
+        lock (_gate)
+            _defaultContentCenter = defaults.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        folders.AddRange(defaults);
         var result = folders.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         lock (_gate)
             _cache = (key, DateTime.UtcNow, result);
@@ -41,10 +45,69 @@ public sealed class ProjectSearchPaths(IProjectSession session)
     }
 
     /// <summary>
-    /// Где файл на самом деле: самый длинный «хвост» записанного пути, который есть в одной из папок поиска
-    /// (Inventor ищет по относительному пути, а не по имени по всем подпапкам — так же и здесь).
+    /// Где файл на самом деле, по порядку: 1) самый длинный «хвост» записанного пути в одной из папок поиска
+    /// (относительный путь, как ищет Inventor); 2) папка документа, который на него ссылается (Inventor смотрит
+    /// и её); 3) файл с тем же именем в папках поиска проекта с подпапками — если такой один.
     /// </summary>
-    public string? Locate(string reference) => Locate(reference, Folders());
+    /// <param name="usedIn">Документы со ссылкой на файл (для поиска рядом с ними).</param>
+    public string? Locate(string reference, IEnumerable<string>? usedIn = null)
+    {
+        var folders = Folders();
+        if (Locate(reference, folders) is { } byTail)
+            return byTail;
+        var name = FileName(reference);
+        if (name.Length == 0)
+            return null;
+        foreach (var document in usedIn ?? [])
+        {
+            var nearby = Path.Combine(Path.GetDirectoryName(document) ?? "", name);
+            if (File.Exists(nearby))
+                return nearby;
+        }
+        return Names(folders).TryGetValue(name, out var same) && same.Count == 1 ? same[0] : null;
+    }
+
+    private (string? Key, DateTime At, Dictionary<string, List<string>> Names) _names = (null, DateTime.MinValue, []);
+
+    /// <summary>Документы Inventor папок поиска проекта (с подпапками, без OldVersions) по имени файла.</summary>
+    private Dictionary<string, List<string>> Names(IReadOnlyList<string> folders)
+    {
+        var key = string.Join("|", folders);
+        lock (_gate)
+        {
+            if (_names.Key == key && DateTime.UtcNow - _names.At < MaxAge)
+                return _names.Names;
+        }
+        var names = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint };
+        // Стандартные папки Content Center огромные — по имени в них не ищем (там хватает относительного пути).
+        foreach (var folder in folders.Where(f => !_defaultContentCenter.Contains(f)))
+        {
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(folder, "*", options))
+                {
+                    if (!Core.Domain.DocumentKinds.IsKnown(file)
+                        || file.Split(Path.DirectorySeparatorChar).Any(p => p.Equals("OldVersions", StringComparison.OrdinalIgnoreCase)))
+                        continue;
+                    var fileName = Path.GetFileName(file);
+                    if (!names.TryGetValue(fileName, out var list))
+                        names[fileName] = list = [];
+                    if (!list.Contains(file, StringComparer.OrdinalIgnoreCase))
+                        list.Add(file);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Недоступная папка — ищем в остальных.
+            }
+        }
+        lock (_gate)
+            _names = (key, DateTime.UtcNow, names);
+        return names;
+    }
+
+    private static string FileName(string reference) => reference.Replace('/', '\\').Split('\\')[^1].Trim();
 
     /// <param name="folders">Первая — папка проекта (рабочее пространство), дальше — библиотеки, Content Center.</param>
     public static string? Locate(string reference, IReadOnlyList<string> folders)
