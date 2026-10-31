@@ -216,9 +216,10 @@ internal sealed class Apprentice : IDisposable, IReferenceReader
                 dynamic descriptors = document.File.ReferencedFileDescriptors;
                 count = descriptors.Count;
                 Console.WriteLine($"    [Apprentice] File.ReferencedFileDescriptors: {count}");
-                for (var i = 1; i <= count; i++)
+                foreach (var item in Items(descriptors, count))
                 {
-                    dynamic descriptor = descriptors[i];
+                    dynamic descriptor = item.Value;
+                    var i = item.Index;
                     var full = Get(() => (string?)descriptor.FullFileName);
                     var relative = Get(() => (string?)descriptor.RelativeFileName);
                     var logical = Get(() => (string?)descriptor.LogicalFileName);
@@ -227,9 +228,9 @@ internal sealed class Apprentice : IDisposable, IReferenceReader
                     Add(result, full, relative, logical);
                 }
             }
-            catch (Exception ex) when (ex is COMException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
+            catch (Exception ex)
             {
-                Console.WriteLine($"    [Apprentice] File.ReferencedFileDescriptors — ошибка: {ex.Message}");
+                Console.WriteLine($"    [Apprentice] File.ReferencedFileDescriptors — ошибка: {ex.GetType().Name}: {ex.Message}");
             }
 
             // Способ 2 (если первый ничего не дал): найденные документы, на которые ссылается этот.
@@ -240,17 +241,18 @@ internal sealed class Apprentice : IDisposable, IReferenceReader
                     dynamic documents = document.ReferencedDocuments;
                     int found = documents.Count;
                     Console.WriteLine($"    [Apprentice] ReferencedDocuments: {found}");
-                    for (var i = 1; i <= found; i++)
+                    foreach (var item in Items(documents, found))
                     {
-                        dynamic referenced = documents[i];
+                        dynamic referenced = item.Value;
+                        var i = item.Index;
                         var full = Get(() => (string?)referenced.FullFileName);
                         Console.WriteLine($"      документ #{i}: «{full}»");
                         Add(result, full, null, null);
                     }
                 }
-                catch (Exception ex) when (ex is COMException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
+                catch (Exception ex)
                 {
-                    Console.WriteLine($"    [Apprentice] ReferencedDocuments — ошибка: {ex.Message}");
+                    Console.WriteLine($"    [Apprentice] ReferencedDocuments — ошибка: {ex.GetType().Name}: {ex.Message}");
                 }
             }
         }
@@ -267,6 +269,46 @@ internal sealed class Apprentice : IDisposable, IReferenceReader
                 }
                 Marshal.ReleaseComObject(document);
             }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Элементы коллекции Inventor: по номеру (индексатор), через Item(i) или перебором — что сработает.
+    /// Каждый неудавшийся способ пишется в журнал.
+    /// </summary>
+    private static List<(int Index, object Value)> Items(dynamic collection, int count)
+    {
+        var result = new List<(int, object)>();
+        foreach (var (name, read) in new (string, Func<int, object>)[]
+                 {
+                     ("индексатор", i => collection[i]),
+                     ("Item(i)", i => collection.Item(i)),
+                 })
+        {
+            try
+            {
+                result.Clear();
+                for (var i = 1; i <= count; i++)
+                    result.Add((i, read(i)));
+                return result;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"    [Apprentice] перебор «{name}» не сработал: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        try
+        {
+            result.Clear();
+            var index = 0;
+            foreach (var value in (System.Collections.IEnumerable)collection)
+                result.Add((++index, value));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"    [Apprentice] перебор «foreach» не сработал: {ex.GetType().Name}: {ex.Message}");
         }
         return result;
     }
