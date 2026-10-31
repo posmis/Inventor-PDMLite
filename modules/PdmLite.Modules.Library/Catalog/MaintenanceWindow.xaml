@@ -123,8 +123,8 @@
                         </DataGrid.GroupStyle>
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Свойство" Binding="{Binding Property}" Width="200" ElementStyle="{StaticResource WrapCell}" />
-                            <DataGridTextColumn Header="Сейчас в файле" Binding="{Binding Current}" Width="*" ElementStyle="{StaticResource OldCell}" />
-                            <DataGridTextColumn Header="Будет записано" Binding="{Binding Expected}" Width="*" ElementStyle="{StaticResource NewCell}" />
+                            <DataGridTextColumn Header="Сейчас в файле" Binding="{Binding Current}" Width="*" MinWidth="250" ElementStyle="{StaticResource OldCell}" />
+                            <DataGridTextColumn Header="Будет записано" Binding="{Binding Expected}" Width="*" MinWidth="250" ElementStyle="{StaticResource NewCell}" />
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>
@@ -184,7 +184,7 @@
                             </GroupStyle>
                         </DataGrid.GroupStyle>
                         <DataGrid.Columns>
-                            <DataGridTemplateColumn Header="Оставить" Width="70">
+                            <DataGridTemplateColumn Header="Оставить" Width="70" CanUserResize="False">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <RadioButton GroupName="{Binding GroupName}" IsChecked="{Binding Keep, UpdateSourceTrigger=PropertyChanged}"
@@ -194,9 +194,9 @@
                             </DataGridTemplateColumn>
                             <DataGridTextColumn Header="Действие" Binding="{Binding Action, Mode=OneWay}" Width="80" IsReadOnly="True" />
                             <DataGridTextColumn Header="Обозначение" Binding="{Binding Designation, Mode=OneWay}" Width="320" IsReadOnly="True" />
-                            <DataGridTextColumn Header="Файл в библиотеке" Binding="{Binding Path, Mode=OneWay}" Width="*" IsReadOnly="True" />
+                            <DataGridTextColumn Header="Файл в библиотеке" Binding="{Binding Path, Mode=OneWay}" Width="360" IsReadOnly="True" />
                             <DataGridTextColumn Header="В сборках" Binding="{Binding UsedIn, Mode=OneWay}" Width="75" IsReadOnly="True" />
-                            <DataGridTextColumn Header="Добавлен" Binding="{Binding Created, Mode=OneWay}" Width="120" IsReadOnly="True" />
+                            <DataGridTextColumn Header="Добавлен" Binding="{Binding Created, Mode=OneWay}" Width="130" MinWidth="130" IsReadOnly="True" />
                         </DataGrid.Columns>
                     </DataGrid>
                 </DockPanel>

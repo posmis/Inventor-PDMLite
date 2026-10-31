@@ -586,9 +586,33 @@ public sealed class LibraryItemService(
             .ToList();
     }
 
-    /// <summary>Ключ для поиска дубликатов: только буквы и цифры (без пробелов, знаков, регистра).</summary>
-    public static string LooseKey(string designation) =>
-        new(DesignationNormalizer.ToKey(designation).Where(char.IsLetterOrDigit).ToArray());
+    /// <summary>
+    /// Ключ для поиска дубликатов: без пробелов, регистра и знаков препинания — кроме знака между
+    /// двумя числами: он разделяет их («1,6» ≠ «16», «20.109» ≠ «2010.9»), поэтому заменяется точкой.
+    /// </summary>
+    public static string LooseKey(string designation)
+    {
+        var key = DesignationNormalizer.ToKey(designation);
+        var sb = new System.Text.StringBuilder(key.Length);
+        for (var i = 0; i < key.Length; i++)
+        {
+            var c = key[i];
+            if (char.IsLetterOrDigit(c))
+            {
+                sb.Append(c);
+                continue;
+            }
+
+            // Знаки подряд («-.») — один разделитель; ставим его, только если он между цифрами.
+            var next = i + 1;
+            while (next < key.Length && !char.IsLetterOrDigit(key[next]))
+                next++;
+            if (sb.Length > 0 && char.IsDigit(sb[^1]) && next < key.Length && char.IsDigit(key[next]))
+                sb.Append('.');
+            i = next - 1;
+        }
+        return sb.ToString();
+    }
 
     /// <summary>
     /// Объединяет дубликаты: сборки библиотеки перевязываются на оставляемый компонент, лишние

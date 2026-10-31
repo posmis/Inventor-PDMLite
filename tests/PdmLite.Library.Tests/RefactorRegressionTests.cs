@@ -146,6 +146,10 @@ public class RefactorRegressionTests
     [InlineData("Болт M8-6gx20.109", "болт м8-6gх20.109", true)]
     [InlineData("Болт M8-6gx20.109", "Болт M8-6gx20.88", false)]
     [InlineData("Гайка DIN 6334 M8-10", "Гайка DIN 6334 M8-12", false)]
+    [InlineData("Шайба A.1,6.01.08кп.016 ГОСТ 11371-78", "Шайба A.16.01.08кп.016 ГОСТ 11371-78", false)] // 1,6 мм и 16 мм
+    [InlineData("Шайба A.1,6.01.08кп.016 ГОСТ 11371-78", "Шайба А.1.6.01.08кп.016 ГОСТ 11371-78", true)] // запятая и точка — одно
+    [InlineData("Болт M8-6gx20-.109", "Болт M8-6gx20.109", true)] // лишний знак между числами
+    [InlineData("Болт M8-6gx20.109", "Болт M8-6gx2010.9", false)]
     public void LooseKey(string a, string b, bool same) =>
         Assert.Equal(same, LibraryItemService.LooseKey(a) == LibraryItemService.LooseKey(b));
 }
