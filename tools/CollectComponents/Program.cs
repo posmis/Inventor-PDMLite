@@ -11,11 +11,20 @@ namespace CollectComponents;
 /// </summary>
 internal static class Program
 {
+    /// <summary>Журнал: всё, что видно в окне, — ещё и в файл (чтобы прислать при проблеме).</summary>
+    internal static string LogPath { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PdmLite", "logs",
+        $"collect-components-{DateTime.Now:yyyyMMdd-HHmmss}.log");
+
     [STAThread] // буфер обмена, окна выбора папок и Apprentice — в однопоточном апартаменте
     private static int Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
         Console.InputEncoding = Encoding.UTF8;
+        Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+        var log = new StreamWriter(LogPath, append: false, new UTF8Encoding(true)) { AutoFlush = true };
+        Console.SetOut(new TeeWriter(Console.Out, log));
+        Console.WriteLine($"Журнал: {LogPath}");
         try
         {
             return Run(Options.Parse(args));
@@ -28,8 +37,10 @@ internal static class Program
         finally
         {
             Console.WriteLine();
+            Console.WriteLine($"Полный журнал: {LogPath}");
             Console.WriteLine("Нажмите Enter, чтобы закрыть окно.");
             Console.ReadLine();
+            log.Dispose();
         }
     }
 
@@ -108,6 +119,7 @@ internal static class Program
         }
 
         var report = collector.Copy(result, target);
+        File.Copy(LogPath, Path.Combine(target, "_журнал.txt"), overwrite: true);
         Ok($"Скопировано: {result.Found.Count}. Отчёт: {report}");
         return 0;
     }
@@ -194,18 +206,51 @@ internal sealed class Apprentice : IDisposable, IReferenceReader
         try
         {
             document = _server!.Open(path);
-            dynamic descriptors = document.File.ReferencedFileDescriptors;
-            int count = descriptors.Count;
-            for (var i = 1; i <= count; i++)
+            Console.WriteLine($"    [Apprentice] открыт: тип {Get(() => Convert.ToString(document.DocumentType))}");
+
+            // Способ 1: ссылки файла (есть и у потерянных ссылок).
+            int count = 0;
+            try
             {
-                dynamic descriptor = descriptors[i];
-                var full = Get(() => (string?)descriptor.FullFileName);
-                var name = new[] { full, Get(() => (string?)descriptor.RelativeFileName), Get(() => (string?)descriptor.LogicalFileName) }
-                    .Where(v => !string.IsNullOrWhiteSpace(v))
-                    .Select(v => Path.GetFileName(v!.TrimEnd('\\', '/')))
-                    .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
-                if (name is not null)
-                    result.Add(new DocumentReference(name, string.IsNullOrWhiteSpace(full) ? null : full));
+                dynamic descriptors = document.File.ReferencedFileDescriptors;
+                count = descriptors.Count;
+                Console.WriteLine($"    [Apprentice] File.ReferencedFileDescriptors: {count}");
+                for (var i = 1; i <= count; i++)
+                {
+                    dynamic descriptor = descriptors[i];
+                    var full = Get(() => (string?)descriptor.FullFileName);
+                    var relative = Get(() => (string?)descriptor.RelativeFileName);
+                    var logical = Get(() => (string?)descriptor.LogicalFileName);
+                    var missing = Get(() => Convert.ToString(descriptor.ReferenceMissing));
+                    Console.WriteLine($"      #{i}: полный «{full}», относительный «{relative}», логический «{logical}», потерян: {missing}");
+                    Add(result, full, relative, logical);
+                }
+            }
+            catch (Exception ex) when (ex is COMException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
+            {
+                Console.WriteLine($"    [Apprentice] File.ReferencedFileDescriptors — ошибка: {ex.Message}");
+            }
+
+            // Способ 2 (если первый ничего не дал): найденные документы, на которые ссылается этот.
+            if (result.Count == 0)
+            {
+                try
+                {
+                    dynamic documents = document.ReferencedDocuments;
+                    int found = documents.Count;
+                    Console.WriteLine($"    [Apprentice] ReferencedDocuments: {found}");
+                    for (var i = 1; i <= found; i++)
+                    {
+                        dynamic referenced = documents[i];
+                        var full = Get(() => (string?)referenced.FullFileName);
+                        Console.WriteLine($"      документ #{i}: «{full}»");
+                        Add(result, full, null, null);
+                    }
+                }
+                catch (Exception ex) when (ex is COMException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
+                {
+                    Console.WriteLine($"    [Apprentice] ReferencedDocuments — ошибка: {ex.Message}");
+                }
             }
         }
         finally
@@ -223,6 +268,17 @@ internal sealed class Apprentice : IDisposable, IReferenceReader
             }
         }
         return result;
+    }
+
+    /// <summary>Имя ссылки — из первого непустого поля (у потерянной ссылки полного пути может не быть).</summary>
+    private static void Add(List<DocumentReference> result, string? full, string? relative, string? logical)
+    {
+        var name = new[] { full, relative, logical }
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Select(v => Path.GetFileName(v!.TrimEnd('\\', '/')))
+            .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+        if (name is not null && !result.Any(r => r.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            result.Add(new DocumentReference(name, string.IsNullOrWhiteSpace(full) ? null : full));
     }
 
     private static string? Get(Func<string?> read)
@@ -245,4 +301,13 @@ internal sealed class Apprentice : IDisposable, IReferenceReader
             _server = null;
         }
     }
+}
+
+/// <summary>Вывод сразу в окно и в файл журнала.</summary>
+internal sealed class TeeWriter(TextWriter console, TextWriter file) : TextWriter
+{
+    public override Encoding Encoding => console.Encoding;
+    public override void Write(char value) { console.Write(value); file.Write(value); }
+    public override void Write(string? value) { console.Write(value); file.Write(value); }
+    public override void WriteLine(string? value) { console.WriteLine(value); file.WriteLine(value); }
 }
