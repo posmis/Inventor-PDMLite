@@ -112,6 +112,7 @@ build/                 общие настройки сборки проекто
 tools/icons/           источник иконок и генератор (Icons.xaml, .ico, предпросмотр)
 tools/PdmLite.Data.Design   проект для инструмента миграций (dotnet ef)
 tools/sln-dependencies.py   явный порядок сборки в PdmLite.sln (после добавления проектов)
+tools/collect-components/   отдельная утилита: собрать файлы по списку имён с зависимостями (PowerShell)
 deploy/                манифест плагина, установка
 ```
 
