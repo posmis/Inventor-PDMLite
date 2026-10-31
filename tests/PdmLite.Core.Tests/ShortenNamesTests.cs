@@ -10,7 +10,7 @@ public class ShortenerTests
     [Fact]
     public void StepRepeats_Removed()
     {
-        Assert.Equal("Q1~TO-263-3_L10.2-W9.0-P5.08-LS15.2-BR~GJMo_stp", Shortener.ShortenStem(StepName, 100));
+        Assert.Equal("Q1~TO-263-3_L10.2-W9.0-P5.08-LS15.2-BR~GJMo", Shortener.ShortenStem(StepName, 100));
     }
 
     [Theory]
@@ -21,9 +21,26 @@ public class ShortenerTests
     public void Repeats(string stem, string expected) => Assert.Equal(expected, Shortener.ShortenStem(stem, 100));
 
     [Theory]
+    [InlineData("GJMo_stp", "GJMo")]
+    [InlineData("GJMo_STEP", "GJMo")]
+    [InlineData("Корпус.stp", "Корпус")]
+    [InlineData("Плата-igs", "Плата")]
+    [InlineData("Деталь_x_t", "Деталь")]
+    [InlineData("_stp", "_stp")] // одна приписка без имени — не трогаем
+    [InlineData("Stepper", "Stepper")]
+    [InlineData("Ластп", "Ластп")]
+    public void FormatSuffix_Removed(string part, string expected) => Assert.Equal(expected, Shortener.WithoutFormat(part));
+
+    [Fact]
+    public void FormatSuffix_InEverySegment()
+    {
+        Assert.Equal("A~B", Shortener.ShortenStem("A_stp~B_stp~B", 100));
+    }
+
+    [Theory]
     [InlineData(20)]
     [InlineData(30)]
-    [InlineData(45)]
+    [InlineData(40)]
     public void TooLong_TruncatedWithCode_WithinLimit(int max)
     {
         var result = Shortener.ShortenStem(StepName, max);

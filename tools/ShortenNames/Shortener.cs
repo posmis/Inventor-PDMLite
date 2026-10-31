@@ -66,8 +66,8 @@ internal static class Shortener
     /// <summary>Короткое имя без расширения не длиннее <paramref name="max"/>.</summary>
     public static string ShortenStem(string stem, int max)
     {
-        // 1. Повторы частей «~» (вложенность сборок STEP) — один раз.
-        var parts = stem.Split('~').Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
+        // 1. Повторы частей «~» (вложенность сборок STEP) — один раз; приписки формата («_stp», «_step», «_igs») — лишние.
+        var parts = stem.Split('~').Select(p => WithoutFormat(p.Trim())).Where(p => p.Length > 0).ToList();
         var distinct = new List<string>();
         foreach (var part in parts)
             if (!distinct.Contains(part, StringComparer.OrdinalIgnoreCase))
@@ -82,6 +82,16 @@ internal static class Shortener
         var code = "_" + Code(stem);
         return Clean(result[..Math.Max(1, max - code.Length)]) + code;
     }
+
+    /// <summary>Часть имени без приписки формата импорта в конце: «GJMo_stp» → «GJMo».</summary>
+    public static string WithoutFormat(string part)
+    {
+        var match = FormatSuffix.Match(part);
+        return match.Success && match.Index > 0 ? part[..match.Index].TrimEnd(' ', '.', '-', '_') : part;
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex FormatSuffix =
+        new(@"[ ._\-](stp|step|igs|iges|sat|x_t|x_b)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     /// <summary>Свободное имя в папке: при совпадении — «_2», «_3»… (с сохранением длины).</summary>
     public static string Unique(string stem, string extension, int max, HashSet<string> taken)
