@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using PdmLite.Data.Library;
+using PdmLite.Data.Projects;
 
 namespace PdmLite.Data;
 
@@ -7,6 +8,7 @@ namespace PdmLite.Data;
 public sealed class PdmDbContext(DbContextOptions<PdmDbContext> options) : DbContext(options)
 {
     public const string LibrarySchema = "library";
+    public const string ProjectSchema = "project";
 
     public DbSet<LibraryCategory> LibraryCategories => Set<LibraryCategory>();
     public DbSet<LibraryItem> LibraryItems => Set<LibraryItem>();
@@ -16,6 +18,8 @@ public sealed class PdmDbContext(DbContextOptions<PdmDbContext> options) : DbCon
     public DbSet<LibraryCategoryRule> LibraryCategoryRules => Set<LibraryCategoryRule>();
     public DbSet<LibraryLogEntry> LibraryLog => Set<LibraryLogEntry>();
     public DbSet<DesignationRule> DesignationRules => Set<DesignationRule>();
+    public DbSet<IndexedFile> IndexedFiles => Set<IndexedFile>();
+    public DbSet<IndexedReference> IndexedReferences => Set<IndexedReference>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -89,6 +93,28 @@ public sealed class PdmDbContext(DbContextOptions<PdmDbContext> options) : DbCon
             e.Property(x => x.Replacement).HasMaxLength(500);
             e.Property(x => x.Comment).HasMaxLength(500);
             e.HasIndex(x => x.SortOrder);
+        });
+
+        model.Entity<IndexedFile>(e =>
+        {
+            e.ToTable("files", ProjectSchema);
+            e.Property(x => x.Path).HasMaxLength(1000);
+            e.Property(x => x.PathKey).HasMaxLength(1000);
+            e.Property(x => x.RootKey).HasMaxLength(1000);
+            e.Property(x => x.PartNumber).HasMaxLength(400);
+            e.Property(x => x.Title).HasMaxLength(400);
+            e.Property(x => x.Error).HasMaxLength(1000);
+            e.HasIndex(x => x.PathKey).IsUnique();
+            e.HasIndex(x => x.RootKey);
+            e.HasMany(x => x.References).WithOne().HasForeignKey(x => x.FileId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<IndexedReference>(e =>
+        {
+            e.ToTable("file_references", ProjectSchema);
+            e.Property(x => x.TargetPath).HasMaxLength(1000);
+            e.Property(x => x.TargetKey).HasMaxLength(1000);
+            e.HasIndex(x => x.TargetKey);
         });
 
         model.Entity<LibraryLogEntry>(e =>

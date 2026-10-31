@@ -411,6 +411,114 @@ namespace PdmLite.Data.Migrations
                     b.ToTable("log", "library");
                 });
 
+            modelBuilder.Entity("PdmLite.Data.Projects.IndexedFile", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("error");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTime>("ModifiedUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modified_utc");
+
+                    b.Property<string>("PartNumber")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("part_number");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("path");
+
+                    b.Property<string>("PathKey")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("path_key");
+
+                    b.Property<string>("RootKey")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("root_key");
+
+                    b.Property<DateTime>("ScannedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("scanned_at");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(400)
+                        .HasColumnType("character varying(400)")
+                        .HasColumnName("title");
+
+                    b.HasKey("Id")
+                        .HasName("pk_files");
+
+                    b.HasIndex("PathKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_files_path_key");
+
+                    b.HasIndex("RootKey")
+                        .HasDatabaseName("ix_files_root_key");
+
+                    b.ToTable("files", "project");
+                });
+
+            modelBuilder.Entity("PdmLite.Data.Projects.IndexedReference", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("FileId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("file_id");
+
+                    b.Property<string>("TargetKey")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("target_key");
+
+                    b.Property<string>("TargetPath")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("target_path");
+
+                    b.HasKey("Id")
+                        .HasName("pk_file_references");
+
+                    b.HasIndex("FileId")
+                        .HasDatabaseName("ix_file_references_file_id");
+
+                    b.HasIndex("TargetKey")
+                        .HasDatabaseName("ix_file_references_target_key");
+
+                    b.ToTable("file_references", "project");
+                });
+
             modelBuilder.Entity("PdmLite.Data.Library.LibraryCategory", b =>
                 {
                     b.HasOne("PdmLite.Data.Library.LibraryCategory", "Parent")
@@ -485,6 +593,16 @@ namespace PdmLite.Data.Migrations
                     b.Navigation("Item");
                 });
 
+            modelBuilder.Entity("PdmLite.Data.Projects.IndexedReference", b =>
+                {
+                    b.HasOne("PdmLite.Data.Projects.IndexedFile", null)
+                        .WithMany("References")
+                        .HasForeignKey("FileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_file_references_files_file_id");
+                });
+
             modelBuilder.Entity("PdmLite.Data.Library.LibraryCategory", b =>
                 {
                     b.Navigation("Children");
@@ -497,6 +615,11 @@ namespace PdmLite.Data.Migrations
                     b.Navigation("References");
 
                     b.Navigation("Versions");
+                });
+
+            modelBuilder.Entity("PdmLite.Data.Projects.IndexedFile", b =>
+                {
+                    b.Navigation("References");
                 });
 #pragma warning restore 612, 618
         }

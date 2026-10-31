@@ -69,13 +69,16 @@ public sealed class FakePropertyStore : IDocumentPropertyStore
     public Dictionary<string, DocumentPropertyChanges> Written { get; } = new(PathComparer.Instance);
     public Dictionary<string, IReadOnlyDictionary<string, string>> Relinked { get; } = new(PathComparer.Instance);
     public string? FailWriteFor { get; set; }
+    public string? FailReadFor { get; set; }
     public int WriteCount { get; private set; }
 
     public bool IsAvailable => true;
     public string? UnavailableReason => null;
 
     public Task<DocumentProperties> ReadAsync(string path, CancellationToken cancellationToken = default) =>
-        Task.FromResult(Files.TryGetValue(path, out var p) ? p : new DocumentProperties());
+        FailReadFor is not null && path.Contains(FailReadFor)
+            ? Task.FromException<DocumentProperties>(new IOException("Не документ Inventor"))
+            : Task.FromResult(Files.TryGetValue(path, out var p) ? p : new DocumentProperties());
 
     public Task WriteAsync(string path, DocumentPropertyChanges changes, CancellationToken cancellationToken = default)
     {

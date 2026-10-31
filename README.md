@@ -27,6 +27,10 @@
 - «Сервис → Открыть активный проект Inventor».
 - Справка → Модули: какие модули загружены.
 
+**Связи документов** (Explorer и Inventor): панель «Связи» рядом с карточкой — «Где используется»
+(сборки и чертежи, прямо или на всех уровнях) и «Состав» (ненайденные файлы — красным). Explorer →
+«Индекс ссылок проекта…»: сканирование проекта (повторно — только изменённые файлы) и список битых ссылок.
+
 **Связь между ними**: «Показать в Explorer» в Inventor открывает Explorer (или передаёт
 команду уже запущенному) и выделяет активный документ. Подробнее — в [архитектуре](docs/ARCHITECTURE.md#связь-плагина-и-explorer).
 
@@ -89,6 +93,7 @@ src/
   PdmLite.Hosting      загрузка модулей, DI, журналы, настройки
   PdmLite.Data         PostgreSQL: EF Core, миграции, настройки подключения
   PdmLite.Library      стандартная библиотека: обозначения, классификатор, хранилище, добавление
+  PdmLite.Index        индекс ссылок проекта: состав, где используется, битые ссылки
   PdmLite.Apprentice   iProperties без запуска Inventor (Apprentice / Inventor View)
   PdmLite.UI.Shared    общие WPF-компоненты, тема оформления и иконки
   PdmLite.AddIn        загрузчик плагина Inventor (изолирует версии библиотек)
@@ -99,6 +104,7 @@ modules/
   PdmLite.Modules.Properties     карточка документа
   PdmLite.Modules.InventorLink   связь Explorer с Inventor
   PdmLite.Modules.Library        стандартная библиотека: панель, вставка, добавление, каталог, настройки
+  PdmLite.Modules.References     связи документов: панель «Связи», индекс проекта
 tests/
   PdmLite.Core.Tests
   PdmLite.Library.Tests   (с PostgreSQL: переменная PDMLITE_TEST_PG)

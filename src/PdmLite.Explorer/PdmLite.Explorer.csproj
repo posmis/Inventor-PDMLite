@@ -30,6 +30,7 @@
     <ProjectReference Include="..\..\modules\PdmLite.Modules.Properties\PdmLite.Modules.Properties.csproj" />
     <ProjectReference Include="..\..\modules\PdmLite.Modules.InventorLink\PdmLite.Modules.InventorLink.csproj" />
     <ProjectReference Include="..\..\modules\PdmLite.Modules.Library\PdmLite.Modules.Library.csproj" />
+    <ProjectReference Include="..\..\modules\PdmLite.Modules.References\PdmLite.Modules.References.csproj" />
   </ItemGroup>
 
   <ItemGroup>

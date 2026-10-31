@@ -52,7 +52,7 @@ PdmLite.sln
 │  ├─ PdmLite.Modules.ProjectTree/
 │  ├─ PdmLite.Modules.Properties/
 │  ├─ PdmLite.Modules.InventorLink/   # только Explorer
-│  ├─ PdmLite.Modules.ReferenceIndex/ # (план)
+│  ├─ PdmLite.Modules.References/     # связи: где используется, состав, индекс проекта
 │  ├─ PdmLite.Modules.Preview/        # (план)
 │  └─ PdmLite.Modules.Rename/         # (план)
 ├─ tests/
@@ -127,7 +127,7 @@ Inventor 2025 загружает плагины .NET 8 в общий конте�
 
 | Модуль | Назначение |
 |---|---|
-| **ReferenceIndex** | Сканирование проекта, индекс ссылок «кто → на кого», «где используется» |
+| **References** ✔ | Индекс ссылок проекта в PostgreSQL (`project.files`, `project.file_references`, сервис `PdmLite.Index`): «из чего состоит», «где используется» (прямо и на всех уровнях), битые ссылки |
 | **ProjectTree** | Дерево проекта: папки и структура изделия; `DockableWindow` в Inventor, главное окно в Explorer |
 | **Properties** | Карточка документа; соответствие полей PDM и iProperties настраивается |
 | **Preview** | Миниатюры, просмотр PDF чертежей |
@@ -171,3 +171,14 @@ OperationLog   (Id, Date, UserId, Operation, Payload JSON, Result)
 5. Properties, Preview.
 6. Rename.
 7. Тесты, установщик, документация.
+
+## Индекс ссылок проекта
+
+- Сканирование (Explorer, Apprentice): документы `.ipt/.iam/.idw/.dwg/.ipn` папки проекта без `OldVersions`;
+  у каждого — обозначение, наименование и ссылки (`FileDescriptor`). Повторно читаются только файлы с другим
+  размером или датой; пропавшие удаляются из индекса. Остановить можно в любой момент — прочитанное сохраняется пачками.
+- При открытии уже проиндексированного проекта Explorer тихо дочитывает изменения в фоне.
+- Пути сравниваются без учёта регистра и вида разделителя (`ReferenceIndexService.Key`).
+- Панель «Связи» читает только базу — работает и в Inventor.
+- Основа для переименования и обновления сборок: какие документы затронет изменение файла.
+
