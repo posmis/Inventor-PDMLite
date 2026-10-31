@@ -238,7 +238,7 @@ public sealed partial class CheckRow : ObservableObject
     public string FilePath => Check.Component.Path;
     public string FileName => System.IO.Path.GetFileName(Check.Component.Path);
     public int Count => Check.Component.Count;
-    public string ReplacementText => SelectedCandidate?.Text ?? "—";
+    public string ReplacementText => SelectedCandidate?.Text ?? "не найдено — выберите вручную";
     public string Message => Check.Message;
 
     public string FindingText => Check.Finding switch

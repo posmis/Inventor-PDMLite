@@ -330,7 +330,9 @@
         <Setter Property="Background" Value="{StaticResource Pdm.Brush.Panel}" />
         <Setter Property="BorderBrush" Value="{StaticResource Pdm.Brush.Border}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="GridLinesVisibility" Value="Horizontal" />
+        <!-- Вертикальные линии — чтобы колонки не сливались -->
+        <Setter Property="GridLinesVisibility" Value="All" />
+        <Setter Property="VerticalGridLinesBrush" Value="{StaticResource Pdm.Brush.Divider}" />
         <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource Pdm.Brush.Divider}" />
         <Setter Property="HeadersVisibility" Value="Column" />
         <Setter Property="MinRowHeight" Value="24" />

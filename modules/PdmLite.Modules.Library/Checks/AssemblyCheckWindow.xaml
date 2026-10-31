@@ -57,7 +57,8 @@
         </Border>
 
         <Grid Margin="6">
-            <DataGrid x:Name="Grid" ui:NaturalSort.IsEnabled="True" ui:RightClickSelect.IsEnabled="True" ItemsSource="{Binding Rows}" IsReadOnly="False">
+            <DataGrid x:Name="Grid" ui:NaturalSort.IsEnabled="True" ui:RightClickSelect.IsEnabled="True" ItemsSource="{Binding Rows}" IsReadOnly="False"
+                      HorizontalScrollBarVisibility="Auto" MinRowHeight="28">
                 <DataGrid.ContextMenu>
                     <ContextMenu>
                         <MenuItem Header="Выбрать замену из библиотеки…" Click="ChooseSelected_OnClick" FontWeight="SemiBold">
@@ -83,58 +84,80 @@
                     </ContextMenu>
                 </DataGrid.ContextMenu>
                 <DataGrid.Columns>
-                    <DataGridTemplateColumn Header="" Width="28" CanUserResize="False">
+                    <DataGridTemplateColumn Header="" Width="30" CanUserResize="False" SortMemberPath="Replace">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <CheckBox IsChecked="{Binding Replace, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding CanReplace}"
-                                          HorizontalAlignment="Center" ToolTip="Заменить на компонент из библиотеки" />
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" ToolTip="Заменить на компонент из библиотеки" />
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Замечание" Width="140" SortMemberPath="FindingText">
+                    <DataGridTemplateColumn Header="Компонент в сборке" Width="330" SortMemberPath="Designation">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <StackPanel Orientation="Horizontal" ToolTip="{Binding Message}">
-                                    <Image Source="{Binding Icon, Converter={StaticResource IconKey}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
-                                    <TextBlock Text="{Binding FindingText}" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </DataGridTemplateColumn.CellTemplate>
-                    </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Компонент" Width="300" SortMemberPath="Designation">
-                        <DataGridTemplateColumn.CellTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal" ToolTip="{Binding FilePath}">
+                                <StackPanel Orientation="Horizontal" ToolTip="{Binding FilePath}" VerticalAlignment="Center">
                                     <Image Source="{Binding FilePath, Converter={StaticResource FileIcon}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
                                     <TextBlock Text="{Binding Designation}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTextColumn Header="Шт." Width="50" Binding="{Binding Count, Mode=OneWay}" IsReadOnly="True" />
-                    <DataGridTemplateColumn Header="" Width="34" CanUserResize="False">
+                    <DataGridTextColumn Header="Шт." Width="45" Binding="{Binding Count, Mode=OneWay}" IsReadOnly="True">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="HorizontalAlignment" Value="Right" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                                <Setter Property="Margin" Value="0,0,4,0" />
+                            </Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                    <DataGridTemplateColumn Header="Замена из библиотеки" Width="460" MinWidth="300" SortMemberPath="ReplacementText">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <Button Content="…" Click="Choose_OnClick" Padding="6,0" Margin="2,1"
-                                        ToolTip="Выбрать замену из библиотеки вручную" />
+                                <DockPanel Margin="0,1">
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource Pdm.ToolButton}" Click="Choose_OnClick" Margin="6,0,0,0"
+                                            ToolTip="Выбрать замену из библиотеки вручную">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Image Source="{StaticResource Pdm.Icon.Cmd.Library}" Style="{StaticResource Pdm.Icon16}" />
+                                            <TextBlock Text="Выбрать…" Margin="4,0,2,0" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Grid VerticalAlignment="Center">
+                                        <!-- Один вариант или ничего — текст; несколько — выбор из списка -->
+                                        <TextBlock Text="{Binding ReplacementText}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                                   ToolTip="{Binding ReplacementText}"
+                                                   Visibility="{Binding HasChoice, Converter={x:Static ui:InverseBoolToVisibilityConverter.Instance}}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding CanReplace}" Value="False">
+                                                            <Setter Property="Foreground" Value="{StaticResource Pdm.Brush.TextSecondary}" />
+                                                            <Setter Property="FontStyle" Value="Italic" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <ComboBox ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedCandidate, UpdateSourceTrigger=PropertyChanged}"
+                                                  DisplayMemberPath="Text" ToolTip="Несколько похожих компонентов — выберите нужный"
+                                                  Visibility="{Binding HasChoice, Converter={StaticResource BoolToVisibility}}" />
+                                    </Grid>
+                                </DockPanel>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTemplateColumn Header="Замена из библиотеки" Width="380">
+                    <DataGridTemplateColumn Header="Замечание" Width="400" MinWidth="200" SortMemberPath="FindingText">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <Grid>
-                                    <!-- Один вариант — текст; несколько — выбор из списка -->
-                                    <TextBlock Text="{Binding ReplacementText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                               Visibility="{Binding HasChoice, Converter={x:Static ui:InverseBoolToVisibilityConverter.Instance}}" />
-                                    <ComboBox ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedCandidate, UpdateSourceTrigger=PropertyChanged}"
-                                              DisplayMemberPath="Text" ToolTip="Несколько похожих компонентов — выберите нужный"
-                                              Visibility="{Binding HasChoice, Converter={StaticResource BoolToVisibility}}" />
-                                </Grid>
+                                <StackPanel Orientation="Horizontal" ToolTip="{Binding Message}" VerticalAlignment="Center">
+                                    <Image Source="{Binding Icon, Converter={StaticResource IconKey}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
+                                    <TextBlock Text="{Binding FindingText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Message, StringFormat=' — {0}'}" Style="{StaticResource Pdm.Text.Hint}"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTextColumn Header="Пояснение" Width="*" Binding="{Binding Message, Mode=OneWay}" IsReadOnly="True" />
                 </DataGrid.Columns>
             </DataGrid>
             <ProgressBar IsIndeterminate="True" Height="2" VerticalAlignment="Top"
