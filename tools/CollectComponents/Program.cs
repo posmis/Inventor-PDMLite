@@ -176,24 +176,36 @@ internal sealed class Apprentice : IDisposable, IReferenceReader
 
     private Apprentice(object server) => _server = server;
 
+    /// <summary>Имена COM, под которыми Inventor регистрирует Apprentice (зависит от версии), и его постоянный CLSID.</summary>
+    private static readonly string[] ProgIds = ["Inventor.ApprenticeServer", "Inventor.ApprenticeServerComponent"];
+    private static readonly Guid ApprenticeClsid = new("C343ED84-A129-11D3-B799-0060B0F159EF");
+
     public static Apprentice? TryStart(out string? reason)
     {
-        reason = null;
-        try
+        var errors = new List<string>();
+        var types = ProgIds.Select(id => (Name: id, Type: Type.GetTypeFromProgID(id)))
+            .Append(("CLSID " + ApprenticeClsid, Type.GetTypeFromCLSID(ApprenticeClsid)));
+        foreach (var (name, type) in types)
         {
-            var type = Type.GetTypeFromProgID("Inventor.ApprenticeServerComponent");
             if (type is null)
             {
-                reason = "не зарегистрирован Inventor.ApprenticeServerComponent — нужен Inventor или Inventor View";
-                return null;
+                errors.Add($"{name}: не зарегистрирован");
+                continue;
             }
-            return new Apprentice(Activator.CreateInstance(type)!);
+            try
+            {
+                var server = Activator.CreateInstance(type)!;
+                Console.WriteLine($"Apprentice создан через {name}.");
+                reason = null;
+                return new Apprentice(server);
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"{name}: {ex.Message}");
+            }
         }
-        catch (Exception ex)
-        {
-            reason = ex.Message;
-            return null;
-        }
+        reason = string.Join("; ", errors) + " — нужен установленный Inventor или Inventor View";
+        return null;
     }
 
     /// <summary>
