@@ -25,3 +25,9 @@ public sealed record RevealDocumentRequested(string Path);
 
 /// <summary>В сборку вставлен компонент из Content Center Inventor.</summary>
 public sealed record ContentCenterComponentPlaced(string AssemblyPath, string ComponentPath, string? PartNumber);
+
+/// <summary>В дереве проекта файлы или папки перетащены в папку <paramref name="TargetFolder"/> — нужно переместить.</summary>
+public sealed record MoveRequested(IReadOnlyList<string> Paths, string TargetFolder);
+
+/// <summary>Файлы проекта переименованы или перемещены (старый путь → новый).</summary>
+public sealed record ProjectFilesMoved(IReadOnlyDictionary<string, string> Moves);

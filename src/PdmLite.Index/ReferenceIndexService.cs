@@ -291,7 +291,8 @@ public sealed class ReferenceIndexService(IPdmDatabase database, IDocumentProper
         new(f.Path, (DocumentKind)f.Kind, f.PartNumber, f.Title, level, File.Exists(f.Path));
 
     /// <summary>Документы Inventor в папке проекта (без OldVersions, скрытых и ярлыков на папки).</summary>
-    private static List<FileInfo> Enumerate(string root)
+    /// <summary>Документы Inventor папки проекта (без OldVersions, скрытых и системных).</summary>
+    internal static List<FileInfo> Enumerate(string root)
     {
         if (!Directory.Exists(root))
             throw new DirectoryNotFoundException($"Нет папки проекта: {root}");

@@ -129,14 +129,14 @@ public class OccurrenceNamingTheoryTests
 public class FileNameBuilderTheoryTests
 {
     [Theory]
-    [InlineData("АБВГ.301.001", "Рама", null, "", "АБВГ.301.001_Рама")]
-    [InlineData("АБВГ.301.001", "Рама", "", ".iam", "АБВГ.301.001_Рама.iam")]
-    [InlineData("АБВГ.301.001", "Рама", null, " .iam ", "АБВГ.301.001_Рама.iam")]
-    [InlineData("АБВГ.301.001 ", "Рама", "СБ ", "idw", "АБВГ.301.001СБ_Рама.idw")]
-    [InlineData("АБВГ/301", "Рама", null, ".ipt", "АБВГ-301_Рама.ipt")]
+    [InlineData("АБВГ.301.001", "Рама", null, "", "АБВГ.301.001 Рама")]
+    [InlineData("АБВГ.301.001", "Рама", "", ".iam", "АБВГ.301.001 Рама.iam")]
+    [InlineData("АБВГ.301.001", "Рама", null, " .iam ", "АБВГ.301.001 Рама.iam")]
+    [InlineData("АБВГ.301.001 ", "Рама", "СБ ", "idw", "АБВГ.301.001СБ Рама.idw")]
+    [InlineData("АБВГ/301", "Рама", null, ".ipt", "АБВГ-301 Рама.ipt")]
     [InlineData("АБВГ.301.001", "***", null, ".ipt", "АБВГ.301.001.ipt")]
-    [InlineData("АБВГ.301.001", "Рама\tсварная", null, ".ipt", "АБВГ.301.001_Рама-сварная.ipt")]
-    [InlineData("АБВГ.301.001", "Рама\nсварная", null, ".ipt", "АБВГ.301.001_Рама-сварная.ipt")]
+    [InlineData("АБВГ.301.001", "Рама\tсварная", null, ".ipt", "АБВГ.301.001 Рама сварная.ipt")]
+    [InlineData("АБВГ.301.001", "Рама\nсварная", null, ".ipt", "АБВГ.301.001 Рама сварная.ipt")]
     public void Build(string designation, string name, string? code, string ext, string expected) =>
         Assert.Equal(expected, FileNameBuilder.Build(designation, name, code, ext));
 
@@ -154,7 +154,7 @@ public class FileNameBuilderTheoryTests
     [InlineData("a<b>c", "abc")]
     [InlineData("a|b", "ab")]
     [InlineData("a\u0001b", "ab")]
-    [InlineData("a - b", "a-b")]
+    [InlineData("a - b", "a - b")] // пробелы в наименовании сохраняются
     [InlineData("a--b", "a-b")] // повторы дефиса схлопываются
     [InlineData("..a..", "a")]
     [InlineData("a\\\\b", "a-b")]
