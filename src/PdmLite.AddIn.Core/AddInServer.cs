@@ -136,6 +136,8 @@ public sealed class AddInServer : Inv.ApplicationAddInServer
     /// </summary>
     private static void WatchErrors(ILogger logger)
     {
+        // Одно и то же место (например, виртуальные компоненты при каждой проверке сборки) — в журнал один раз за сеанс.
+        var logged = new System.Collections.Concurrent.ConcurrentDictionary<string, bool>();
         AppDomain.CurrentDomain.FirstChanceException += (_, e) =>
         {
             if (e.Exception is not COMException com)
@@ -143,6 +145,8 @@ public sealed class AddInServer : Inv.ApplicationAddInServer
             var stack = new System.Diagnostics.StackTrace(1, false).ToString();
             if (!stack.Contains("PdmLite", StringComparison.Ordinal))
                 return; // ошибки самого Inventor и других плагинов — не наши
+            if (!logged.TryAdd(com.HResult + stack, true) || logged.Count > 500)
+                return;
             logger.LogWarning("Ошибка Inventor API (0x{Code:X8}): {Message}{NewLine}{Stack}",
                 com.HResult, com.Message, Environment.NewLine, stack);
         };

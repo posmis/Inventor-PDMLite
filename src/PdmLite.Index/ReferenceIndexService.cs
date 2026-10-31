@@ -36,8 +36,30 @@ public sealed class ReferenceIndexService(IPdmDatabase database, IDocumentProper
     private static readonly HashSet<string> SkippedFolders = new(StringComparer.OrdinalIgnoreCase) { "OldVersions" };
     private const int BatchSize = 50;
 
-    /// <summary>Ключ пути: без учёта регистра и вида разделителя.</summary>
-    public static string Key(string path) => Path.GetFullPath(path).Replace('\\', '/').TrimEnd('/').ToUpperInvariant();
+    /// <summary>Одно сканирование за раз: фоновое (при открытии проекта) и из окна индекса не мешают друг другу.</summary>
+    private readonly SemaphoreSlim _scanGate = new(1, 1);
+
+    /// <summary>
+    /// Ключ пути: без учёта регистра и вида разделителя. Путь, который нельзя разобрать (ссылка с недопустимыми
+    /// символами из чужой системы), берётся как есть — без ошибки.
+    /// </summary>
+    public static string Key(string path)
+    {
+        string full;
+        try
+        {
+            full = Path.GetFullPath(path);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            full = path;
+        }
+        return full.Replace('\\', '/').TrimEnd('/').ToUpperInvariant();
+    }
+
+    /// <summary>Документы папки проекта — по пути (а не по папке, при сканировании которой их нашли): вложенные проекты не конфликтуют.</summary>
+    private static IQueryable<IndexedFile> Under(PdmDbContext db, string rootKey) =>
+        db.IndexedFiles.Where(f => f.PathKey.StartsWith(rootKey + "/"));
 
     /// <summary>
     /// Сканирует папку проекта: новые и изменённые документы читаются, удалённые убираются из индекса.
@@ -50,11 +72,24 @@ public sealed class ReferenceIndexService(IPdmDatabase database, IDocumentProper
             throw new InvalidOperationException($"Нет доступа к файлам Inventor: {properties.UnavailableReason}");
 
         await database.MigrateAsync(ct).ConfigureAwait(false);
+        await _scanGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return await ScanCoreAsync(root, progress, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _scanGate.Release();
+        }
+    }
+
+    private async Task<IndexScanResult> ScanCoreAsync(string root, IProgress<(int Done, int Total, string? Current)>? progress, CancellationToken ct)
+    {
         var rootKey = Key(root);
         var files = Enumerate(root);
 
         await using var db = database.CreateContext();
-        var known = await db.IndexedFiles.Where(f => f.RootKey == rootKey).ToDictionaryAsync(f => f.PathKey, ct).ConfigureAwait(false);
+        var known = await Under(db, rootKey).ToDictionaryAsync(f => f.PathKey, ct).ConfigureAwait(false);
 
         // Удалённые файлы — из индекса.
         var present = files.Select(f => Key(f.FullName)).ToHashSet();
@@ -75,7 +110,7 @@ public sealed class ReferenceIndexService(IPdmDatabase database, IDocumentProper
             string? error = null;
             try
             {
-                props = await properties.ReadAsync(file.FullName, ct).ConfigureAwait(false);
+                props = await properties.ReadWithoutGeometryAsync(file.FullName, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -97,6 +132,7 @@ public sealed class ReferenceIndexService(IPdmDatabase database, IDocumentProper
             }
 
             entry.Path = file.FullName;
+            entry.RootKey = rootKey;
             entry.Kind = (int)DocumentKinds.FromPath(file.FullName);
             entry.Size = file.Length;
             entry.ModifiedUtc = file.LastWriteTimeUtc;
@@ -124,7 +160,7 @@ public sealed class ReferenceIndexService(IPdmDatabase database, IDocumentProper
         var rootKey = Key(root);
         await database.MigrateAsync(ct).ConfigureAwait(false);
         await using var db = database.CreateContext();
-        return await db.IndexedFiles.AnyAsync(f => f.RootKey == rootKey, ct).ConfigureAwait(false);
+        return await Under(db, rootKey).AnyAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>Когда документ последний раз читался в индекс; <c>null</c> — не проиндексирован.</summary>
@@ -188,7 +224,7 @@ public sealed class ReferenceIndexService(IPdmDatabase database, IDocumentProper
         await database.MigrateAsync(ct).ConfigureAwait(false);
         await using var db = database.CreateContext();
         var references = await db.IndexedReferences
-            .Join(db.IndexedFiles.Where(f => f.RootKey == rootKey), r => r.FileId, f => f.Id, (r, f) => new { f.Path, r.TargetPath })
+            .Join(Under(db, rootKey), r => r.FileId, f => f.Id, (r, f) => new { f.Path, r.TargetPath })
             .AsNoTracking().ToListAsync(ct).ConfigureAwait(false);
         return references.Where(r => !File.Exists(r.TargetPath))
             .Select(r => new BrokenReference(r.Path, r.TargetPath))

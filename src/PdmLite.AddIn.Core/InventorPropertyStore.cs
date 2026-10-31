@@ -20,6 +20,9 @@ public sealed class InventorPropertyStore(Inv.Application inventor, IUiDispatche
         ui.InvokeAsync(() => WithDocument(path, save: false, doc => InventorPropertySets.Read(doc.PropertySets, doc.File,
             InventorPropertySets.Geometry(doc, ex => logger.LogDebug(ex, "Масс-свойства не прочитаны: {Path}", path)))));
 
+    public Task<DocumentProperties> ReadWithoutGeometryAsync(string path, CancellationToken cancellationToken = default) =>
+        ui.InvokeAsync(() => WithDocument(path, save: false, doc => InventorPropertySets.Read(doc.PropertySets, doc.File, (null, null))));
+
     public Task WriteAsync(string path, DocumentPropertyChanges changes, CancellationToken cancellationToken = default) =>
         ui.InvokeAsync(() => WithDocument(path, save: true, doc =>
         {

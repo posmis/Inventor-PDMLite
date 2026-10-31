@@ -44,6 +44,9 @@ public sealed class ApprenticePropertyStore : IDocumentPropertyStore, IDisposabl
         Run(() => WithDocument(path, doc => InventorPropertySets.Read(doc.PropertySets, doc.File,
             InventorPropertySets.Geometry(doc, ex => _logger.LogDebug(ex, "Масс-свойства не прочитаны: {Path}", path)))), cancellationToken);
 
+    public Task<DocumentProperties> ReadWithoutGeometryAsync(string path, CancellationToken cancellationToken = default) =>
+        Run(() => WithDocument(path, doc => InventorPropertySets.Read(doc.PropertySets, doc.File, (null, null))), cancellationToken);
+
     public Task WriteAsync(string path, DocumentPropertyChanges changes, CancellationToken cancellationToken = default) =>
         Run(() => WithDocument(path, doc =>
         {

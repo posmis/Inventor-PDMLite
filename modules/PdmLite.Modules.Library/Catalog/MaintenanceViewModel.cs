@@ -281,8 +281,9 @@ public sealed partial class MaintenanceViewModel : ObservableObject
             await _backup.CreateAsync(reason, progress, ct);
             done = true;
         });
+        // Сообщение об ошибке уже показал RunAsync; здесь — только что операция не выполнена.
         if (!done)
-            UiMessages.Error("Резервная копия не сделана — файлы не изменялись. Проверьте папку копий (Резервные копии… → настройки).");
+            ProgressText = "Резервная копия не сделана — файлы не изменялись. Проверьте папку копий (Резервные копии… → настройки).";
         return done;
     }
 

@@ -57,6 +57,13 @@ public interface IDocumentPropertyStore
 
     Task<DocumentProperties> ReadAsync(string path, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Чтение без масс-свойств (объём, площадь): они считаются долго и нужны только для поиска дубликатов
+    /// в библиотеке. Для сканирования проекта (тысячи файлов) — этот вариант.
+    /// </summary>
+    Task<DocumentProperties> ReadWithoutGeometryAsync(string path, CancellationToken cancellationToken = default) =>
+        ReadAsync(path, cancellationToken);
+
     Task WriteAsync(string path, DocumentPropertyChanges changes, CancellationToken cancellationToken = default);
 
     /// <summary>Заменяет ссылки сборки: старый полный путь → новый.</summary>

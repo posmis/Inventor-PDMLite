@@ -352,7 +352,10 @@ public sealed class LibraryBackupService(
         }.Select(t => Table(db, t)).ToList();
 
         await using var tx = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
-        await db.Database.ExecuteSqlRawAsync($"TRUNCATE {string.Join(", ", tables)} RESTART IDENTITY", ct).ConfigureAwait(false);
+        // Имена таблиц — из модели EF (не ввод пользователя) и экранированы как идентификаторы:
+        // идентификаторы в SQL нельзя передать параметрами.
+        var truncate = "TRUNCATE " + string.Join(", ", tables) + " RESTART IDENTITY";
+        await db.Database.ExecuteSqlRawAsync(truncate, ct).ConfigureAwait(false);
 
         // Сначала разделы-родители, потом вложенные.
         db.LibraryCategories.AddRange(OrderByDepth(snapshot.Categories));
@@ -367,11 +370,10 @@ public sealed class LibraryBackupService(
 
         foreach (var type in new[] { typeof(LibraryCategory), typeof(LibraryCategoryRule), typeof(LibraryItemVersion), typeof(DesignationRule), typeof(LibraryLogEntry) })
         {
+            // Имя таблицы для pg_get_serial_sequence — параметром ({0}); в FROM — экранированный идентификатор.
             var table = Table(db, type);
-            var plain = table.Replace("\"", "");
-            await db.Database.ExecuteSqlRawAsync(
-                $"SELECT setval(pg_get_serial_sequence('{plain}', 'id'), COALESCE((SELECT MAX(id) FROM {table}), 0) + 1, false)", ct)
-                .ConfigureAwait(false);
+            var reset = "SELECT setval(pg_get_serial_sequence({0}, 'id'), COALESCE((SELECT MAX(id) FROM " + table + "), 0) + 1, false)";
+            await db.Database.ExecuteSqlRawAsync(reset, [table], ct).ConfigureAwait(false);
         }
 
         db.LibraryLog.Add(new LibraryLogEntry
@@ -385,11 +387,15 @@ public sealed class LibraryBackupService(
         await tx.CommitAsync(ct).ConfigureAwait(false);
     }
 
+    /// <summary>Таблица сущности как идентификатор SQL: «"схема"."таблица"».</summary>
     private static string Table(PdmDbContext db, Type type)
     {
         var entity = db.Model.FindEntityType(type) ?? throw new InvalidOperationException($"Нет таблицы для {type.Name}.");
-        return $"\"{entity.GetSchema()}\".\"{entity.GetTableName()}\"";
+        return QuoteIdentifier(entity.GetSchema() ?? "public") + "." + QuoteIdentifier(entity.GetTableName()!);
     }
+
+    /// <summary>Идентификатор PostgreSQL в кавычках; кавычки внутри удваиваются.</summary>
+    internal static string QuoteIdentifier(string name) => "\"" + name.Replace("\"", "\"\"") + "\"";
 
     private static IEnumerable<LibraryCategory> OrderByDepth(IReadOnlyList<LibraryCategory> categories)
     {

@@ -72,10 +72,19 @@ public sealed class FakePropertyStore : IDocumentPropertyStore
     public string? FailReadFor { get; set; }
     public int WriteCount { get; private set; }
 
+    /// <summary>Сколько раз читали с геометрией (масс-свойствами) — она считается долго.</summary>
+    public int GeometryReads { get; private set; }
+
     public bool IsAvailable => true;
     public string? UnavailableReason => null;
 
-    public Task<DocumentProperties> ReadAsync(string path, CancellationToken cancellationToken = default) =>
+    public Task<DocumentProperties> ReadAsync(string path, CancellationToken cancellationToken = default)
+    {
+        GeometryReads++;
+        return ReadWithoutGeometryAsync(path, cancellationToken);
+    }
+
+    public Task<DocumentProperties> ReadWithoutGeometryAsync(string path, CancellationToken cancellationToken = default) =>
         FailReadFor is not null && path.Contains(FailReadFor)
             ? Task.FromException<DocumentProperties>(new IOException("Не документ Inventor"))
             : Task.FromResult(Files.TryGetValue(path, out var p) ? p : new DocumentProperties());
