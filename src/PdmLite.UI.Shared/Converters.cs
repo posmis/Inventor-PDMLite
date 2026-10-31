@@ -6,8 +6,8 @@ using PdmLite.Core.UI;
 namespace PdmLite.UI.Shared;
 
 /// <summary>
-/// Иконка элемента проекта: для файлов — иконка типа из Windows (как в Проводнике),
-/// для папок и при её отсутствии — иконка темы PdmLite.
+/// Иконка элемента проекта: папки и документы Inventor — иконки темы PdmLite, остальные файлы — иконка типа
+/// из Windows (как в Проводнике).
 /// </summary>
 /// <remarks>
 /// Значение: <see cref="ProjectItem"/>, путь к файлу (string) или <see cref="DocumentKind"/>.
@@ -28,8 +28,15 @@ public sealed class FileIconConverter : IValueConverter
         };
     }
 
+    /// <summary>
+    /// Документы Inventor (.ipt, .iam, .idw, .dwg, .ipn, .ipj) — иконками PdmLite в стиле Inventor 2025: Windows
+    /// показывает для них значки той версии Inventor, что зарегистрировала расширения (часто старые). Остальное
+    /// (PDF, STEP…) — как в проводнике Windows.
+    /// </summary>
     private static object? ForFile(string path, DocumentKind kind, bool large) =>
-        ShellIcons.ForExtension(System.IO.Path.GetExtension(path), large) ?? PdmIcons.Get(IconKeys.ForKind(kind));
+        kind != DocumentKind.Other
+            ? PdmIcons.Get(IconKeys.ForKind(kind))
+            : ShellIcons.ForExtension(System.IO.Path.GetExtension(path), large) ?? PdmIcons.Get(IconKeys.ForKind(kind));
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
         throw new NotSupportedException();
