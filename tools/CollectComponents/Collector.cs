@@ -171,6 +171,14 @@ internal sealed class Collector
         return new CollectResult(found, missing, warnings);
     }
 
+    /// <summary>Папка результата внутри папки поиска: при следующем запуске копии найдутся как дубликаты.</summary>
+    public bool IsInsideSource(string target)
+    {
+        var full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(target));
+        return full.Equals(_source, StringComparison.OrdinalIgnoreCase)
+               || full.StartsWith(_source + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
     public static bool IsInventorFile(string path) =>
         InventorExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
 
@@ -184,7 +192,11 @@ internal sealed class Collector
         foreach (var file in result.Found)
         {
             var destination = Path.Combine(target, file.RelativeTarget);
+            if (string.Equals(Path.GetFullPath(destination), Path.GetFullPath(file.Path), StringComparison.OrdinalIgnoreCase))
+                continue; // папка результата совпала с местом файла — он уже там
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            if (File.Exists(destination))
+                File.SetAttributes(destination, FileAttributes.Normal); // копия прошлого запуска могла остаться «только чтение»
             File.Copy(file.Path, destination, overwrite: true);
             File.SetAttributes(destination, File.GetAttributes(destination) & ~FileAttributes.ReadOnly);
         }

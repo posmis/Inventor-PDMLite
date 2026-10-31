@@ -23,11 +23,13 @@ public static class FileNameBuilder
     /// <param name="extension">Расширение с точкой или без.</param>
     public static string Build(string designation, string name, string? documentCode, string extension)
     {
-        var head = Normalize(designation) + Normalize(documentCode ?? string.Empty);
+        var head = Normalize(designation);
         if (head.Length == 0)
             throw new ArgumentException("Обозначение не может быть пустым.", nameof(designation));
+        head += Normalize(documentCode ?? string.Empty);
 
         var tail = Normalize(name);
+        extension = extension.Trim();
         var ext = extension.Length == 0 || extension[0] == '.' ? extension : "." + extension;
 
         return (tail.Length == 0 ? head : head + Separator + tail) + ext.ToLowerInvariant();

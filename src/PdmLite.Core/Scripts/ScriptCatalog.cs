@@ -89,6 +89,8 @@ public static class ScriptCatalog
         foreach (var file in Directory.EnumerateFiles(bundled, "*", SearchOption.AllDirectories))
         {
             var relative = System.IO.Path.GetRelativePath(bundled, file).Replace('\\', '/');
+            if (relative.Equals(BundledManifest, StringComparison.OrdinalIgnoreCase))
+                continue; // учёт — наш служебный файл, поставляемым он быть не может
             var target = System.IO.Path.Combine(folder, relative);
             var shipped = Hash(file);
 
@@ -169,16 +171,22 @@ public static class ScriptCatalog
             try
             {
                 using var json = JsonDocument.Parse(File.ReadAllText(manifest));
-                title = json.RootElement.TryGetProperty("Title", out var t) ? t.GetString() : null;
-                description = json.RootElement.TryGetProperty("Description", out var d) ? d.GetString() : null;
+                title = Text(json.RootElement, "Title");
+                description = Text(json.RootElement, "Description");
             }
-            catch (JsonException)
+            catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
             {
                 // Описание с ошибкой — показываем имя файла.
             }
         }
         return new ScriptInfo(path, string.IsNullOrWhiteSpace(title) ? System.IO.Path.GetFileNameWithoutExtension(path) : title!, description);
     }
+
+    /// <summary>Строковое поле описания; не объект или не строка (число, массив) — нет значения.</summary>
+    private static string? Text(JsonElement root, string name) =>
+        root.ValueKind == JsonValueKind.Object && root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 
     private static string WithoutExtension(string path) =>
         System.IO.Path.Combine(System.IO.Path.GetDirectoryName(path)!, System.IO.Path.GetFileNameWithoutExtension(path));

@@ -56,7 +56,7 @@ public sealed class ApprenticeHost(ILogger<ApprenticeHost> logger) : IDisposable
     {
         lock (_gate)
         {
-            if (_client is not null && _process is { HasExited: false })
+            if (_client is { IsBroken: false } && _process is { HasExited: false })
                 return _client;
             Stop();
 

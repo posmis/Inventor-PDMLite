@@ -62,17 +62,24 @@ public static class PropertyHostProtocol
 
 /// <summary>
 /// Сторона клиента: запросы по одному (ответы приходят по порядку). Ошибка процесса свойств —
-/// <see cref="InvalidOperationException"/> с его текстом.
+/// <see cref="InvalidOperationException"/> с его текстом. Если ответ не дождались (тайм-аут или отмена),
+/// он придёт позже и сбьёт порядок — клиент дальше не работает (<see cref="IOException"/>), нужен новый процесс.
 /// </summary>
 public sealed class PropertyHostClient(TextReader input, TextWriter output)
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private bool _broken;
+
+    /// <summary>Порядок ответов сбит — клиент больше не пригоден.</summary>
+    public bool IsBroken => _broken;
 
     public async Task<PropertyHostResponse> SendAsync(PropertyHostRequest request, TimeSpan timeout, CancellationToken ct = default)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            if (_broken)
+                throw new IOException("Ответ на прошлый запрос не дождались — порядок ответов сбит, нужен новый процесс свойств.");
             await output.WriteLineAsync(JsonSerializer.Serialize(request, PropertyHostProtocol.Json).AsMemory(), ct).ConfigureAwait(false);
             await output.FlushAsync(ct).ConfigureAwait(false);
 
@@ -85,7 +92,13 @@ public sealed class PropertyHostClient(TextReader input, TextWriter output)
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
+                _broken = true;
                 throw new TimeoutException($"Процесс свойств не ответил за {timeout.TotalSeconds:0} с.");
+            }
+            catch (OperationCanceledException)
+            {
+                _broken = true; // запрос ушёл, ответ придёт позже
+                throw;
             }
 
             var response = line is null

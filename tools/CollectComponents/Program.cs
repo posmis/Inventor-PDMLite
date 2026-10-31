@@ -111,6 +111,8 @@ internal static class Program
             Error("Не выбрана папка для результата — ничего не скопировано.");
             return 1;
         }
+        if (collector.IsInsideSource(target))
+            Warn("Папка результата — внутри папки поиска: при следующем запуске копии найдутся как файлы-дубликаты.");
         Console.WriteLine();
         Console.Write($"Скопировать в «{target}» (компоненты списка — в папку, их состав — в подпапки, каждый файл один раз)? (Д/Н): ");
         var answer = Console.ReadLine()?.Trim().ToLowerInvariant();
