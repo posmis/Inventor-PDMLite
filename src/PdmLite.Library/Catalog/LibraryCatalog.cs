@@ -26,9 +26,11 @@ public sealed class LibraryCatalog
         Categories = _byId.Values.OrderBy(c => c.Path, NaturalComparer.Instance).ToList();
 
         // Запомненные правила важнее встроенных.
-        var ordered = rules.OrderBy(r => r.IsLearned).ToList();
-        _standardRules = ordered.Where(r => r.Kind == LibraryRuleKind.Standard).ToDictionary(r => r.Pattern, r => r.CategoryId);
-        _wordRules = ordered.Where(r => r.Kind == LibraryRuleKind.FirstWord).ToDictionary(r => r.Pattern, r => r.CategoryId);
+        // Повтор образца (например, из резервной копии) не должен ронять загрузку: последнее — запомненное — побеждает.
+        _standardRules = [];
+        _wordRules = [];
+        foreach (var rule in rules.OrderBy(r => r.IsLearned))
+            (rule.Kind == LibraryRuleKind.Standard ? _standardRules : _wordRules)[rule.Pattern] = rule.CategoryId;
     }
 
     public IReadOnlyList<CategoryInfo> Categories { get; }
@@ -65,7 +67,19 @@ public sealed class LibraryCatalog
     internal static LibraryCatalog Create(IReadOnlyCollection<LibraryCategory> categories, IEnumerable<LibraryCategoryRule> rules)
     {
         var byId = categories.ToDictionary(c => c.Id);
-        string PathOf(LibraryCategory c) => c.ParentId is { } p && byId.TryGetValue(p, out var parent) ? $"{PathOf(parent)}/{c.Name}" : c.Name;
+        // Путь — вверх по родителям; зацикленные родители (испорченные данные) не должны переполнять стек.
+        string PathOf(LibraryCategory c)
+        {
+            var parts = new List<string> { c.Name };
+            var seen = new HashSet<int> { c.Id };
+            while (c.ParentId is { } p && byId.TryGetValue(p, out var parent) && seen.Add(parent.Id))
+            {
+                parts.Add(parent.Name);
+                c = parent;
+            }
+            parts.Reverse();
+            return string.Join('/', parts);
+        }
         var parents = categories.Where(c => c.ParentId is not null).Select(c => c.ParentId!.Value).ToHashSet();
 
         return new LibraryCatalog(categories.Select(c => new CategoryInfo(c.Id, c.ParentId, c.Name, PathOf(c), !parents.Contains(c.Id))), rules);

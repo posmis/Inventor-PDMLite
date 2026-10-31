@@ -27,8 +27,9 @@ public sealed class LibraryPathIndex
             byId[id] = path;
             _current.Add(path);
             Add(_byFileName, Path.GetFileName(path), path);
-            Add(_byKey, DesignationNormalizer.ToKey(designation), path);
-            Add(_byKey, DesignationNormalizer.ToKey(Path.GetFileNameWithoutExtension(path)), path);
+            // По обозначению — только с тем же расширением: деталь не может заменить сборку и наоборот.
+            Add(_byKey, KeyOf(DesignationNormalizer.ToKey(designation), path), path);
+            Add(_byKey, KeyOf(DesignationNormalizer.ToKey(Path.GetFileNameWithoutExtension(path)), path), path);
         }
 
         // Удалённые компоненты пропускаем; старый путь, на котором теперь другой компонент, — тоже.
@@ -67,7 +68,7 @@ public sealed class LibraryPathIndex
         // 2. По имени файла и по обозначению — только если совпадение одно.
         if (_byFileName.TryGetValue(Path.GetFileName(path), out var sameName) && sameName.Count == 1)
             return sameName[0];
-        var key = DesignationNormalizer.ToKey(Path.GetFileNameWithoutExtension(path));
+        var key = KeyOf(DesignationNormalizer.ToKey(Path.GetFileNameWithoutExtension(path)), path);
         return key.Length > 0 && _byKey.TryGetValue(key, out var sameKey) && sameKey.Distinct(StringComparer.OrdinalIgnoreCase).Count() == 1
             ? sameKey[0]
             : null;
@@ -117,6 +118,9 @@ public sealed class LibraryPathIndex
         var slash = path.IndexOf('/', start);
         return slash < 0 ? -1 : slash + 1;
     }
+
+    private static string KeyOf(string designationKey, string path) =>
+        designationKey.Length == 0 ? "" : designationKey + "|" + Path.GetExtension(path).ToLowerInvariant();
 
     private static string Normalize(string path) => path.Replace('\\', '/').Trim('/');
 

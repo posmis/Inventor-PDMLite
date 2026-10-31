@@ -76,7 +76,9 @@ public sealed class ImportList
                        ?? throw new InvalidDataException("Файл пуст.");
             if (list.Version != 1)
                 throw new InvalidDataException($"Версия списка {list.Version} не поддерживается.");
-            return list;
+            // «Items»: null или пустые строки в списке (правка вручную) — не повод падать.
+            var items = (list.Items ?? []).Where(i => i is not null && !string.IsNullOrWhiteSpace(i.Path)).ToList();
+            return new ImportList { Version = list.Version, Items = items };
         }
         catch (JsonException ex)
         {
