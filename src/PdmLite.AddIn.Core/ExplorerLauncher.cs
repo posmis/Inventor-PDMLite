@@ -44,7 +44,7 @@ public sealed class ExplorerLauncher(ILogger<ExplorerLauncher> logger)
         Process.Start(start)?.Dispose();
     }
 
-    private static string? FindExplorer()
+    internal static string? FindExplorer()
     {
         // Папка загрузчика плагина (сборки самого плагина — в её подпапке core).
         var addin = new DirectoryInfo(Path.GetDirectoryName(typeof(ExplorerLauncher).Assembly.Location)!).Parent!;

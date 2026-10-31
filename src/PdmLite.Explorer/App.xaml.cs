@@ -20,9 +20,18 @@ public partial class App : Application
     private ExplorerLinkServer? _linkServer;
     private ILogger? _logger;
 
+    /// <summary>Служебный режим без окна: свойства файлов через Apprentice по запросам плагина Inventor.</summary>
+    public const string PropertyHostArgument = "--property-host";
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (e.Args.Contains(PropertyHostArgument))
+        {
+            await RunPropertyHostAsync();
+            return;
+        }
+
         try
         {
             await StartAsync(StartupArgs.Parse(e.Args));
@@ -34,6 +43,29 @@ public partial class App : Application
             UiMessages.Error("PdmLite Explorer не удалось запустить.", ex);
             Shutdown(1);
         }
+    }
+
+    /// <summary>
+    /// Запросы читаются из stdin, ответы пишутся в stdout (одна строка JSON). Процесс завершается, когда
+    /// плагин закрывает вход (Inventor закрыт). Окна, единственного экземпляра и модулей нет.
+    /// </summary>
+    private async Task RunPropertyHostAsync()
+    {
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        using var loggerFactory = LoggerFactory.Create(_ => { });
+        using var store = new ApprenticePropertyStore(loggerFactory.CreateLogger<ApprenticePropertyStore>());
+        var exitCode = 0;
+        try
+        {
+            using var input = new StreamReader(Console.OpenStandardInput(), new System.Text.UTF8Encoding(false));
+            await using var output = new StreamWriter(Console.OpenStandardOutput(), new System.Text.UTF8Encoding(false));
+            await Task.Run(() => PropertyHostProtocol.ServeAsync(input, output, store));
+        }
+        catch (Exception)
+        {
+            exitCode = 1;
+        }
+        Shutdown(exitCode);
     }
 
     private async Task StartAsync(StartupArgs args)

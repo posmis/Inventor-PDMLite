@@ -7,30 +7,47 @@ using PdmLite.Interop;
 namespace PdmLite.AddIn.Core;
 
 /// <summary>
-/// iProperties и ссылки файлов через Inventor API — внутри Inventor (Apprentice в процессе Inventor
-/// не работает). Документ, уже открытый в Inventor, читается как есть; остальные открываются
-/// невидимо и закрываются после работы.
+/// iProperties и ссылки файлов внутри Inventor. Документ, открытый в Inventor, читается через Inventor API
+/// (быстро, как есть). Остальное — через Apprentice в отдельном процессе (<see cref="ApprenticeHost"/>):
+/// Inventor API не может открыть и сохранить копию файла Content Center, исходник которого открыт в сборке.
+/// Если отдельный процесс недоступен (нет PdmLite Explorer), — через Inventor API, как раньше.
 /// </summary>
-public sealed class InventorPropertyStore(Inv.Application inventor, IUiDispatcher ui, ILogger<InventorPropertyStore> logger) : IDocumentPropertyStore
+public sealed class InventorPropertyStore(Inv.Application inventor, IUiDispatcher ui, ApprenticeHost apprentice,
+    ILogger<InventorPropertyStore> logger) : IDocumentPropertyStore
 {
     public bool IsAvailable => true;
     public string? UnavailableReason => null;
 
-    public Task<DocumentProperties> ReadAsync(string path, CancellationToken cancellationToken = default) =>
-        ui.InvokeAsync(() => WithDocument(path, save: false, doc => InventorPropertySets.Read(doc.PropertySets, doc.File,
-            InventorPropertySets.Geometry(doc, ex => logger.LogDebug(ex, "Масс-свойства не прочитаны: {Path}", path)))));
+    public Task<DocumentProperties> ReadAsync(string path, CancellationToken cancellationToken = default) => ReadCoreAsync(path, true, cancellationToken);
 
     public Task<DocumentProperties> ReadWithoutGeometryAsync(string path, CancellationToken cancellationToken = default) =>
-        ui.InvokeAsync(() => WithDocument(path, save: false, doc => InventorPropertySets.Read(doc.PropertySets, doc.File, (null, null))));
+        ReadCoreAsync(path, false, cancellationToken);
+
+    private async Task<DocumentProperties> ReadCoreAsync(string path, bool geometry, CancellationToken ct)
+    {
+        var open = await ui.InvokeAsync(() => FindOpen(path) is not null).ConfigureAwait(false);
+        if (!open && apprentice.IsAvailable)
+            return await apprentice.ReadAsync(path, geometry, ct).ConfigureAwait(false);
+        return await ui.InvokeAsync(() => WithDocument(path, save: false, doc => InventorPropertySets.Read(doc.PropertySets, doc.File,
+            geometry ? InventorPropertySets.Geometry(doc, ex => logger.LogDebug(ex, "Масс-свойства не прочитаны: {Path}", path)) : (null, null))))
+            .ConfigureAwait(false);
+    }
 
     public Task WriteAsync(string path, DocumentPropertyChanges changes, CancellationToken cancellationToken = default) =>
-        ui.InvokeAsync(() => WithDocument(path, save: true, doc =>
-        {
-            InventorPropertySets.Apply(doc.PropertySets, changes);
-            return true;
-        }));
+        apprentice.IsAvailable
+            ? apprentice.WriteAsync(path, changes, cancellationToken)
+            : ui.InvokeAsync(() => WithDocument(path, save: true, doc =>
+            {
+                InventorPropertySets.Apply(doc.PropertySets, changes);
+                return true;
+            }));
 
     public Task ReplaceReferencesAsync(string path, IReadOnlyDictionary<string, string> map, CancellationToken cancellationToken = default) =>
+        apprentice.IsAvailable
+            ? apprentice.ReplaceReferencesAsync(path, map, cancellationToken)
+            : ReplaceInInventorAsync(path, map);
+
+    private Task ReplaceInInventorAsync(string path, IReadOnlyDictionary<string, string> map) =>
         ui.InvokeAsync(() => WithDocument(path, save: false, doc =>
         {
             // В открытой сборке ссылки меняются заменой вхождений (как «Заменить компонент»).
