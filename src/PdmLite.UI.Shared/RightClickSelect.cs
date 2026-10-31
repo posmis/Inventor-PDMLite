@@ -82,3 +82,49 @@ public static class UiClipboard
         System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true })?.Dispose();
     }
 }
+
+/// <summary>
+/// Дерево не прокручивается само вправо при выделении узла. WPF при выделении (и при раскрытии длинного узла)
+/// прокручивает так, чтобы был виден весь узел вместе с вложенными, — и горизонтальная прокрутка «уезжает».
+/// Здесь по вертикали прокрутка остаётся как в WPF (узел виден), а по горизонтали — где её оставил пользователь.
+/// Включается для всех деревьев стилем темы.
+/// </summary>
+public static class TreeScroll
+{
+    public static readonly DependencyProperty KeepHorizontalProperty = DependencyProperty.RegisterAttached(
+        "KeepHorizontal", typeof(bool), typeof(TreeScroll), new PropertyMetadata(false, OnChanged));
+
+    public static bool GetKeepHorizontal(DependencyObject d) => (bool)d.GetValue(KeepHorizontalProperty);
+    public static void SetKeepHorizontal(DependencyObject d, bool value) => d.SetValue(KeepHorizontalProperty, value);
+
+    private static void OnChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is not TreeView tree)
+            return;
+        tree.RemoveHandler(FrameworkElement.RequestBringIntoViewEvent, (RequestBringIntoViewEventHandler)OnRequestBringIntoView);
+        if (e.NewValue is true)
+            tree.AddHandler(FrameworkElement.RequestBringIntoViewEvent, (RequestBringIntoViewEventHandler)OnRequestBringIntoView, handledEventsToo: true);
+    }
+
+    private static void OnRequestBringIntoView(object sender, RequestBringIntoViewEventArgs e)
+    {
+        if (sender is not TreeView tree || FindScrollViewer(tree) is not { } scroll)
+            return;
+        var offset = scroll.HorizontalOffset;
+        // Вертикальную прокрутку WPF выполнит сам; горизонтальную после неё возвращаем.
+        tree.Dispatcher.BeginInvoke(() => scroll.ScrollToHorizontalOffset(offset), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private static ScrollViewer? FindScrollViewer(DependencyObject element)
+    {
+        for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(element); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(element, i);
+            if (child is ScrollViewer scroll)
+                return scroll;
+            if (FindScrollViewer(child) is { } nested)
+                return nested;
+        }
+        return null;
+    }
+}

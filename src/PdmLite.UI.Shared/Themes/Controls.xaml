@@ -433,6 +433,8 @@
     </Style>
 
     <Style TargetType="TreeView">
+        <!-- Выделение узла не сдвигает горизонтальную прокрутку вправо -->
+        <Setter Property="ui:TreeScroll.KeepHorizontal" Value="True" />
         <Setter Property="Background" Value="{StaticResource Pdm.Brush.Panel}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="2" />
