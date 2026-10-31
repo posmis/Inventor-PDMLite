@@ -245,10 +245,16 @@ public sealed partial class CheckRow : ObservableObject
     {
         ComponentFinding.ContentCenter => "Content Center",
         ComponentFinding.CopyOfLibraryItem => "Копия",
+        ComponentFinding.MissingFile => "Файл не найден",
         _ => "Нет в библиотеке",
     };
 
-    public string Icon => Check.Finding == ComponentFinding.ContentCenter ? IconKeys.Warning : IconKeys.StateInfo;
+    public string Icon => Check.Finding switch
+    {
+        ComponentFinding.MissingFile => IconKeys.Error,
+        ComponentFinding.ContentCenter => IconKeys.Warning,
+        _ => IconKeys.StateInfo,
+    };
 }
 
 /// <summary>Вариант замены в списке: обозначение и пометка, точное ли совпадение.</summary>

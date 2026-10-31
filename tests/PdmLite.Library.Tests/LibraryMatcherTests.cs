@@ -61,4 +61,27 @@ public class LibraryMatcherTests
         Assert.Contains("похожие", check.Message);
         Assert.Equal(2, check.Candidates.Count);
     }
+
+    [Fact]
+    public void AssemblyCheck_MissingFiles_AreListedFirst_WithLibraryCandidates()
+    {
+        var storage = new LibraryStorage(Path.Combine(Path.GetTempPath(), "pdmlite-match-lib"));
+        var dir = Path.Combine(Path.GetTempPath(), "Проект");
+        AssemblyComponentInfo Missing(string name) => new(Path.Combine(dir, name), null, false, 1, IsMissing: true);
+
+        var result = AssemblyCheck.Run(
+        [
+            new AssemblyComponentInfo(Path.Combine(dir, "Болт ГОСТ 7798-70 M8-6g×30(S13).ipt"), "Болт ГОСТ 7798-70 M8-6g×30(S13)", true, 2),
+            Missing("Болт ГОСТ 7798-70 M8-6g×35(S13).ipt"), // потерянный болт Content Center — по имени файла
+            Missing("АБВГ.001_Пластина.ipt"),              // своя деталь — тоже в списке
+        ], [Bolt109, Bolt35], storage);
+
+        Assert.Equal(3, result.Findings.Count);
+        var missing = result.Findings.Take(2).ToList();
+        Assert.All(missing, f => Assert.Equal(ComponentFinding.MissingFile, f.Finding));
+        var bolt = missing.Single(f => f.Designation.StartsWith("Болт"));
+        Assert.Same(Bolt35, bolt.Replacement);
+        Assert.Contains("не найден", bolt.Message);
+        Assert.False(missing.Single(f => f.Designation.StartsWith("АБВГ")).CanReplace);
+    }
 }

@@ -5,7 +5,8 @@ namespace PdmLite.Core.Documents;
 /// <param name="PartNumber">Обозначение из свойств (Part Number).</param>
 /// <param name="IsContentCenter">Компонент из Content Center Inventor.</param>
 /// <param name="Count">Сколько раз компонент входит в сборку.</param>
-public sealed record AssemblyComponentInfo(string Path, string? PartNumber, bool IsContentCenter, int Count);
+/// <param name="IsMissing">Файл компонента не найден (ссылка потеряна, например проект перенесли с другого компьютера).</param>
+public sealed record AssemblyComponentInfo(string Path, string? PartNumber, bool IsContentCenter, int Count, bool IsMissing = false);
 
 public sealed record AssemblyInspection(string AssemblyPath, IReadOnlyList<AssemblyComponentInfo> Components);
 

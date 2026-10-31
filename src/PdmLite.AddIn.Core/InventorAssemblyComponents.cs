@@ -12,7 +12,7 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
         ui.InvokeAsync(() =>
         {
             var assembly = ActiveAssembly();
-            var components = new Dictionary<string, (string? PartNumber, bool ContentCenter, int Count)>(StringComparer.OrdinalIgnoreCase);
+            var components = new Dictionary<string, (string? PartNumber, bool ContentCenter, int Count, bool Missing)>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var occurrence in AllOccurrences(assembly.ComponentDefinition.Occurrences))
             {
@@ -24,12 +24,19 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
                     continue;
                 }
 
+                // Файл не найден — данные компонента не читаем вовсе: у такого вхождения Inventor может упасть.
+                if (IsMissing(occurrence))
+                {
+                    components[path] = (null, false, 1, true);
+                    continue;
+                }
+
                 var document = Safe(() => occurrence.Definition?.Document as Inv._Document, null);
-                components[path] = (InventorProperties.PartNumber(document), IsContentCenter(occurrence), 1);
+                components[path] = (InventorProperties.PartNumber(document), IsContentCenter(occurrence), 1, false);
             }
 
             return new AssemblyInspection(assembly.FullFileName,
-                components.Select(c => new AssemblyComponentInfo(c.Key, c.Value.PartNumber, c.Value.ContentCenter, c.Value.Count)).ToList());
+                components.Select(c => new AssemblyComponentInfo(c.Key, c.Value.PartNumber, c.Value.ContentCenter, c.Value.Count, c.Value.Missing)).ToList());
         });
 
     public Task<ReplacementResult> ReplaceAsync(IReadOnlyList<ComponentReplacement> replacements, CancellationToken cancellationToken = default) =>
@@ -46,7 +53,7 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
             foreach (var assembly in AssembliesOf(top))
             {
                 var direct = assembly.ComponentDefinition.Occurrences.Cast<Inv.ComponentOccurrence>()
-                    .Where(o => !o.Suppressed)
+                    .Where(o => !Safe(() => o.Suppressed, true))
                     .Select(o => (Occurrence: o, Path: PathOf(o)))
                     .Where(o => o.Path is not null && map.ContainsKey(o.Path))
                     .GroupBy(o => o.Path!, StringComparer.OrdinalIgnoreCase)
@@ -150,6 +157,7 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
     internal static List<OccurrenceRename> FixNames(Inv.AssemblyDocument assembly, IReadOnlySet<string> paths, bool apply, ILogger logger)
     {
         var occurrences = assembly.ComponentDefinition.Occurrences.Cast<Inv.ComponentOccurrence>()
+            .Where(o => !IsMissing(o))
             .Select(o => (Occurrence: o, Name: Safe(() => o.Name, (string?)null)))
             .Where(o => o.Name is not null)
             .ToList();
@@ -213,6 +221,8 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
             if (Safe(() => occurrence.Suppressed, true))
                 continue;
             yield return occurrence;
+            if (IsMissing(occurrence))
+                continue; // состав ненайденной подсборки неизвестен
             if (Safe(() => occurrence.SubOccurrences is { Count: > 0 } c ? c : null, null) is { } children)
                 foreach (var child in AllOccurrences(children))
                     yield return child;
@@ -225,9 +235,16 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { top.FullFileName };
         yield return top;
         foreach (var occurrence in AllOccurrences(top.ComponentDefinition.Occurrences))
-            if (Safe(() => occurrence.Definition?.Document as Inv.AssemblyDocument, null) is { } sub && seen.Add(sub.FullFileName))
+            if (!IsMissing(occurrence) && Safe(() => occurrence.Definition?.Document as Inv.AssemblyDocument, null) is { } sub && seen.Add(sub.FullFileName))
                 yield return sub;
     }
+
+    /// <summary>
+    /// Файл вхождения не найден (потерянная ссылка). Такое вхождение нельзя трогать дальше ссылки на файл:
+    /// обращение к его определению или документу может уронить Inventor.
+    /// </summary>
+    internal static bool IsMissing(Inv.ComponentOccurrence occurrence) =>
+        Safe(() => occurrence.ReferencedDocumentDescriptor?.ReferenceMissing == true, true);
 
     /// <summary>Свойство Inventor API или <paramref name="fallback"/>, если Inventor его не отдаёт (COM-ошибка).</summary>
     private static T Safe<T>(Func<T> read, T fallback)
@@ -257,6 +274,8 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
 
     internal static bool IsContentCenter(Inv.ComponentOccurrence occurrence)
     {
+        if (IsMissing(occurrence))
+            return false;
         try
         {
             return occurrence.Definition is Inv.PartComponentDefinition { IsContentMember: true };

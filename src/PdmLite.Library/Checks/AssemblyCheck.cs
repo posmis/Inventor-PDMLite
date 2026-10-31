@@ -8,6 +8,9 @@ namespace PdmLite.Library.Checks;
 
 public enum ComponentFinding
 {
+    /// <summary>Файл компонента не найден на этом компьютере (потерянная ссылка).</summary>
+    MissingFile,
+
     /// <summary>Компонент из Content Center Inventor.</summary>
     ContentCenter,
 
@@ -35,6 +38,8 @@ public sealed record ComponentCheck(AssemblyComponentInfo Component, string Desi
         ComponentFinding.ContentCenter when CanReplace => "Из Content Center — в библиотеке есть похожие: проверьте выбранный вариант.",
         ComponentFinding.ContentCenter => "Из Content Center — в библиотеке такого компонента нет. Добавьте его в библиотеку.",
         ComponentFinding.CopyOfLibraryItem => "Копия библиотечного компонента вне библиотеки.",
+        ComponentFinding.MissingFile when CanReplace => "Файл не найден на этом компьютере — замените компонентом из библиотеки (проверьте выбранный).",
+        ComponentFinding.MissingFile => "Файл не найден на этом компьютере. Выберите замену из библиотеки или найдите файл (Inventor → «Управление» → «Замена ссылок»).",
         _ when CanReplace => "Стандартное изделие не из библиотеки — в библиотеке есть похожие: проверьте выбранный вариант.",
         _ => "Стандартное изделие не из библиотеки. Добавьте его в библиотеку.",
     };
@@ -68,7 +73,10 @@ public static class AssemblyCheck
             var candidates = matcher.Find(designation);
             var exact = candidates is [{ Exact: true }, ..];
 
-            if (component.IsContentCenter)
+            // Потерянный файл — всегда в списке: о нём нужно знать, даже если это своя деталь проекта.
+            if (component.IsMissing)
+                findings.Add(new ComponentCheck(component, designation, ComponentFinding.MissingFile, candidates));
+            else if (component.IsContentCenter)
                 findings.Add(new ComponentCheck(component, designation, ComponentFinding.ContentCenter, candidates));
             else if (exact)
                 findings.Add(new ComponentCheck(component, designation, ComponentFinding.CopyOfLibraryItem, candidates));
