@@ -8,6 +8,7 @@ using PdmLite.Core.Projects;
 using PdmLite.Core.UI;
 using PdmLite.Modules.ProjectTree.ViewModels;
 using PdmLite.Modules.ProjectTree.Views;
+using PdmLite.UI.Shared;
 
 namespace PdmLite.Modules.ProjectTree;
 
@@ -67,11 +68,21 @@ public sealed class ProjectTreeModule : IPdmModule
             "ProjectTree.CopyPath", "Копировать путь", CommandPlacement.ContextMenu,
             ctx =>
             {
-                Clipboard.SetText(string.Join(Environment.NewLine, ctx.Selection.Select(i => i.Path)));
+                UiClipboard.SetText(string.Join(Environment.NewLine, ctx.Selection.Select(i => i.Path)));
                 return Task.CompletedTask;
             },
             ctx => ctx.Selection.Count > 0,
             Order: 20, Group: "1-file", Icon: IconKeys.CopyPath));
+
+        context.Ui.RegisterCommand(new CommandDescriptor(
+            "ProjectTree.CopyName", "Копировать имя", CommandPlacement.ContextMenu,
+            ctx =>
+            {
+                UiClipboard.SetText(string.Join(Environment.NewLine, ctx.Selection.Select(i => i.Name)));
+                return Task.CompletedTask;
+            },
+            ctx => ctx.Selection.Count > 0,
+            Order: 19, Group: "1-file", Icon: IconKeys.CopyPath));
 
         context.Ui.RegisterCommand(new CommandDescriptor(
             "ProjectTree.Refresh", "Обновить дерево проекта", CommandPlacement.ContextMenu,
