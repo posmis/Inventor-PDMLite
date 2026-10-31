@@ -228,7 +228,9 @@ internal sealed class Apprentice : IDisposable, IReferenceReader
                 dynamic descriptors = document.File.ReferencedFileDescriptors;
                 count = descriptors.Count;
                 Console.WriteLine($"    [Apprentice] File.ReferencedFileDescriptors: {count}");
-                foreach (var item in Items(descriptors, count))
+                // Явный тип: с dynamic-аргументами результат тоже был бы dynamic, а у него нет имён полей кортежа.
+                List<(int Index, object Value)> descriptorItems = Items(descriptors, count);
+                foreach (var item in descriptorItems)
                 {
                     dynamic descriptor = item.Value;
                     var i = item.Index;
@@ -253,7 +255,8 @@ internal sealed class Apprentice : IDisposable, IReferenceReader
                     dynamic documents = document.ReferencedDocuments;
                     int found = documents.Count;
                     Console.WriteLine($"    [Apprentice] ReferencedDocuments: {found}");
-                    foreach (var item in Items(documents, found))
+                    List<(int Index, object Value)> documentItems = Items(documents, found);
+                    foreach (var item in documentItems)
                     {
                         dynamic referenced = item.Value;
                         var i = item.Index;
