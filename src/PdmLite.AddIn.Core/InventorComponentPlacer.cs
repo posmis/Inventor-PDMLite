@@ -23,6 +23,8 @@ public sealed class InventorComponentPlacer(Inv.Application inventor, IUiDispatc
         {
             if (inventor.ActiveDocument is not { DocumentType: Inv.DocumentTypeEnum.kAssemblyDocumentObject })
                 throw new InvalidOperationException("Активный документ — не сборка. Откройте или активируйте сборку, в которую нужно вставить компонент.");
+            if (string.Equals(((Inv._Document)inventor.ActiveDocument).FullFileName, path, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Нельзя вставить сборку саму в себя. Активируйте другую сборку.");
 
             var commands = inventor.CommandManager;
             commands.PostPrivateEvent(Inv.PrivateEventTypeEnum.kFileNameEvent, path);

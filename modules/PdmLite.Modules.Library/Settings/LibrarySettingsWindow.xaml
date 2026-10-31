@@ -15,7 +15,6 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Theme.xaml" />
             </ResourceDictionary.MergedDictionaries>
-            <ui:IconKeyConverter x:Key="IconKey" />
         </ResourceDictionary>
     </Window.Resources>
 
@@ -78,7 +77,7 @@
                         <TextBlock Text="Проверить подключение" Margin="5,0,2,0" />
                     </StackPanel>
                 </Button>
-                <Image Source="{Binding TestIcon, Converter={StaticResource IconKey}}" Style="{StaticResource Pdm.Icon16}" Margin="10,0,5,0" />
+                <Image Source="{Binding TestIcon, Converter={StaticResource Pdm.IconKey}}" Style="{StaticResource Pdm.Icon16}" Margin="10,0,5,0" />
                 <TextBlock Text="{Binding TestMessage}" TextWrapping="Wrap" VerticalAlignment="Center" />
             </DockPanel>
 

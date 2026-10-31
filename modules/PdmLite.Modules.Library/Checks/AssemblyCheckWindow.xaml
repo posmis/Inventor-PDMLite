@@ -15,8 +15,6 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Theme.xaml" />
             </ResourceDictionary.MergedDictionaries>
-            <ui:IconKeyConverter x:Key="IconKey" />
-            <ui:FileIconConverter x:Key="FileIcon" />
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         </ResourceDictionary>
     </Window.Resources>
@@ -98,7 +96,7 @@
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" ToolTip="{Binding FilePath}" VerticalAlignment="Center">
-                                    <Image Source="{Binding FilePath, Converter={StaticResource FileIcon}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
+                                    <Image Source="{Binding FilePath, Converter={StaticResource Pdm.FileIcon}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
                                     <TextBlock Text="{Binding Designation}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
                             </DataTemplate>
@@ -152,7 +150,7 @@
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" ToolTip="{Binding Message}" VerticalAlignment="Center">
-                                    <Image Source="{Binding Icon, Converter={StaticResource IconKey}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
+                                    <Image Source="{Binding Icon, Converter={StaticResource Pdm.IconKey}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
                                     <TextBlock Text="{Binding FindingText}" FontWeight="SemiBold" VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding Message, StringFormat=' — {0}'}" Style="{StaticResource Pdm.Text.Hint}"
                                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />

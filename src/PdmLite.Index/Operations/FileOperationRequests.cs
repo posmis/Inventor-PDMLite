@@ -93,6 +93,21 @@ public static class FileOperationRequests
         return moves.Where(m => !m.From.Equals(m.To, StringComparison.Ordinal)).ToList();
     }
 
+    /// <summary>Переименование папки: все её файлы (кроме OldVersions — их перенесёт сама папка) — под новым именем папки.</summary>
+    public static (IReadOnlyList<FileMove> Files, FileMove Folder) RenameFolder(string folder, string newName, Func<string, IEnumerable<string>> filesOfFolder)
+    {
+        folder = Path.TrimEndingDirectorySeparator(folder);
+        var target = Path.Combine(Path.GetDirectoryName(folder)!, newName.Trim());
+        var files = new List<FileMove>();
+        foreach (var file in filesOfFolder(folder))
+        {
+            var relative = Path.GetRelativePath(folder, file);
+            if (!relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Any(IsOldVersions))
+                files.Add(new FileMove(file, Path.Combine(target, relative)));
+        }
+        return (files, new FileMove(folder, target));
+    }
+
     /// <summary>Свойства для переименованных документов Inventor: обозначение (у чертежа — с кодом) и наименование.</summary>
     public static IReadOnlyList<PropertyUpdate> RenameProperties(IEnumerable<string> files, string? designation, string? name)
     {

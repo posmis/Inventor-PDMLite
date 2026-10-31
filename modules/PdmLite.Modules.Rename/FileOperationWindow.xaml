@@ -8,7 +8,7 @@
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance local:FileOperationViewModel}"
         Title="{Binding Title}" Width="1100" Height="720" MinWidth="700" MinHeight="450"
-        WindowStartupLocation="CenterScreen" ui:WindowFit.FitToScreen="True">
+        WindowStartupLocation="CenterScreen">
 
     <Window.Resources>
         <ResourceDictionary>
@@ -16,7 +16,6 @@
                 <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Theme.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
-            <ui:FileIconConverter x:Key="FileIcon" />
             <Style x:Key="WrapCell" TargetType="TextBlock">
                 <Setter Property="TextWrapping" Value="Wrap" />
                 <Setter Property="Margin" Value="2,2" />
@@ -34,8 +33,14 @@
             <StackPanel>
                 <TextBlock Text="{Binding Header}" Style="{StaticResource Pdm.Text.Title}" TextTrimming="CharacterEllipsis" />
 
-                <!-- Переименование -->
-                <Grid Margin="0,8,0,0" Visibility="{Binding IsRename, Converter={StaticResource BoolToVisibility}}">
+                <!-- Переименование папки -->
+                <DockPanel Margin="0,8,0,0" Visibility="{Binding IsFolderRename, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="Новое имя папки:" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBox x:Name="FolderNameBox" Text="{Binding NewFolderName, UpdateSourceTrigger=PropertyChanged, Delay=200}" />
+                </DockPanel>
+
+                <!-- Переименование файла -->
+                <Grid Margin="0,8,0,0" Visibility="{Binding IsFileRename, Converter={StaticResource BoolToVisibility}}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="2*" />
@@ -156,7 +161,7 @@
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" ToolTip="{Binding From}">
-                                    <Image Source="{Binding From, Converter={StaticResource FileIcon}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
+                                    <Image Source="{Binding From, Converter={StaticResource Pdm.FileIcon}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
                                     <TextBlock Text="{Binding FromName}" VerticalAlignment="Center" />
                                 </StackPanel>
                             </DataTemplate>

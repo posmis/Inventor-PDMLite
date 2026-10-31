@@ -22,9 +22,13 @@ public sealed record FileOperationPlan(
     IReadOnlyList<ReferenceUpdate> References,
     IReadOnlyList<PropertyUpdate> Properties,
     IReadOnlyList<string> Problems,
-    IReadOnlyList<string> Warnings)
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<FileMove>? Folders = null)
 {
-    public bool CanExecute => Problems.Count == 0 && (Moves.Count > 0 || Properties.Count > 0);
+    /// <summary>Папки, которые переносятся или переименовываются целиком (после файлов в них переезжает остальное, старая удаляется).</summary>
+    public IReadOnlyList<FileMove> FolderMoves => Folders ?? [];
+
+    public bool CanExecute => Problems.Count == 0 && (Moves.Count > 0 || Properties.Count > 0 || References.Count > 0 || FolderMoves.Count > 0);
 
     /// <summary>Все файлы, которые операция трогает (по путям до операции).</summary>
     public IReadOnlyList<string> InvolvedFiles =>
@@ -38,6 +42,15 @@ public sealed record FileOperationPlan(
 
 /// <param name="BackupFolder">Копии изменённых на месте документов и журнал операции.</param>
 public sealed record FileOperationResult(int Moved, int ReferencesUpdated, int PropertiesWritten, string BackupFolder, IReadOnlyList<string> Warnings);
+
+/// <summary>Потерянная ссылка: файла нет по пути, который записан в документах.</summary>
+/// <param name="Missing">Путь, по которому документы ищут файл.</param>
+/// <param name="UsedIn">Документы проекта с этой ссылкой.</param>
+/// <param name="Candidates">Файлы проекта с тем же именем (куда, вероятно, его перенесли).</param>
+public sealed record BrokenLink(string Missing, IReadOnlyList<string> UsedIn, IReadOnlyList<string> Candidates)
+{
+    public string Name => Path.GetFileName(Missing);
+}
 
 /// <summary>Операция не выполнена; всё, что успело измениться, возвращено.</summary>
 public sealed class FileOperationException(string message, Exception inner) : Exception(message, inner);
@@ -89,10 +102,13 @@ public sealed class ProjectFileOperations(
     }
 
     /// <summary>Только чтение: проверки и список изменений.</summary>
+    /// <param name="folders">Папки, переносимые целиком (их файлы — в <paramref name="moves"/>).</param>
     public async Task<FileOperationPlan> PlanAsync(string root, IReadOnlyList<FileMove> moves, IReadOnlyList<PropertyUpdate> properties,
-        IProgress<string>? progress = null, CancellationToken ct = default)
+        IProgress<string>? progress = null, CancellationToken ct = default, IReadOnlyList<FileMove>? folders = null)
     {
         root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+        folders = (folders ?? []).Select(f => new FileMove(Path.TrimEndingDirectorySeparator(Path.GetFullPath(f.From)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(f.To)))).ToList();
         moves = moves.Select(m => new FileMove(Path.GetFullPath(m.From), Path.GetFullPath(m.To))).ToList();
         properties = properties.Select(p => p with { Path = Path.GetFullPath(p.Path) }).ToList();
         var problems = new List<string>();
@@ -125,6 +141,26 @@ public sealed class ProjectFileOperations(
             if (!move.IsCaseOnly && (File.Exists(move.To) || Directory.Exists(move.To)) && !sources.Contains(move.To))
                 problems.Add($"{Path.GetFileName(move.To)}: файл с таким именем уже есть в {Path.GetDirectoryName(move.To)}.");
         }
+        foreach (var folder in folders)
+        {
+            var name = Path.GetFileName(folder.From);
+            if (!Directory.Exists(folder.From))
+                problems.Add($"Папка «{name}» не найдена.");
+            if (!Inside(root, folder.From) || !Inside(root, folder.To))
+                problems.Add($"Папка «{name}»: переименовывать и перемещать можно только внутри папки проекта.");
+            if ((folder.To + Path.DirectorySeparatorChar).StartsWith(folder.From + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)
+                && !folder.To.Equals(folder.From, StringComparison.OrdinalIgnoreCase))
+                problems.Add($"Папку «{name}» нельзя перенести внутрь неё самой.");
+            if (File.Exists(folder.To))
+                problems.Add($"«{Path.GetFileName(folder.To)}»: файл с таким именем уже есть в {Path.GetDirectoryName(folder.To)}.");
+            if (Directory.Exists(folder.To) && !folder.To.Equals(folder.From, StringComparison.OrdinalIgnoreCase))
+                warnings.Add($"Папка «{Path.GetFileName(folder.To)}» уже есть в {Path.GetDirectoryName(folder.To)} — содержимое объединится.");
+            var newName = Path.GetFileName(folder.To);
+            if (newName.Length == 0 || newName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || newName.IndexOfAny(['<', '>', ':', '"', '|', '?', '*']) >= 0
+                || newName.EndsWith('.') || newName.EndsWith(' '))
+                problems.Add($"Недопустимое имя папки «{newName}».");
+        }
+
         // Новое имя совпадает со старым именем другого переносимого файла — цепочки не поддерживаются.
         foreach (var move in moves.Where(m => !m.IsCaseOnly && sources.Contains(m.To) && !m.To.Equals(m.From, StringComparison.OrdinalIgnoreCase)))
             problems.Add($"{Path.GetFileName(move.To)}: имя занято другим переносимым файлом — переименуйте в два шага.");
@@ -162,7 +198,83 @@ public sealed class ProjectFileOperations(
             if (!references.Any(r => r.Map.ContainsKey(move.From)) && DocumentKinds.FromPath(move.From) != DocumentKind.Drawing)
                 warnings.Add($"{Path.GetFileName(move.From)}: в проекте на него никто не ссылается.");
 
-        return new FileOperationPlan(root, moves, references, properties, problems, warnings);
+        return new FileOperationPlan(root, moves, references, properties, problems, warnings, folders);
+    }
+
+    /// <summary>
+    /// Потерянные ссылки проекта (файлы перенесли или переименовали, например в проводнике Windows) и файлы
+    /// проекта с тем же именем — куда их, вероятно, перенесли.
+    /// </summary>
+    public async Task<IReadOnlyList<BrokenLink>> FindBrokenLinksAsync(string root, IProgress<string>? progress = null, CancellationToken ct = default)
+    {
+        root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+        if (!store.IsAvailable)
+            throw new InvalidOperationException($"Нет доступа к файлам Inventor: {store.UnavailableReason}");
+
+        List<(string Document, string Target)> broken;
+        if (database.IsConfigured)
+        {
+            await ScanIndexAsync(root, progress, ct).ConfigureAwait(false);
+            broken = (await index.BrokenReferencesAsync(root, ct).ConfigureAwait(false)).Select(b => (b.Document, b.Target)).ToList();
+        }
+        else
+        {
+            broken = (await AllReferencesAsync(root, progress, ct).ConfigureAwait(false))
+                .SelectMany(d => d.References.Where(r => !File.Exists(r)).Select(r => (d.Document, r))).ToList();
+        }
+
+        var byName = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in ReferenceIndexService.Enumerate(root))
+        {
+            if (!byName.TryGetValue(file.Name, out var list))
+                byName[file.Name] = list = [];
+            list.Add(file.FullName);
+        }
+
+        return broken.GroupBy(b => ReferenceIndexService.Key(b.Target))
+            .Select(g => new BrokenLink(g.First().Target,
+                g.Select(b => b.Document).Distinct(StringComparer.OrdinalIgnoreCase).Order(NaturalComparer.Instance).ToList(),
+                byName.GetValueOrDefault(Path.GetFileName(g.First().Target)) is { } same
+                    ? same.Order(NaturalComparer.Instance).ToList()
+                    : []))
+            .OrderBy(l => l.Name, NaturalComparer.Instance).ToList();
+    }
+
+    /// <summary>План восстановления ссылок: в документах с потерянной ссылкой — на выбранный файл.</summary>
+    /// <param name="choices">Потерянный путь → найденный файл.</param>
+    public FileOperationPlan PlanRepair(string root, IReadOnlyList<BrokenLink> links, IReadOnlyDictionary<string, string> choices)
+    {
+        root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+        var problems = new List<string>();
+        var maps = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var link in links)
+        {
+            if (!choices.TryGetValue(link.Missing, out var replacement) || string.IsNullOrWhiteSpace(replacement))
+                continue;
+            if (!File.Exists(replacement))
+            {
+                problems.Add($"{link.Name}: выбранный файл не найден ({replacement}).");
+                continue;
+            }
+            if (!DocumentKinds.FromPath(replacement).Equals(DocumentKinds.FromPath(link.Missing)))
+                problems.Add($"{link.Name}: выбран файл другого типа ({Path.GetFileName(replacement)}).");
+            foreach (var document in link.UsedIn)
+            {
+                if (!maps.TryGetValue(document, out var map))
+                    maps[document] = map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                map[link.Missing] = replacement;
+            }
+        }
+        var references = maps.OrderBy(m => m.Key, NaturalComparer.Instance)
+            .Select(m => new ReferenceUpdate(m.Key, m.Key, m.Value)).ToList();
+        foreach (var document in references.Select(r => r.Document))
+        {
+            if (!File.Exists(document))
+                problems.Add($"{Path.GetFileName(document)}: документ не найден.");
+            else if (File.GetAttributes(document).HasFlag(FileAttributes.ReadOnly))
+                problems.Add($"{Path.GetFileName(document)}: файл только для чтения — снимите атрибут и повторите.");
+        }
+        return new FileOperationPlan(root, [], references, [], problems, []);
     }
 
     /// <summary>Выполняет план. При сбое всё возвращается и бросается <see cref="FileOperationException"/>.</summary>
@@ -282,7 +394,10 @@ public sealed class ProjectFileOperations(
                 warnings.Add($"{Path.GetFileName(move.From)}: регистр букв не изменён ({ex.Message}).");
             }
         }
-        RemoveEmptyFolders(plan.Root, plan.Moves.Where(m => !m.IsCaseOnly).Select(m => Path.GetDirectoryName(m.From)!));
+        foreach (var folder in plan.FolderMoves)
+            FinishFolder(folder, warnings);
+        RemoveEmptyFolders(plan.Root, plan.Moves.Where(m => !m.IsCaseOnly).Select(m => Path.GetDirectoryName(m.From)!)
+            .Concat(plan.FolderMoves.Select(f => Path.GetDirectoryName(f.From)!)));
 
         if (database.IsConfigured)
         {
@@ -313,10 +428,7 @@ public sealed class ProjectFileOperations(
         var keys = files.Select(ReferenceIndexService.Key).ToHashSet();
         if (database.IsConfigured)
         {
-            progress?.Report("Обновление индекса ссылок проекта");
-            await index.ScanAsync(root, new Progress<(int Done, int Total, string? Current)>(p =>
-                progress?.Report(p.Current is null ? "Индекс ссылок обновлён" : $"Индекс ссылок: {p.Done} из {p.Total} — {p.Current}")), ct)
-                .ConfigureAwait(false);
+            await ScanIndexAsync(root, progress, ct).ConfigureAwait(false);
             foreach (var file in files)
             {
                 var parents = await index.WhereUsedAsync(file, allLevels: false, ct).ConfigureAwait(false);
@@ -325,43 +437,96 @@ public sealed class ProjectFileOperations(
             return result;
         }
 
-        // Без базы — читаем ссылки всех документов проекта (повторно — только изменённые с прошлого раза).
+        // Без базы — читаем ссылки всех документов проекта.
+        foreach (var (document, references) in await AllReferencesAsync(root, progress, ct).ConfigureAwait(false))
+        {
+            foreach (var key in references.Select(ReferenceIndexService.Key).Where(keys.Contains).Distinct())
+            {
+                if (!result.TryGetValue(key, out var list))
+                    result[key] = list = [];
+                list.Add(document);
+            }
+        }
+        return result;
+    }
+
+    private Task ScanIndexAsync(string root, IProgress<string>? progress, CancellationToken ct)
+    {
+        progress?.Report("Обновление индекса ссылок проекта");
+        return index.ScanAsync(root, new Progress<(int Done, int Total, string? Current)>(p =>
+            progress?.Report(p.Current is null ? "Индекс ссылок обновлён" : $"Индекс ссылок: {p.Done} из {p.Total} — {p.Current}")), ct);
+    }
+
+    /// <summary>Ссылки всех документов проекта (без базы); повторно читаются только изменённые с прошлого раза.</summary>
+    private async Task<List<(string Document, IReadOnlyList<string> References)>> AllReferencesAsync(string root, IProgress<string>? progress,
+        CancellationToken ct)
+    {
+        var result = new List<(string, IReadOnlyList<string>)>();
         var documents = ReferenceIndexService.Enumerate(root);
         for (var i = 0; i < documents.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
             var file = documents[i];
-            IReadOnlyList<string> references;
+            (long Size, DateTime Modified, IReadOnlyList<string> References) cached;
+            bool hit;
             lock (_cache)
+                hit = _cache.TryGetValue(file.FullName, out cached) && cached.Size == file.Length && cached.Modified == file.LastWriteTimeUtc;
+            if (hit)
             {
-                if (_cache.TryGetValue(file.FullName, out var cached) && cached.Size == file.Length && cached.Modified == file.LastWriteTimeUtc)
-                {
-                    references = cached.References;
-                    goto Collect;
-                }
+                result.Add((file.FullName, cached.References));
+                continue;
             }
             progress?.Report($"Чтение ссылок: {i + 1} из {documents.Count} — {file.Name}");
             try
             {
-                references = (await store.ReadWithoutGeometryAsync(file.FullName, ct).ConfigureAwait(false)).References;
+                var references = (await store.ReadWithoutGeometryAsync(file.FullName, ct).ConfigureAwait(false)).References;
+                lock (_cache)
+                    _cache[file.FullName] = (file.Length, file.LastWriteTimeUtc, references);
+                result.Add((file.FullName, references));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 logger.LogDebug(ex, "Ссылки не прочитаны: {Path}", file.FullName);
-                continue;
-            }
-            lock (_cache)
-                _cache[file.FullName] = (file.Length, file.LastWriteTimeUtc, references);
-
-            Collect:
-            foreach (var key in references.Select(ReferenceIndexService.Key).Where(keys.Contains).Distinct())
-            {
-                if (!result.TryGetValue(key, out var list))
-                    result[key] = list = [];
-                list.Add(file.FullName);
             }
         }
         return result;
+    }
+
+    /// <summary>
+    /// После переноса файлов папки: остальное (OldVersions, пустые подпапки) — в новую папку, старая удаляется.
+    /// Только регистр букв в имени — переименование через временное имя.
+    /// </summary>
+    private void FinishFolder(FileMove folder, List<string> warnings)
+    {
+        try
+        {
+            if (!Directory.Exists(folder.From))
+                return;
+            if (folder.IsCaseOnly)
+            {
+                var temp = folder.From + ".pdmlite-rename";
+                Directory.Move(folder.From, temp);
+                Directory.Move(temp, folder.To);
+                return;
+            }
+            Directory.CreateDirectory(folder.To);
+            foreach (var directory in Directory.EnumerateDirectories(folder.From, "*", SearchOption.AllDirectories))
+                Directory.CreateDirectory(Path.Combine(folder.To, Path.GetRelativePath(folder.From, directory)));
+            foreach (var file in Directory.EnumerateFiles(folder.From, "*", SearchOption.AllDirectories))
+            {
+                var target = Path.Combine(folder.To, Path.GetRelativePath(folder.From, file));
+                if (File.Exists(target))
+                    warnings.Add($"{Path.GetRelativePath(folder.From, file)}: в новой папке уже есть такой файл — остался в старой.");
+                else
+                    File.Move(file, target);
+            }
+            if (!Directory.EnumerateFiles(folder.From, "*", SearchOption.AllDirectories).Any())
+                Directory.Delete(folder.From, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            warnings.Add($"Папка «{Path.GetFileName(folder.From)}»: не всё перенесено ({ex.Message}).");
+        }
     }
 
     /// <summary>Прочитанные ссылки документов (без базы): путь → размер, время изменения, ссылки.</summary>

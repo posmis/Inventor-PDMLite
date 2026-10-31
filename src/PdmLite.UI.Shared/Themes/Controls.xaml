@@ -12,6 +12,11 @@
         <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Icons.xaml" />
     </ResourceDictionary.MergedDictionaries>
 
+    <!-- Конвертеры — здесь, внутри сборки темы: в разметке модулей не нужно искать тип по имени сборки
+         (внутри Inventor сборки PdmLite загружаются в отдельный контекст, и такой поиск может не найти тип). -->
+    <ui:FileIconConverter x:Key="Pdm.FileIcon" />
+    <ui:IconKeyConverter x:Key="Pdm.IconKey" />
+
     <!-- ===================== Корневые элементы ===================== -->
 
     <!-- Окно приложения. Неявный стиль Window не действует на наследников, поэтому стиль явный. -->

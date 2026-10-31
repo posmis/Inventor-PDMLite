@@ -471,6 +471,135 @@ public sealed class FileOperationTests : IDisposable
         Assert.Equal(first + 1, store.Reads);
     }
 
+    private async Task<FileOperationResult> RenameFolderAsync(ProjectFileOperations service, string folder, string newName)
+    {
+        var (files, move) = FileOperationRequests.RenameFolder(folder, newName, f => Directory.EnumerateFiles(f, "*", SearchOption.AllDirectories));
+        var plan = await service.PlanAsync(Project, files, [], folders: [move]);
+        Assert.True(plan.CanExecute, string.Join("; ", plan.Problems));
+        return await service.ExecuteAsync(plan);
+    }
+
+    [Fact]
+    public async Task RenameFolder_ReferencesFollow_OldVersionsAndEmptyFoldersMoved_OldRemoved()
+    {
+        var (harness, _, _, part, top) = Harness();
+        var old = F("Жгут", "OldVersions", "АБВГ.00.00.000СБ Жгут.0001.iam");
+        FileBackedStore.Create(old);
+        Directory.CreateDirectory(F("Жгут", "Пустая"));
+
+        await RenameFolderAsync(Service(new FileBackedStore()), F("Жгут"), "Жгут питания");
+
+        var newHarness = F("Жгут питания", Path.GetFileName(harness));
+        Assert.False(Directory.Exists(F("Жгут")));
+        Assert.Equal([newHarness], FileBackedStore.References(top));
+        Assert.Equal([F("Жгут питания", Path.GetFileName(part))], FileBackedStore.References(newHarness));
+        Assert.True(File.Exists(F("Жгут питания", "OldVersions", Path.GetFileName(old))));
+        Assert.True(Directory.Exists(F("Жгут питания", "Пустая")));
+    }
+
+    [Fact]
+    public async Task RenameFolder_Empty_Works()
+    {
+        Directory.CreateDirectory(F("Пустая", "Внутри"));
+        await RenameFolderAsync(Service(new FileBackedStore()), F("Пустая"), "Новая");
+        Assert.False(Directory.Exists(F("Пустая")));
+        Assert.True(Directory.Exists(F("Новая", "Внутри")));
+    }
+
+    [Theory]
+    [InlineData("a|b")]
+    [InlineData("a?")]
+    [InlineData("a.")]
+    public async Task RenameFolder_BadName_Problem(string name)
+    {
+        Harness();
+        var (files, move) = FileOperationRequests.RenameFolder(F("Жгут"), name, f => Directory.EnumerateFiles(f, "*", SearchOption.AllDirectories));
+        var plan = await Service(new FileBackedStore()).PlanAsync(Project, files, [], folders: [move]);
+        Assert.Contains(plan.Problems, p => p.Contains("Недопустимое имя папки") || p.Contains("недопустимые"));
+    }
+
+    [Fact]
+    public async Task MoveFolder_IntoItself_Problem()
+    {
+        Harness();
+        Directory.CreateDirectory(F("Жгут", "Под"));
+        var plan = await Service(new FileBackedStore()).PlanAsync(Project, [], [], folders: [new FileMove(F("Жгут"), F("Жгут", "Под", "Жгут"))]);
+        Assert.Contains(plan.Problems, p => p.Contains("внутрь неё самой"));
+    }
+
+    [Fact]
+    public async Task RenameFolder_ExistingTarget_MergeWarning()
+    {
+        Harness();
+        Directory.CreateDirectory(F("Есть"));
+        var (files, move) = FileOperationRequests.RenameFolder(F("Жгут"), "Есть", f => Directory.EnumerateFiles(f, "*", SearchOption.AllDirectories));
+        var plan = await Service(new FileBackedStore()).PlanAsync(Project, files, [], folders: [move]);
+        Assert.Contains(plan.Warnings, w => w.Contains("объединится"));
+    }
+
+    [Fact]
+    public async Task RepairLinks_FilesMovedInWindowsExplorer_ReferencesRestored()
+    {
+        var (harness, drawing, wiring, part, top) = Harness();
+        // Перенесли в проводнике Windows: деталь — в другую папку, сборку — тоже.
+        var movedPart = F("Детали", Path.GetFileName(part));
+        var movedHarness = F("Сборки", Path.GetFileName(harness));
+        Directory.CreateDirectory(F("Детали"));
+        Directory.CreateDirectory(F("Сборки"));
+        File.Move(part, movedPart);
+        File.Move(harness, movedHarness);
+        var service = Service(new FileBackedStore());
+
+        var links = await service.FindBrokenLinksAsync(Project);
+
+        Assert.Equal(new[] { Path.GetFileName(part), Path.GetFileName(harness) }.Order(StringComparer.Ordinal), links.Select(l => l.Name).Order(StringComparer.Ordinal));
+        var partLink = links.Single(l => l.Missing == part);
+        Assert.Equal([movedPart], partLink.Candidates);
+        Assert.Equal(new[] { movedHarness, wiring }.Order(StringComparer.Ordinal), partLink.UsedIn.Order(StringComparer.Ordinal));
+
+        var plan = service.PlanRepair(Project, links, links.ToDictionary(l => l.Missing, l => l.Candidates[0]));
+        Assert.True(plan.CanExecute, string.Join("; ", plan.Problems));
+        await service.ExecuteAsync(plan);
+
+        Assert.Equal([movedHarness], FileBackedStore.References(top));
+        Assert.Equal([movedHarness], FileBackedStore.References(drawing));
+        Assert.Equal([movedPart], FileBackedStore.References(movedHarness));
+        Assert.Empty(await service.FindBrokenLinksAsync(Project));
+    }
+
+    [Fact]
+    public async Task RepairLinks_AmbiguousOrMissing_NotChosen_Skipped_WrongType_Problem()
+    {
+        var (_, _, _, part, top) = Harness();
+        FileBackedStore.Create(F("А", Path.GetFileName(part)));
+        FileBackedStore.Create(F("Б", Path.GetFileName(part)));
+        File.Delete(part);
+        var service = Service(new FileBackedStore());
+
+        var link = (await service.FindBrokenLinksAsync(Project)).Single();
+        Assert.Equal(2, link.Candidates.Count); // неоднозначно — выбирает пользователь
+
+        Assert.False(service.PlanRepair(Project, [link], new Dictionary<string, string>()).CanExecute);
+        Assert.Contains(service.PlanRepair(Project, [link], new Dictionary<string, string> { [part] = top }).Problems, p => p.Contains("другого типа"));
+        Assert.Contains(service.PlanRepair(Project, [link], new Dictionary<string, string> { [part] = F("нет.ipt") }).Problems, p => p.Contains("не найден"));
+    }
+
+    [PostgresFact]
+    public async Task RepairLinks_WithIndex()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        var (_, _, _, part, _) = Harness();
+        var moved = F("Детали", Path.GetFileName(part));
+        Directory.CreateDirectory(F("Детали"));
+        File.Move(part, moved);
+        var service = Service(new FileBackedStore(), db.Database);
+
+        var links = await service.FindBrokenLinksAsync(Project);
+        await service.ExecuteAsync(service.PlanRepair(Project, links, links.ToDictionary(l => l.Missing, l => l.Candidates.Single())));
+
+        Assert.Empty(await service.FindBrokenLinksAsync(Project));
+    }
+
     [PostgresFact]
     public async Task WithIndex_SameResult_IndexUpdated()
     {

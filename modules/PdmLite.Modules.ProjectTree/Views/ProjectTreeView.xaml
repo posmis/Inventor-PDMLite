@@ -16,7 +16,6 @@
             </ResourceDictionary.MergedDictionaries>
 
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
-            <ui:FileIconConverter x:Key="FileIcon" />
 
             <HierarchicalDataTemplate DataType="{x:Type vm:TreeNodeViewModel}" ItemsSource="{Binding Children}">
                 <StackPanel Orientation="Horizontal">
@@ -29,7 +28,7 @@
                     <!-- Метка документа, активного в Inventor -->
                     <Rectangle x:Name="ActiveMark" Width="3" Height="14" Margin="0,0,3,0"
                                Fill="{StaticResource Pdm.Brush.Accent}" Visibility="Hidden" />
-                    <Image x:Name="KindIcon" Source="{Binding Item, Converter={StaticResource FileIcon}}"
+                    <Image x:Name="KindIcon" Source="{Binding Item, Converter={StaticResource Pdm.FileIcon}}"
                            Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
                     <TextBlock x:Name="Title" Text="{Binding Name}" VerticalAlignment="Center" />
                 </StackPanel>

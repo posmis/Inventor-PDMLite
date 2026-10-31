@@ -22,12 +22,17 @@ public partial class FileOperationWindow : Window
             if (viewModel.Summary is { } summary)
                 UiMessages.Info(summary);
         };
-        if (viewModel.IsMove)
+        if (viewModel.IsMove || viewModel.IsFolderRename)
             ToFolderColumn.Visibility = Visibility.Visible;
         Loaded += async (_, _) =>
         {
             await viewModel.InitializeAsync();
-            if (viewModel.IsRename)
+            if (viewModel.IsFolderRename)
+            {
+                FolderNameBox.Focus();
+                FolderNameBox.SelectAll();
+            }
+            else if (viewModel.IsRename)
             {
                 DesignationBox.Focus();
                 DesignationBox.SelectAll();

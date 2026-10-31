@@ -15,7 +15,6 @@
                 <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Theme.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
-            <ui:FileIconConverter x:Key="FileIcon" />
         </ResourceDictionary>
     </UserControl.Resources>
 
@@ -49,7 +48,7 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Image Source="{Binding Item, Converter={StaticResource FileIcon}, ConverterParameter=Large}" Style="{StaticResource Pdm.Icon32}"
+                    <Image Source="{Binding Item, Converter={StaticResource Pdm.FileIcon}, ConverterParameter=Large}" Style="{StaticResource Pdm.Icon32}"
                            VerticalAlignment="Top" Margin="0,0,10,0" />
                     <StackPanel Grid.Column="1">
                         <TextBox Text="{Binding Name, Mode=OneWay}" Style="{StaticResource Pdm.Text.Value}"

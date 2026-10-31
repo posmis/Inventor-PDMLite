@@ -15,11 +15,10 @@
                 <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Theme.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
-            <ui:FileIconConverter x:Key="FileIcon" />
 
             <HierarchicalDataTemplate DataType="{x:Type local:LibraryNode}" ItemsSource="{Binding Children}">
                 <StackPanel Orientation="Horizontal" ToolTip="{Binding Name}">
-                    <Image x:Name="Icon" Source="{Binding FullPath, Converter={StaticResource FileIcon}}"
+                    <Image x:Name="Icon" Source="{Binding FullPath, Converter={StaticResource Pdm.FileIcon}}"
                            Style="{StaticResource Pdm.Icon16}" Margin="0,0,5,0" />
                     <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding CountText}" Margin="5,0,0,0" VerticalAlignment="Center"

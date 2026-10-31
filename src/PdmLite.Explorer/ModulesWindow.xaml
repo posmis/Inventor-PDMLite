@@ -6,7 +6,6 @@
         Style="{StaticResource Pdm.Window}"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="CanResizeWithGrip">
     <Window.Resources>
-        <ui:IconKeyConverter x:Key="IconKey" />
     </Window.Resources>
     <DockPanel Margin="12">
         <DockPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" LastChildFill="False">
@@ -21,7 +20,7 @@
                         <GridViewColumn.CellTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal">
-                                    <Image Source="{Binding Icon, Converter={StaticResource IconKey}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,6,0" />
+                                    <Image Source="{Binding Icon, Converter={StaticResource Pdm.IconKey}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,6,0" />
                                     <TextBlock Text="{Binding Info.Name}" />
                                 </StackPanel>
                             </DataTemplate>

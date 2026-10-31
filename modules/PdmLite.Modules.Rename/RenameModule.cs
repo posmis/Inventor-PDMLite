@@ -45,7 +45,7 @@ public sealed class RenameModule : IPdmModule
         context.Ui.RegisterCommand(new CommandDescriptor(
             "Rename.Rename", "Переименовать…", CommandPlacement.ContextMenu,
             ctx => Open(context, FileOperationMode.Rename, [ctx.Single!.Path], null),
-            ctx => ctx.Single is { IsFolder: false } item && InProject(item),
+            ctx => ctx.Single is { } item && InProject(item),
             Order: 30, Group: "2-change", Icon: IconKeys.Rename));
 
         context.Ui.RegisterCommand(new CommandDescriptor(
@@ -53,6 +53,13 @@ public sealed class RenameModule : IPdmModule
             ctx => Open(context, FileOperationMode.Move, ctx.Selection.Select(i => i.Path).ToList(), null),
             ctx => ctx.Selection.Count > 0 && ctx.Selection.All(InProject),
             Order: 31, Group: "2-change", Icon: IconKeys.Move));
+
+        // После переноса файлов в проводнике Windows — восстановить ссылки во всех документах проекта.
+        context.Ui.RegisterCommand(new CommandDescriptor(
+            "Rename.RepairLinks", "Обновить связи проекта…", CommandPlacement.ContextMenu | CommandPlacement.Toolbar,
+            _ => OpenRepair(context),
+            _ => session.Project is not null || context.Host == HostKind.Inventor,
+            Order: 32, Group: "2-change", Icon: IconKeys.Refresh));
 
         // Перетаскивание в дереве проекта.
         var ui = services.GetRequiredService<PdmLite.Core.Threading.IUiDispatcher>();
@@ -116,6 +123,21 @@ public sealed class RenameModule : IPdmModule
             services.GetRequiredService<IDocumentPropertyStore>(),
             root, mode, paths, target);
         new FileOperationWindow(viewModel) { Owner = context.Host == HostKind.Explorer ? Application.Current?.MainWindow : null }.Show();
+        return Task.CompletedTask;
+    }
+
+    private static Task OpenRepair(IModuleContext context)
+    {
+        var services = context.Services;
+        var session = services.GetRequiredService<IProjectSession>();
+        if (session.Project is not { } project)
+        {
+            UiMessages.Info("Откройте проект — связи обновляются во всех документах его папки.");
+            return Task.CompletedTask;
+        }
+        var viewModel = new RepairViewModel(services.GetRequiredService<ProjectFileOperations>(), services.GetRequiredService<IOpenDocuments>(),
+            session, project.RootFolder);
+        new RepairWindow(viewModel) { Owner = context.Host == HostKind.Explorer ? Application.Current?.MainWindow : null }.Show();
         return Task.CompletedTask;
     }
 

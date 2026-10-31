@@ -15,13 +15,11 @@
                 <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Theme.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
-            <ui:FileIconConverter x:Key="FileIcon" />
-            <ui:IconKeyConverter x:Key="IconKey" />
 
             <!-- Документ в списке: значок файла, имя, обозначение и наименование; ненайденный — красным -->
             <DataTemplate x:Key="DocumentTemplate">
                 <DockPanel Margin="0,2" ToolTip="{Binding Path}">
-                    <Image DockPanel.Dock="Left" Source="{Binding Path, Converter={StaticResource FileIcon}}" Style="{StaticResource Pdm.Icon16}"
+                    <Image DockPanel.Dock="Left" Source="{Binding Path, Converter={StaticResource Pdm.FileIcon}}" Style="{StaticResource Pdm.Icon16}"
                            VerticalAlignment="Top" Margin="0,1,6,0" />
                     <TextBlock DockPanel.Dock="Right" Text="{Binding LevelText}" Style="{StaticResource Pdm.Text.Hint}" Margin="6,0,0,0" />
                     <StackPanel>

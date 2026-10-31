@@ -86,17 +86,24 @@ public sealed partial class FileOperationViewModel : ObservableObject
         Mode = mode;
         _sources = sources;
         _targetFolder = targetFolder ?? "";
+        IsFolderRename = mode == FileOperationMode.Rename && Directory.Exists(sources[0]);
+        _newFolderName = IsFolderRename ? Path.GetFileName(Path.TrimEndingDirectorySeparator(sources[0])) : "";
     }
 
     public string Root { get; }
     public FileOperationMode Mode { get; }
     public bool IsRename => Mode == FileOperationMode.Rename;
     public bool IsMove => Mode == FileOperationMode.Move;
+
+    /// <summary>Переименование папки (а не файла).</summary>
+    public bool IsFolderRename { get; }
+
+    public bool IsFileRename => IsRename && !IsFolderRename;
     public string Title => IsRename ? "Переименовать" : "Переместить";
     public string ActionText => IsRename ? "Переименовать" : "Переместить";
 
     public string Header => IsRename
-        ? $"Переименование: {Path.GetFileName(_sources[0])}"
+        ? (IsFolderRename ? "Переименование папки: " : "Переименование: ") + Path.GetFileName(Path.TrimEndingDirectorySeparator(_sources[0]))
         : _sources.Count == 1 ? $"Перемещение: {Path.GetFileName(_sources[0])}" : $"Перемещение: {_sources.Count} объектов";
 
     public ObservableCollection<FileRow> Files { get; } = [];
@@ -105,6 +112,7 @@ public sealed partial class FileOperationViewModel : ObservableObject
     /// <summary>Файл, который выбрали для переименования (после операции — по новому пути).</summary>
     public string Main => _sources[0];
 
+    [ObservableProperty] private string _newFolderName;
     [ObservableProperty] private string _designation = "";
     [ObservableProperty] private string _name = "";
     [ObservableProperty] private bool _writeProperties = true;
@@ -136,7 +144,9 @@ public sealed partial class FileOperationViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            if (IsRename)
+            if (IsFolderRename)
+                InitializeFolderRename();
+            else if (IsRename)
                 await InitializeRenameAsync();
             else
                 InitializeMove();
@@ -148,7 +158,8 @@ public sealed partial class FileOperationViewModel : ObservableObject
                 };
             _initializing = false;
             Recompute();
-            Status = IsRename
+            Status = IsFolderRename ? "Введите новое имя папки и нажмите «Проверить»."
+                : IsRename
                 ? "Введите новое обозначение и наименование и нажмите «Проверить»."
                 : TargetFolder.Length == 0 ? "Выберите папку назначения." : "Нажмите «Проверить».";
         }
@@ -199,6 +210,17 @@ public sealed partial class FileOperationViewModel : ObservableObject
                 : "чертёж из другой папки"));
     }
 
+    private void InitializeFolderRename()
+    {
+        var folder = Path.TrimEndingDirectorySeparator(_sources[0]);
+        foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(folder, file);
+            if (!relative.Split(Path.DirectorySeparatorChar).Any(FileOperationRequests.IsOldVersions))
+                Files.Add(new FileRow(Root, file, relative, "в папке"));
+        }
+    }
+
     private void InitializeMove()
     {
         var rows = new List<FileRow>();
@@ -228,6 +250,7 @@ public sealed partial class FileOperationViewModel : ObservableObject
             Files.Add(row);
     }
 
+    partial void OnNewFolderNameChanged(string value) => Recompute();
     partial void OnDesignationChanged(string value) => Recompute();
     partial void OnNameChanged(string value) => Recompute();
     partial void OnWritePropertiesChanged(bool value) => Invalidate();
@@ -248,7 +271,9 @@ public sealed partial class FileOperationViewModel : ObservableObject
         {
             try
             {
-                row.To = IsRename
+                row.To = IsFolderRename
+                    ? string.IsNullOrWhiteSpace(NewFolderName) ? row.From : Path.Combine(NewFolderTarget, row.RelativeTarget)
+                    : IsRename
                     ? FileOperationRequests.Rename([row.From], Designation, Name).FirstOrDefault()?.To ?? row.From
                     : TargetFolder.Length == 0 ? row.From : Path.Combine(TargetFolder, row.RelativeTarget);
             }
@@ -277,7 +302,9 @@ public sealed partial class FileOperationViewModel : ObservableObject
     {
         Invalidate();
         var problems = new List<string>();
-        if (IsRename && string.IsNullOrWhiteSpace(Designation) && string.IsNullOrWhiteSpace(Name))
+        if (IsFolderRename && (string.IsNullOrWhiteSpace(NewFolderName) || NewFolderTarget.Equals(Path.TrimEndingDirectorySeparator(_sources[0]), StringComparison.Ordinal)))
+            problems.Add("Введите новое имя папки.");
+        if (IsFileRename && string.IsNullOrWhiteSpace(Designation) && string.IsNullOrWhiteSpace(Name))
             problems.Add("Введите обозначение или наименование.");
         if (IsMove && TargetFolder.Length == 0)
             problems.Add("Выберите папку назначения.");
@@ -287,10 +314,16 @@ public sealed partial class FileOperationViewModel : ObservableObject
                     problems.Add($"Нельзя переместить папку «{Path.GetFileName(folder)}» в саму себя.");
         var included = Files.Where(r => r.Include).ToList();
         var moves = included.Where(r => r.Changes).Select(r => new FileMove(r.From, r.To)).ToList();
-        var properties = IsRename && WriteProperties
+        var folders = IsFolderRename
+            ? new List<FileMove> { new(Path.TrimEndingDirectorySeparator(_sources[0]), NewFolderTarget) }
+            : IsMove && TargetFolder.Length > 0
+                ? _sources.Where(Directory.Exists).Select(f => new FileMove(Path.TrimEndingDirectorySeparator(f),
+                    Path.Combine(TargetFolder, Path.GetFileName(Path.TrimEndingDirectorySeparator(f))))).ToList()
+                : [];
+        var properties = IsFileRename && WriteProperties
             ? FileOperationRequests.RenameProperties(included.Select(r => r.From), Designation, Name)
             : [];
-        if (problems.Count == 0 && moves.Count == 0 && properties.Count == 0)
+        if (problems.Count == 0 && moves.Count == 0 && properties.Count == 0 && folders.Count == 0)
             problems.Add(IsRename ? "Имена не меняются." : "Файлы уже в этой папке.");
         if (problems.Count > 0)
         {
@@ -301,7 +334,7 @@ public sealed partial class FileOperationViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var plan = await _operations.PlanAsync(Root, moves, properties, new Progress<string>(s => Status = s));
+            var plan = await _operations.PlanAsync(Root, moves, properties, new Progress<string>(s => Status = s), folders: folders);
             foreach (var update in plan.References)
                 References.Add(new ReferenceRow(Path.GetFileName(update.Target), RelativeFolder(update.Document), update.Map.Count,
                     string.Join("; ", update.Map.Select(m => $"{Path.GetFileName(m.Key)} → {RelativeOrName(m.Key, m.Value)}"))));
@@ -333,40 +366,18 @@ public sealed partial class FileOperationViewModel : ObservableObject
         if (_plan is not { CanExecute: true } plan)
             return;
         IsBusy = true;
-        IReadOnlyList<string> closed = [];
-        var done = false;
         try
         {
-            // Документы, загруженные в Inventor, — закрыть (внутри Inventor) или попросить закрыть.
-            var involved = plan.InvolvedFiles.Select(ReferenceIndexService.Key).ToHashSet();
-            var open = (await _openDocuments.ListAsync()).Where(d => involved.Contains(ReferenceIndexService.Key(d.Path))).ToList();
-            if (open.Count > 0)
-            {
-                var names = string.Join(Environment.NewLine, open.Select(d => "  " + Path.GetFileName(d.Path)).Distinct().Take(15));
-                if (!_openDocuments.CanClose)
-                {
-                    Problems = "Эти документы загружены в Inventor — закройте их (или сборки, в которые они входят) и нажмите снова:"
-                               + Environment.NewLine + names;
-                    return;
-                }
-                if (!Confirm("Документы открыты в Inventor:" + Environment.NewLine + names + Environment.NewLine + Environment.NewLine
-                             + "Они будут сохранены и закрыты, а после операции открыты снова. Продолжить?"))
-                    return;
-                Status = "Закрытие документов в Inventor…";
-                closed = await _openDocuments.CloseAsync(plan.InvolvedFiles);
-            }
-
-            var result = await _operations.ExecuteAsync(plan, new Progress<string>(s => Status = s));
-            done = true;
-            Summary = $"{ActionText}: файлов {result.Moved}, ссылки обновлены в {result.ReferencesUpdated} док., свойства записаны в {result.PropertiesWritten}."
-                      + (result.Warnings.Count == 0 ? "" : Environment.NewLine + Environment.NewLine + string.Join(Environment.NewLine, result.Warnings))
-                      + Environment.NewLine + Environment.NewLine + "Журнал и копии изменённых документов: " + result.BackupFolder;
-
+            var result = await OperationRunner.RunAsync(_operations, _openDocuments, plan, Confirm, text => Problems = text,
+                text => Warnings = text, new Progress<string>(s => Status = s));
+            if (result is null)
+                return;
+            Summary = OperationRunner.Summary(ActionText, result);
             _events.Publish(new ProjectFilesMoved(plan.Moves.ToDictionary(m => m.From, m => m.To, StringComparer.OrdinalIgnoreCase)));
             try
             {
                 await _session.RefreshAsync();
-                _events.Publish(new RevealDocumentRequested(plan.After(Main)));
+                _events.Publish(new RevealDocumentRequested(IsFolderRename ? NewFolderTarget : plan.After(Main)));
             }
             catch (Exception)
             {
@@ -381,20 +392,13 @@ public sealed partial class FileOperationViewModel : ObservableObject
         }
         finally
         {
-            if (closed.Count > 0)
-            {
-                try
-                {
-                    await _openDocuments.OpenAsync(closed.Select(p => done ? plan.After(p) : p).Where(File.Exists).ToList());
-                }
-                catch (Exception ex)
-                {
-                    Warnings = $"Документы не открылись снова: {ex.Message}";
-                }
-            }
             IsBusy = false;
         }
     }
+
+    /// <summary>Новый путь переименовываемой папки.</summary>
+    private string NewFolderTarget =>
+        Path.Combine(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(_sources[0]))!, NewFolderName.Trim());
 
     /// <summary>Подтверждение (в окне задаёт представление).</summary>
     public Func<string, bool> Confirm { get; set; } = _ => true;

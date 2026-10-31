@@ -15,7 +15,6 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Theme.xaml" />
             </ResourceDictionary.MergedDictionaries>
-            <ui:IconKeyConverter x:Key="IconKey" />
 
             <Style x:Key="WrapCell" TargetType="TextBlock">
                 <Setter Property="TextWrapping" Value="Wrap" />
@@ -111,7 +110,7 @@
                                             <StackPanel Orientation="Horizontal" ToolTip="{Binding Name.Path}">
                                                 <CheckBox IsChecked="{Binding Name.Apply, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Name.CanApply}"
                                                           VerticalAlignment="Center" Margin="0,0,6,0" ToolTip="Обновить этот файл" />
-                                                <Image Source="{Binding Name.Icon, Converter={StaticResource IconKey}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,6,0" />
+                                                <Image Source="{Binding Name.Icon, Converter={StaticResource Pdm.IconKey}}" Style="{StaticResource Pdm.Icon16}" Margin="0,0,6,0" />
                                                 <TextBlock Text="{Binding Name.Designation}" FontWeight="SemiBold" VerticalAlignment="Center" />
                                                 <TextBlock Text="{Binding Name.Path, StringFormat='   {0}'}" Style="{StaticResource Pdm.Text.Hint}" VerticalAlignment="Center" />
                                                 <TextBlock Text="{Binding Name.CountText, StringFormat='   ({0})'}" Style="{StaticResource Pdm.Text.Hint}" VerticalAlignment="Center" />

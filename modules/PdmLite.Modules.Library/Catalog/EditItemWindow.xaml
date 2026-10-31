@@ -15,7 +15,6 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/PdmLite.UI.Shared;component/Themes/Theme.xaml" />
             </ResourceDictionary.MergedDictionaries>
-            <ui:IconKeyConverter x:Key="IconKey" />
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         </ResourceDictionary>
     </Window.Resources>
@@ -91,7 +90,7 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <DockPanel Margin="0,2">
-                            <Image Source="{Binding Icon, Converter={StaticResource IconKey}}" Style="{StaticResource Pdm.Icon16}" VerticalAlignment="Top" Margin="0,0,6,0" />
+                            <Image Source="{Binding Icon, Converter={StaticResource Pdm.IconKey}}" Style="{StaticResource Pdm.Icon16}" VerticalAlignment="Top" Margin="0,0,6,0" />
                             <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
                         </DockPanel>
                     </DataTemplate>

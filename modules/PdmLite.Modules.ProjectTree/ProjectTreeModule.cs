@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using PdmLite.Core.Documents;
+using PdmLite.Core.Domain;
 using PdmLite.Core.Modularity;
 using PdmLite.Core.Projects;
 using PdmLite.Core.UI;
@@ -34,6 +35,7 @@ public sealed class ProjectTreeModule : IPdmModule
             Icon: IconKeys.ProjectTree));
 
         var launcher = context.Services.GetRequiredService<IDocumentLauncher>();
+        var placer = context.Services.GetRequiredService<IComponentPlacer>();
         var session = context.Services.GetRequiredService<IProjectSession>();
 
         context.Ui.RegisterCommand(new CommandDescriptor(
@@ -41,6 +43,13 @@ public sealed class ProjectTreeModule : IPdmModule
             ctx => launcher.OpenAsync(ctx.Single!.Path),
             ctx => ctx.Single is { IsFolder: false },
             Order: 0, Group: "0-open", IsDefault: true, Icon: IconKeys.Open));
+
+        // Деталь или сборку проекта — в открытую сборку Inventor (как из библиотеки: место указывается щелчком).
+        context.Ui.RegisterCommand(new CommandDescriptor(
+            "ProjectTree.Place", "Вставить в сборку", CommandPlacement.ContextMenu,
+            ctx => placer.PlaceAsync(ctx.Single!.Path),
+            ctx => ctx.Single is { Kind: DocumentKind.Part or DocumentKind.Assembly } && placer.CanPlace,
+            Order: 1, Group: "0-open", Icon: IconKeys.LibraryAdd));
 
         context.Ui.RegisterCommand(new CommandDescriptor(
             "ProjectTree.ShowInExplorer", "Показать в проводнике Windows", CommandPlacement.ContextMenu,
