@@ -1,5 +1,6 @@
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using PdmLite.Core.Events;
 using PdmLite.Core.Modularity;
@@ -23,7 +24,7 @@ public sealed class ReferencesModule : IPdmModule
 
     public void ConfigureServices(IServiceCollection services, HostKind host)
     {
-        services.AddSingleton<ReferenceIndexService>();
+        services.TryAddSingleton<ReferenceIndexService>();
         services.AddSingleton<ReferencesPanelViewModel>();
         services.AddTransient<IndexViewModel>();
     }

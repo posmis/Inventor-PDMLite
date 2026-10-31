@@ -1,3 +1,4 @@
+using PdmLite.Core.Documents;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging.Abstractions;
 using PdmLite.Core.Events;
@@ -71,6 +72,37 @@ public class InventorLinkTests
             Placed.Add(path);
             return Task.CompletedTask;
         }
+
+        public OpenDocumentsResult? Open { get; set; }
+        public bool FailOpenList { get; set; }
+
+        public Task<OpenDocumentsResult?> GetOpenDocumentsAsync(CancellationToken cancellationToken = default) =>
+            FailOpenList ? throw new TimeoutException("нет ответа") : Task.FromResult(Open);
+    }
+
+    [Fact]
+    public async Task LinkedOpenDocuments_ListsThroughLink_CannotClose()
+    {
+        var connection = new FakeConnection(true) { Open = new OpenDocumentsResult([new OpenDocumentEntry("C:\\a.iam", true, true)]) };
+        var documents = new LinkedOpenDocuments(connection, Microsoft.Extensions.Logging.Abstractions.NullLogger<LinkedOpenDocuments>.Instance);
+
+        var list = await documents.ListAsync();
+
+        Assert.Equal(new OpenDocument("C:\\a.iam", true, true), Assert.Single(list));
+        Assert.False(documents.CanClose);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => documents.CloseAsync(["x"]));
+    }
+
+    [Fact]
+    public async Task LinkedOpenDocuments_NotConnected_Empty_LinkError_Throws()
+    {
+        var offline = new LinkedOpenDocuments(new FakeConnection(false), Microsoft.Extensions.Logging.Abstractions.NullLogger<LinkedOpenDocuments>.Instance);
+        Assert.Empty(await offline.ListAsync());
+
+        var broken = new LinkedOpenDocuments(new FakeConnection(true) { FailOpenList = true },
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<LinkedOpenDocuments>.Instance);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => broken.ListAsync());
+        Assert.Contains("открыты в Inventor", error.Message);
     }
 
     [Fact]

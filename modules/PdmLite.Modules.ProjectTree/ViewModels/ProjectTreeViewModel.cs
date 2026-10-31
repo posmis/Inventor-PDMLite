@@ -55,6 +55,10 @@ public sealed partial class ProjectTreeViewModel(
     public CommandContext CurrentContext() =>
         SelectedNode is { } node ? new CommandContext([node.Item]) : CommandContext.Empty;
 
+    /// <summary>Перетаскивание в дереве: переместить файл или папку (выполняет модуль переименования, с проверкой и подтверждением).</summary>
+    public void RequestMove(IReadOnlyList<string> paths, string targetFolder) =>
+        events.Publish(new MoveRequested(paths, targetFolder));
+
     /// <summary>Команда по умолчанию (двойной щелчок).</summary>
     public async Task ExecuteDefaultAsync()
     {

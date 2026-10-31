@@ -83,7 +83,9 @@
         </Border>
 
         <Grid>
-            <TreeView x:Name="Tree" ItemsSource="{Binding Nodes}"
+            <TreeView x:Name="Tree" ItemsSource="{Binding Nodes}" AllowDrop="True"
+                      PreviewMouseLeftButtonDown="Tree_OnPreviewMouseLeftButtonDown" PreviewMouseMove="Tree_OnPreviewMouseMove"
+                      DragOver="Tree_OnDragOver" Drop="Tree_OnDrop"
                       SelectedItemChanged="Tree_OnSelectedItemChanged"
                       ContextMenuOpening="Tree_OnContextMenuOpening">
                 <TreeView.ContextMenu>

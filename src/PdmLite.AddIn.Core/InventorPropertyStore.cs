@@ -50,9 +50,24 @@ public sealed class InventorPropertyStore(Inv.Application inventor, IUiDispatche
     private Task ReplaceInInventorAsync(string path, IReadOnlyDictionary<string, string> map) =>
         ui.InvokeAsync(() => WithDocument(path, save: false, doc =>
         {
-            // В открытой сборке ссылки меняются заменой вхождений (как «Заменить компонент»).
+            // Чертёж, презентация, производная деталь — заменой ссылки файла (как «Замена ссылок» в Design Assistant).
             if (doc is not Inv.AssemblyDocument assembly)
-                return 0;
+            {
+                var count = 0;
+                foreach (Inv.FileDescriptor descriptor in doc.File.ReferencedFileDescriptors)
+                {
+                    if (map.TryGetValue(descriptor.FullFileName, out var target))
+                    {
+                        descriptor.ReplaceReference(target);
+                        count++;
+                    }
+                }
+                if (count > 0)
+                    doc.Save();
+                return count;
+            }
+
+            // В открытой сборке ссылки меняются заменой вхождений (как «Заменить компонент»).
             var replaced = 0;
             var groups = assembly.ComponentDefinition.Occurrences.Cast<Inv.ComponentOccurrence>()
                 .Select(o => (Occurrence: o, Path: o.ReferencedDocumentDescriptor?.FullDocumentName))

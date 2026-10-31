@@ -13,6 +13,9 @@ public interface IInventorConnection
     Task OpenDocumentAsync(string path, CancellationToken cancellationToken = default);
 
     Task PlaceComponentAsync(string path, CancellationToken cancellationToken = default);
+
+    /// <summary>Документы, загруженные в Inventor; нет связи — <c>null</c>.</summary>
+    Task<OpenDocumentsResult?> GetOpenDocumentsAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -54,6 +57,11 @@ public sealed class InventorConnection : IInventorConnection, IAsyncDisposable
     public async Task<InventorStatus?> GetStatusAsync(CancellationToken cancellationToken = default) =>
         _client is { IsConnected: true } client
             ? await client.RequestAsync<InventorStatus>(LinkProtocol.Requests.GetStatus, cancellationToken: cancellationToken)
+            : null;
+
+    public async Task<OpenDocumentsResult?> GetOpenDocumentsAsync(CancellationToken cancellationToken = default) =>
+        _client is { IsConnected: true } client
+            ? await client.RequestAsync<OpenDocumentsResult>(LinkProtocol.Requests.GetOpenDocuments, cancellationToken: cancellationToken)
             : null;
 
     public Task OpenDocumentAsync(string path, CancellationToken cancellationToken = default) =>

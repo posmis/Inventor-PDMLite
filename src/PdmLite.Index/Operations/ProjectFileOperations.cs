@@ -325,31 +325,48 @@ public sealed class ProjectFileOperations(
             return result;
         }
 
-        // Без базы — читаем ссылки всех документов проекта.
+        // Без базы — читаем ссылки всех документов проекта (повторно — только изменённые с прошлого раза).
         var documents = ReferenceIndexService.Enumerate(root);
         for (var i = 0; i < documents.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
-            progress?.Report($"Чтение ссылок: {i + 1} из {documents.Count} — {documents[i].Name}");
+            var file = documents[i];
             IReadOnlyList<string> references;
+            lock (_cache)
+            {
+                if (_cache.TryGetValue(file.FullName, out var cached) && cached.Size == file.Length && cached.Modified == file.LastWriteTimeUtc)
+                {
+                    references = cached.References;
+                    goto Collect;
+                }
+            }
+            progress?.Report($"Чтение ссылок: {i + 1} из {documents.Count} — {file.Name}");
             try
             {
-                references = (await store.ReadWithoutGeometryAsync(documents[i].FullName, ct).ConfigureAwait(false)).References;
+                references = (await store.ReadWithoutGeometryAsync(file.FullName, ct).ConfigureAwait(false)).References;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogDebug(ex, "Ссылки не прочитаны: {Path}", documents[i].FullName);
+                logger.LogDebug(ex, "Ссылки не прочитаны: {Path}", file.FullName);
                 continue;
             }
+            lock (_cache)
+                _cache[file.FullName] = (file.Length, file.LastWriteTimeUtc, references);
+
+            Collect:
             foreach (var key in references.Select(ReferenceIndexService.Key).Where(keys.Contains).Distinct())
             {
                 if (!result.TryGetValue(key, out var list))
                     result[key] = list = [];
-                list.Add(documents[i].FullName);
+                list.Add(file.FullName);
             }
         }
         return result;
     }
+
+    /// <summary>Прочитанные ссылки документов (без базы): путь → размер, время изменения, ссылки.</summary>
+    private readonly Dictionary<string, (long Size, DateTime Modified, IReadOnlyList<string> References)> _cache =
+        new(StringComparer.OrdinalIgnoreCase);
 
     private List<string> Rollback(List<string> created, List<string> createdFolders, List<(string Original, string Copy)> backups)
     {

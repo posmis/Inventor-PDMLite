@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Description>Модуль «Переименование и перемещение»: файлы проекта вместе со связанными чертежами, с переносом ссылок во всех документах проекта.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PdmLite.Core\PdmLite.Core.csproj" />
+    <ProjectReference Include="..\..\src\PdmLite.Data\PdmLite.Data.csproj" />
+    <ProjectReference Include="..\..\src\PdmLite.Index\PdmLite.Index.csproj" />
+    <ProjectReference Include="..\..\src\PdmLite.UI.Shared\PdmLite.UI.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+</Project>

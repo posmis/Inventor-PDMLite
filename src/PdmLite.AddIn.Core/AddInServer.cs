@@ -51,6 +51,7 @@ public sealed class AddInServer : Inv.ApplicationAddInServer
                     services.AddSingleton<IComponentPlacer, InventorComponentPlacer>();
                     services.AddSingleton<IProjectLibraryBinding, InventorProjectLibraryBinding>();
                     services.AddSingleton<IAssemblyComponents, InventorAssemblyComponents>();
+                    services.AddSingleton<IOpenDocuments, InventorOpenDocuments>();
                     services.AddSingleton<ApprenticeHost>();
                     services.AddSingleton<IDocumentPropertyStore, InventorPropertyStore>();
                     services.AddSingleton<InventorProjects>();

@@ -36,6 +36,7 @@
     <ProjectReference Include="..\..\modules\PdmLite.Modules.Library\PdmLite.Modules.Library.csproj" />
     <ProjectReference Include="..\..\modules\PdmLite.Modules.References\PdmLite.Modules.References.csproj" />
     <ProjectReference Include="..\..\modules\PdmLite.Modules.Scripts\PdmLite.Modules.Scripts.csproj" />
+    <ProjectReference Include="..\..\modules\PdmLite.Modules.Rename\PdmLite.Modules.Rename.csproj" />
   </ItemGroup>
 
   <ItemGroup>

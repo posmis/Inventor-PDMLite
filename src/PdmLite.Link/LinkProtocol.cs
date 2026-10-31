@@ -22,6 +22,9 @@ public static class LinkProtocol
         /// <summary>Вставить компонент в активную сборку Inventor (<see cref="DocumentArgs"/>).</summary>
         public const string PlaceComponent = "placeComponent";
 
+        /// <summary>Документы, загруженные в Inventor → <see cref="OpenDocumentsResult"/>.</summary>
+        public const string GetOpenDocuments = "getOpenDocuments";
+
         // --- Explorer ---
 
         /// <summary>Открыть проект в Explorer (<see cref="ProjectArgs"/>).</summary>
@@ -49,6 +52,11 @@ public sealed record PingResult(string Application, string Version, int Protocol
 public sealed record InventorStatus(string InventorVersion, string? ProjectName, string? ProjectFile, string? WorkspaceFolder, string? ActiveDocument);
 
 public sealed record DocumentArgs(string? Path);
+
+/// <summary>Документ, загруженный в Inventor: изменён ли, открыт ли в своём окне.</summary>
+public sealed record OpenDocumentEntry(string Path, bool IsDirty, bool IsVisible);
+
+public sealed record OpenDocumentsResult(IReadOnlyList<OpenDocumentEntry> Documents);
 
 public sealed record ProjectArgs(string Path);
 

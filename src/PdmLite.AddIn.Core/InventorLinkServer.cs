@@ -45,6 +45,10 @@ public sealed class InventorLinkServer : IAsyncDisposable
             return null;
         });
 
+        _server.Handle(LinkProtocol.Requests.GetOpenDocuments, async (_, _) => await ui.InvokeAsync(() =>
+            (object?)new OpenDocumentsResult(InventorOpenDocuments.List(inventor)
+                .Select(d => new OpenDocumentEntry(d.Path, d.IsDirty, d.IsVisible)).ToList())));
+
         _server.Handle<DocumentArgs>(LinkProtocol.Requests.PlaceComponent, async (args, ct) =>
         {
             if (string.IsNullOrWhiteSpace(args.Path))

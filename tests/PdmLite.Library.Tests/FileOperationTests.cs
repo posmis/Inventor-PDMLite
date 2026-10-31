@@ -33,8 +33,11 @@ public sealed class FileBackedStore : IDocumentPropertyStore
 
     public Task<DocumentProperties> ReadAsync(string path, CancellationToken ct = default) => ReadWithoutGeometryAsync(path, ct);
 
+    public int Reads { get; private set; }
+
     public Task<DocumentProperties> ReadWithoutGeometryAsync(string path, CancellationToken ct = default)
     {
+        Reads++;
         var lines = File.ReadAllLines(path);
         return Task.FromResult(new DocumentProperties
         {
@@ -450,6 +453,22 @@ public sealed class FileOperationTests : IDisposable
         FileBackedStore.Create(old, references: harness);
         var plan = await Service(new FileBackedStore()).PlanAsync(Project, FileOperationRequests.Rename([harness], "АБВГ.07.00.000", "Жгут"), []);
         Assert.DoesNotContain(plan.References, r => r.Document == old);
+    }
+
+    [Fact]
+    public async Task WithoutDatabase_SecondScan_ReadsOnlyChangedDocuments()
+    {
+        var (harness, _, _, part, top) = Harness();
+        var store = new FileBackedStore();
+        var service = Service(store);
+        await service.RelatedFilesAsync(Project, harness);
+        var first = store.Reads;
+
+        File.AppendAllText(top, "pn:x" + Environment.NewLine); // изменили один документ
+        await service.PlanAsync(Project, FileOperationRequests.Rename([part], "АБВГ.00.00.009", "Провод"), []);
+
+        Assert.Equal(5, first);
+        Assert.Equal(first + 1, store.Reads);
     }
 
     [PostgresFact]

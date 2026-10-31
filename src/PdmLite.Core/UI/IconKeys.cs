@@ -29,6 +29,8 @@ public static class IconKeys
     public const string Recent = "Cmd.Recent";
     public const string ShowInWindows = "Cmd.ShowInWindows";
     public const string CopyPath = "Cmd.CopyPath";
+    public const string Rename = "Cmd.Rename";
+    public const string Move = "Cmd.Move";
     public const string ProjectTree = "Cmd.ProjectTree";
     public const string RevealInExplorer = "Cmd.RevealInExplorer";
     public const string InventorProject = "Cmd.InventorProject";

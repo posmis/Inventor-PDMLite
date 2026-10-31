@@ -1,6 +1,8 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using PdmLite.Core.UI;
 using PdmLite.Modules.ProjectTree.ViewModels;
 using PdmLite.UI.Shared;
@@ -66,6 +68,76 @@ public partial class ProjectTreeView : UserControl
 
         if (menu.Items.Count == 0)
             e.Handled = true;
+    }
+
+    // --- Перетаскивание: файл или папку — на папку (перемещение с переносом ссылок) ---
+
+    private const string DragFormat = "PdmLite.ProjectItem";
+    private Point _dragStart;
+    private TreeNodeViewModel? _dragNode;
+
+    private void Tree_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _dragStart = e.GetPosition(Tree);
+        // Перетаскивать можно за строку узла, но не за полосу прокрутки.
+        _dragNode = e.OriginalSource is DependencyObject source && FindAncestor<System.Windows.Controls.Primitives.ScrollBar>(source) is null
+            ? FindNode(source)
+            : null;
+    }
+
+    private void Tree_OnPreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || _dragNode is not { Parent: not null } node)
+            return;
+        var delta = e.GetPosition(Tree) - _dragStart;
+        if (Math.Abs(delta.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(delta.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+        _dragNode = null;
+        DragDrop.DoDragDrop(Tree, new DataObject(DragFormat, node.Item.Path), DragDropEffects.Move);
+    }
+
+    private void Tree_OnDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = DropTarget(e) is not null ? DragDropEffects.Move : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void Tree_OnDrop(object sender, DragEventArgs e)
+    {
+        if (DropTarget(e) is not { } target || e.Data.GetData(DragFormat) is not string path)
+            return;
+        e.Handled = true;
+        ViewModel?.RequestMove([path], target.Item.Path);
+    }
+
+    /// <summary>Папка под курсором, куда можно перенести перетаскиваемое (не в себя и не туда, где оно уже лежит).</summary>
+    private TreeNodeViewModel? DropTarget(DragEventArgs e)
+    {
+        if (e.Data.GetData(DragFormat) is not string path || (e.OriginalSource as DependencyObject) is not { } source)
+            return null;
+        var node = FindNode(source);
+        if (node is null)
+            return null;
+        var folder = node.IsFolder ? node : node.Parent;
+        if (folder is null)
+            return null;
+        var target = folder.Item.Path;
+        if (string.Equals(Path.GetDirectoryName(path), target, StringComparison.OrdinalIgnoreCase)
+            || (target + Path.DirectorySeparatorChar).StartsWith(path + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            return null;
+        return folder;
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? element) where T : DependencyObject
+    {
+        while (element is not null && element is not T)
+            element = element is Visual ? VisualTreeHelper.GetParent(element) : LogicalTreeHelper.GetParent(element);
+        return element as T;
+    }
+
+    private static TreeNodeViewModel? FindNode(DependencyObject? element)
+    {
+        return FindAncestor<TreeViewItem>(element)?.DataContext as TreeNodeViewModel;
     }
 
     private sealed class RelayKeyCommand(Action action) : ICommand
