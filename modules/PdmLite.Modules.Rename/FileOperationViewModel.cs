@@ -70,13 +70,18 @@ public sealed partial class FileOperationViewModel : ObservableObject
     private readonly IProjectSession _session;
     private readonly IEventBus _events;
     private readonly IDocumentPropertyStore _store;
+    private readonly IDocumentLauncher _launcher;
     private readonly IReadOnlyList<string> _sources;
+
+    /// <summary>Документы, которые были открыты в Inventor (в своём окне) — после операции открываются снова.</summary>
+    private readonly HashSet<string> _wasOpen = new(StringComparer.OrdinalIgnoreCase);
     private FileOperationPlan? _plan;
     private bool _initializing = true;
 
     public FileOperationViewModel(ProjectFileOperations operations, IOpenDocuments openDocuments, IProjectSession session, IEventBus events,
-        IDocumentPropertyStore store, string root, FileOperationMode mode, IReadOnlyList<string> sources, string? targetFolder)
+        IDocumentPropertyStore store, IDocumentLauncher launcher, string root, FileOperationMode mode, IReadOnlyList<string> sources, string? targetFolder)
     {
+        _launcher = launcher;
         _operations = operations;
         _openDocuments = openDocuments;
         _session = session;
@@ -114,6 +119,19 @@ public sealed partial class FileOperationViewModel : ObservableObject
 
     [ObservableProperty] private string _newFolderName;
     [ObservableProperty] private string _designation = "";
+
+    /// <summary>Своё имя файла (любое, с пробелами) вместо правила «обозначение + наименование».</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UseRule))]
+    private bool _useCustomName;
+
+    [ObservableProperty] private string _customName = "";
+
+    public bool UseRule
+    {
+        get => !UseCustomName;
+        set => UseCustomName = !value;
+    }
     [ObservableProperty] private string _name = "";
     [ObservableProperty] private bool _writeProperties = true;
     [ObservableProperty] private string _targetFolder;
@@ -177,6 +195,7 @@ public sealed partial class FileOperationViewModel : ObservableObject
     {
         var main = _sources[0];
         var stem = Path.GetFileNameWithoutExtension(main);
+        CustomName = stem;
         if (FileNameBuilder.TryParse(stem) is { } parsed)
         {
             Designation = parsed.Designation;
@@ -252,6 +271,8 @@ public sealed partial class FileOperationViewModel : ObservableObject
 
     partial void OnNewFolderNameChanged(string value) => Recompute();
     partial void OnDesignationChanged(string value) => Recompute();
+    partial void OnCustomNameChanged(string value) => Recompute();
+    partial void OnUseCustomNameChanged(bool value) => Recompute();
     partial void OnNameChanged(string value) => Recompute();
     partial void OnWritePropertiesChanged(bool value) => Invalidate();
     partial void OnTargetFolderChanged(string value) => Recompute();
@@ -273,6 +294,8 @@ public sealed partial class FileOperationViewModel : ObservableObject
             {
                 row.To = IsFolderRename
                     ? string.IsNullOrWhiteSpace(NewFolderName) ? row.From : Path.Combine(NewFolderTarget, row.RelativeTarget)
+                    : IsRename && UseCustomName
+                    ? CustomTarget(row.From)
                     : IsRename
                     ? FileOperationRequests.Rename([row.From], Designation, Name).FirstOrDefault()?.To ?? row.From
                     : TargetFolder.Length == 0 ? row.From : Path.Combine(TargetFolder, row.RelativeTarget);
@@ -304,7 +327,9 @@ public sealed partial class FileOperationViewModel : ObservableObject
         var problems = new List<string>();
         if (IsFolderRename && (string.IsNullOrWhiteSpace(NewFolderName) || NewFolderTarget.Equals(Path.TrimEndingDirectorySeparator(_sources[0]), StringComparison.Ordinal)))
             problems.Add("Введите новое имя папки.");
-        if (IsFileRename && string.IsNullOrWhiteSpace(Designation) && string.IsNullOrWhiteSpace(Name))
+        if (IsFileRename && UseCustomName && string.IsNullOrWhiteSpace(CustomName))
+            problems.Add("Введите имя файла.");
+        if (IsFileRename && !UseCustomName && string.IsNullOrWhiteSpace(Designation) && string.IsNullOrWhiteSpace(Name))
             problems.Add("Введите обозначение или наименование.");
         if (IsMove && TargetFolder.Length == 0)
             problems.Add("Выберите папку назначения.");
@@ -320,7 +345,7 @@ public sealed partial class FileOperationViewModel : ObservableObject
                 ? _sources.Where(Directory.Exists).Select(f => new FileMove(Path.TrimEndingDirectorySeparator(f),
                     Path.Combine(TargetFolder, Path.GetFileName(Path.TrimEndingDirectorySeparator(f))))).ToList()
                 : [];
-        var properties = IsFileRename && WriteProperties
+        var properties = IsFileRename && WriteProperties && !UseCustomName
             ? FileOperationRequests.RenameProperties(included.Select(r => r.From), Designation, Name)
             : [];
         if (problems.Count == 0 && moves.Count == 0 && properties.Count == 0 && folders.Count == 0)
@@ -369,9 +394,24 @@ public sealed partial class FileOperationViewModel : ObservableObject
         try
         {
             var result = await OperationRunner.RunAsync(_operations, _openDocuments, plan, Confirm, text => Problems = text,
-                text => Warnings = text, new Progress<string>(s => Status = s));
+                text => Warnings = text, new Progress<string>(s => Status = s), _wasOpen);
             if (result is null)
                 return;
+            // Из Explorer документы закрывал пользователь — открываем их снова (по новым путям) в Inventor.
+            if (!_openDocuments.CanClose)
+            {
+                foreach (var path in _wasOpen.Select(plan.After).Where(File.Exists))
+                {
+                    try
+                    {
+                        await _launcher.OpenAsync(path);
+                    }
+                    catch (Exception ex)
+                    {
+                        Warnings = $"Не открыт снова: {Path.GetFileName(path)} — {ex.Message}";
+                    }
+                }
+            }
             Summary = OperationRunner.Summary(ActionText, result);
             _events.Publish(new ProjectFilesMoved(plan.Moves.ToDictionary(m => m.From, m => m.To, StringComparer.OrdinalIgnoreCase)));
             try
@@ -394,6 +434,19 @@ public sealed partial class FileOperationViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Своё имя: выбранный файл и файлы с тем же именем (другое расширение) получают его; связанные с другим кодом
+    /// (СБ, МЭ…) — не меняются, их можно переименовать отдельно.
+    /// </summary>
+    private string CustomTarget(string file)
+    {
+        var name = CustomName.Trim();
+        if (name.Length == 0
+            || !Path.GetFileNameWithoutExtension(file).Equals(Path.GetFileNameWithoutExtension(Main), StringComparison.OrdinalIgnoreCase))
+            return file;
+        return Path.Combine(Path.GetDirectoryName(file)!, name + Path.GetExtension(file));
     }
 
     /// <summary>Новый путь переименовываемой папки.</summary>

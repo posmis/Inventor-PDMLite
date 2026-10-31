@@ -12,10 +12,12 @@ internal static class OperationRunner
 {
     /// <returns>Итог или <c>null</c>, если операция не начата (отказ, документы открыты в Inventor).</returns>
     public static async Task<FileOperationResult?> RunAsync(ProjectFileOperations operations, IOpenDocuments openDocuments, FileOperationPlan plan,
-        Func<string, bool> confirm, Action<string> blocked, Action<string> warning, IProgress<string> progress)
+        Func<string, bool> confirm, Action<string> blocked, Action<string> warning, IProgress<string> progress, ISet<string>? wasOpen = null)
     {
         var involved = plan.InvolvedFiles.Select(ReferenceIndexService.Key).ToHashSet();
         var open = (await openDocuments.ListAsync()).Where(d => involved.Contains(ReferenceIndexService.Key(d.Path))).ToList();
+        foreach (var document in open.Where(d => d.IsVisible))
+            wasOpen?.Add(document.Path); // запоминаем и при отказе: пользователь закроет сам, а после операции откроем снова
         IReadOnlyList<string> closed = [];
         if (open.Count > 0)
         {

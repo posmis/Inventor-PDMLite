@@ -121,8 +121,9 @@ public sealed class RenameModule : IPdmModule
             session,
             services.GetRequiredService<IEventBus>(),
             services.GetRequiredService<IDocumentPropertyStore>(),
+            services.GetRequiredService<IDocumentLauncher>(),
             root, mode, paths, target);
-        new FileOperationWindow(viewModel) { Owner = context.Host == HostKind.Explorer ? Application.Current?.MainWindow : null }.Show();
+        ShowWindow(context, new FileOperationWindow(viewModel));
         return Task.CompletedTask;
     }
 
@@ -137,8 +138,25 @@ public sealed class RenameModule : IPdmModule
         }
         var viewModel = new RepairViewModel(services.GetRequiredService<ProjectFileOperations>(), services.GetRequiredService<IOpenDocuments>(),
             session, project.RootFolder);
-        new RepairWindow(viewModel) { Owner = context.Host == HostKind.Explorer ? Application.Current?.MainWindow : null }.Show();
+        ShowWindow(context, new RepairWindow(viewModel));
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// В Explorer — обычное окно поверх главного. Внутри Inventor — модальное окно, владелец которого — окно Inventor:
+    /// иначе клавиатуру перехватывает Inventor (пробел и Enter у него — «повторить последнюю команду», и окно
+    /// открывалось второй раз).
+    /// </summary>
+    private static void ShowWindow(IModuleContext context, Window window)
+    {
+        if (context.Host == HostKind.Explorer)
+        {
+            window.Owner = Application.Current?.MainWindow;
+            window.Show();
+            return;
+        }
+        new System.Windows.Interop.WindowInteropHelper(window).Owner = System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle;
+        window.ShowDialog();
     }
 
     public void Shutdown()
