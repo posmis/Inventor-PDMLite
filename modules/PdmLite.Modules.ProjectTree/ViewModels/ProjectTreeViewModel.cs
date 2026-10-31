@@ -1,3 +1,4 @@
+using System.IO;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -40,7 +41,8 @@ public sealed partial class ProjectTreeViewModel(
     {
         _subscriptions.Add(events.Subscribe<ProjectOpened>(e => ui.Post(() => Build(e.Root))));
         _subscriptions.Add(events.Subscribe<ActiveDocumentChanged>(e => ui.Post(() => OnActiveDocumentChanged(e.Path))));
-        _subscriptions.Add(events.Subscribe<RevealDocumentRequested>(e => ui.Post(() => Reveal(e.Path))));
+        _subscriptions.Add(events.Subscribe<RevealDocumentRequested>(e => ui.Post(() => Reveal(e.Path, remember: true))));
+        _subscriptions.Add(events.Subscribe<ProjectFilesMoved>(e => ui.Post(() => _moved = e.Moves)));
 
         if (session.Root is { } root)
             Build(root);
@@ -116,13 +118,20 @@ public sealed partial class ProjectTreeViewModel(
 
     private void Build(ProjectItem root)
     {
-        var selectedPath = SelectedNode?.Item.Path;
+        // Перестроение (обновление, переименование) не сворачивает дерево: раскрытые папки и выделение сохраняются,
+        // переименованные и перемещённые — по новым путям.
+        var selectedPath = Moved(SelectedNode?.Item.Path);
+        var expanded = Nodes.SelectMany(n => n.Descendants()).Where(n => n.IsFolder && n.IsExpanded)
+            .Select(n => Moved(n.Item.Path)!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _moved = null;
 
         var rootNode = new TreeNodeViewModel(root, null) { IsExpanded = true };
         Nodes.Clear();
         Nodes.Add(rootNode);
         _byPath = rootNode.Descendants().ToDictionary(n => n.Item.Path, StringComparer.OrdinalIgnoreCase);
         _activeNode = null;
+        foreach (var node in _byPath.Values.Where(n => n.IsFolder && expanded.Contains(n.Item.Path)))
+            node.IsExpanded = true;
 
         var documents = _byPath.Values.Count(n => !n.IsFolder);
         StatusText = $"{session.Project?.Name}: документов {documents}";
@@ -133,10 +142,41 @@ public sealed partial class ProjectTreeViewModel(
         if (_activeDocumentPath is not null)
             MarkActive(_activeDocumentPath);
 
-        if (selectedPath is not null)
+        if (_pendingReveal is { } pending && _byPath.ContainsKey(pending))
+            Reveal(pending);
+        else if (selectedPath is not null && _byPath.ContainsKey(selectedPath))
             Reveal(selectedPath);
         else if (FollowActiveDocument && _activeDocumentPath is not null)
             Reveal(_activeDocumentPath);
+        _pendingReveal = null;
+    }
+
+    /// <summary>Пути, переименованные или перемещённые последней операцией (до перестроения дерева).</summary>
+    private IReadOnlyDictionary<string, string>? _moved;
+
+    /// <summary>Документ, который нужно выделить, когда дерево перестроится (его ещё нет в старом дереве).</summary>
+    private string? _pendingReveal;
+
+    /// <summary>Новый путь файла или папки после переименования/перемещения (папка — по путям её файлов).</summary>
+    private string? Moved(string? path)
+    {
+        if (path is null || _moved is null)
+            return path;
+        if (_moved.TryGetValue(path, out var to))
+            return to;
+        var prefix = path.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        foreach (var (from, target) in _moved)
+        {
+            if (!from.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                continue;
+            // Папка: та же глубина вложенности в новом пути.
+            var depth = from[prefix.Length..].Split(Path.DirectorySeparatorChar).Length;
+            var folder = target;
+            for (var i = 0; i < depth && folder is not null; i++)
+                folder = Path.GetDirectoryName(folder);
+            return folder ?? path;
+        }
+        return path;
     }
 
     private void OnActiveDocumentChanged(string? path)
@@ -156,10 +196,15 @@ public sealed partial class ProjectTreeViewModel(
             _activeNode.IsActive = true;
     }
 
-    private void Reveal(string path)
+    /// <param name="remember">Если узла ещё нет (дерево не перестроено после переименования) — выделить после перестроения.</param>
+    private void Reveal(string path, bool remember = false)
     {
         if (!_byPath.TryGetValue(path, out var node))
+        {
+            if (remember)
+                _pendingReveal = path;
             return;
+        }
 
         // Найденный документ может быть скрыт фильтром — фильтр сбрасываем.
         if (!node.IsVisible)
