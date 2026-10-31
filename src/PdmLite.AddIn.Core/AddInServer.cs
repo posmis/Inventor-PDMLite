@@ -57,6 +57,7 @@ public sealed class AddInServer : Inv.ApplicationAddInServer
                 },
             });
             _logger = _host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("PdmLite.AddIn");
+            WatchErrors(_logger);
             _logger.LogInformation("Плагин запускается: Inventor {Version}, firstTime={FirstTime}",
                 inventor.SoftwareVersion.DisplayVersion, firstTime);
 
@@ -127,5 +128,32 @@ public sealed class AddInServer : Inv.ApplicationAddInServer
         {
             _logger?.LogError(ex, "Ошибка при выгрузке плагина");
         }
+    }
+
+    /// <summary>
+    /// Диагностика сбоев: каждая ошибка Inventor API (COM) в коде PdmLite пишется в журнал с местом вызова,
+    /// необработанная ошибка — перед завершением процесса. Так причина падения Inventor видна в логе PdmLite.
+    /// </summary>
+    private static void WatchErrors(ILogger logger)
+    {
+        AppDomain.CurrentDomain.FirstChanceException += (_, e) =>
+        {
+            if (e.Exception is not COMException com)
+                return;
+            var stack = new System.Diagnostics.StackTrace(1, false).ToString();
+            if (!stack.Contains("PdmLite", StringComparison.Ordinal))
+                return; // ошибки самого Inventor и других плагинов — не наши
+            logger.LogWarning("Ошибка Inventor API (0x{Code:X8}): {Message}{NewLine}{Stack}",
+                com.HResult, com.Message, Environment.NewLine, stack);
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            logger.LogCritical(e.ExceptionObject as Exception, "Необработанная ошибка в плагине (процесс завершается: {Terminating})", e.IsTerminating);
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            logger.LogError(e.Exception, "Необработанная ошибка фоновой задачи");
+            e.SetObserved();
+        };
     }
 }

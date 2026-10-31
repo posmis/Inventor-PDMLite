@@ -24,7 +24,7 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
                     continue;
                 }
 
-                var document = occurrence.Definition?.Document as Inv._Document;
+                var document = Safe(() => occurrence.Definition?.Document as Inv._Document, null);
                 components[path] = (InventorProperties.PartNumber(document), IsContentCenter(occurrence), 1);
             }
 
@@ -144,18 +144,21 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
         });
 
     /// <summary>
-    /// Имена вхождений файлов <paramref name="paths"/> в сборке (одного уровня) — по имени документа
-    /// в обозревателе: «Болт M8…:1». Обычные имена не меняются.
+    /// Имена вхождений файлов <paramref name="paths"/> в сборке (одного уровня) — по имени файла
+    /// (у библиотеки оно совпадает с обозначением): «Болт M8…:1». Обычные имена не меняются.
     /// </summary>
     internal static List<OccurrenceRename> FixNames(Inv.AssemblyDocument assembly, IReadOnlySet<string> paths, bool apply, ILogger logger)
     {
-        var occurrences = assembly.ComponentDefinition.Occurrences.Cast<Inv.ComponentOccurrence>().ToList();
-        var candidates = occurrences
-            .Select(o => (Occurrence: o, Path: PathOf(o)))
-            .Where(o => o.Path is not null && paths.Contains(o.Path))
-            .Select(o => (o.Occurrence, Current: o.Occurrence.Name, BaseName: BaseName(o.Occurrence, o.Path!)))
+        var occurrences = assembly.ComponentDefinition.Occurrences.Cast<Inv.ComponentOccurrence>()
+            .Select(o => (Occurrence: o, Name: Safe(() => o.Name, (string?)null)))
+            .Where(o => o.Name is not null)
             .ToList();
-        var plan = OccurrenceNaming.Plan(occurrences.Select(o => o.Name), candidates.Select(c => (c.Current, c.BaseName)));
+        var candidates = occurrences
+            .Select(o => (o.Occurrence, o.Name, Path: PathOf(o.Occurrence)))
+            .Where(o => o.Path is not null && paths.Contains(o.Path))
+            .Select(o => (o.Occurrence, Current: o.Name!, BaseName: Path.GetFileNameWithoutExtension(o.Path!)))
+            .ToList();
+        var plan = OccurrenceNaming.Plan(occurrences.Select(o => o.Name!), candidates.Select(c => (c.Current, c.BaseName)));
 
         var result = new List<OccurrenceRename>();
         foreach (var (oldName, newName) in plan)
@@ -173,20 +176,6 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
             }
         }
         return result;
-    }
-
-    /// <summary>Имя документа в обозревателе (как его показывает Inventor), иначе — имя файла.</summary>
-    private static string BaseName(Inv.ComponentOccurrence occurrence, string path)
-    {
-        try
-        {
-            if (occurrence.Definition?.Document is Inv._Document { DisplayName: { Length: > 0 } name })
-                return name.EndsWith(Path.GetExtension(path), StringComparison.OrdinalIgnoreCase) ? Path.GetFileNameWithoutExtension(name) : name;
-        }
-        catch (System.Runtime.InteropServices.COMException)
-        {
-        }
-        return Path.GetFileNameWithoutExtension(path);
     }
 
     public Task SaveDocumentsAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken = default) =>
@@ -213,15 +202,18 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
         inventor.ActiveDocument as Inv.AssemblyDocument
         ?? throw new InvalidOperationException("Активный документ — не сборка. Откройте или активируйте сборку, которую нужно проверить.");
 
-    /// <summary>Все вхождения на всех уровнях, кроме подавленных.</summary>
+    /// <summary>
+    /// Все вхождения на всех уровнях, кроме подавленных. Вхождение, свойства которого Inventor не отдаёт
+    /// (виртуальное, не загруженное, повреждённое), пропускается — проверка остальных продолжается.
+    /// </summary>
     private static IEnumerable<Inv.ComponentOccurrence> AllOccurrences(System.Collections.IEnumerable occurrences)
     {
         foreach (Inv.ComponentOccurrence occurrence in occurrences)
         {
-            if (occurrence.Suppressed)
+            if (Safe(() => occurrence.Suppressed, true))
                 continue;
             yield return occurrence;
-            if (occurrence.SubOccurrences is { Count: > 0 } children)
+            if (Safe(() => occurrence.SubOccurrences is { Count: > 0 } c ? c : null, null) is { } children)
                 foreach (var child in AllOccurrences(children))
                     yield return child;
         }
@@ -233,8 +225,21 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { top.FullFileName };
         yield return top;
         foreach (var occurrence in AllOccurrences(top.ComponentDefinition.Occurrences))
-            if (occurrence.Definition?.Document is Inv.AssemblyDocument sub && seen.Add(sub.FullFileName))
+            if (Safe(() => occurrence.Definition?.Document as Inv.AssemblyDocument, null) is { } sub && seen.Add(sub.FullFileName))
                 yield return sub;
+    }
+
+    /// <summary>Свойство Inventor API или <paramref name="fallback"/>, если Inventor его не отдаёт (COM-ошибка).</summary>
+    private static T Safe<T>(Func<T> read, T fallback)
+    {
+        try
+        {
+            return read();
+        }
+        catch (System.Runtime.InteropServices.COMException)
+        {
+            return fallback;
+        }
     }
 
     private static string? PathOf(Inv.ComponentOccurrence occurrence)
