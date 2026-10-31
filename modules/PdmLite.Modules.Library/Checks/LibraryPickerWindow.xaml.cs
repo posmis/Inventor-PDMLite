@@ -58,6 +58,12 @@ public partial class LibraryPickerWindow : Window
         DialogResult = true;
     }
 
+    private void Copy_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (Grid.SelectedItem is PickerRow row)
+            PdmLite.UI.Shared.UiClipboard.SetText(row.Designation);
+    }
+
     private sealed record PickerRow(LibraryItemSummary Item)
     {
         public string Designation => Item.Designation;

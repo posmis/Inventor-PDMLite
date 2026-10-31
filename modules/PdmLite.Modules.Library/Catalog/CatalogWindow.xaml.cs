@@ -78,11 +78,32 @@ public partial class CatalogWindow : Window
         Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true })?.Dispose();
     }
 
-    private async void Maintenance_OnClick(object sender, RoutedEventArgs e)
+    private void ExpandFolder_OnClick(object sender, RoutedEventArgs e) => SetExpanded(true);
+
+    private void CollapseFolder_OnClick(object sender, RoutedEventArgs e) => SetExpanded(false);
+
+    private void SetExpanded(bool expanded)
+    {
+        var start = _viewModel.Folder ?? _viewModel.Folders.FirstOrDefault();
+        foreach (var folder in start?.Descendants() ?? [])
+            folder.IsExpanded = expanded || folder.Path.Length == 0;
+    }
+
+    /// <summary>Обслуживание всех компонентов выбранной папки (со вложенными).</summary>
+    private async void MaintenanceFolder_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.Folder is not { } folder)
+            return;
+        await OpenMaintenanceAsync(_viewModel.Items.Where(r => folder.Contains(r.Folder)).Select(r => r.Item.Id).ToList());
+    }
+
+    private async void Maintenance_OnClick(object sender, RoutedEventArgs e) =>
+        await OpenMaintenanceAsync(Grid.SelectedItems.OfType<CatalogRow>().Select(r => r.Item.Id).ToList());
+
+    private async Task OpenMaintenanceAsync(IReadOnlyCollection<Guid> selected)
     {
         if (_viewModel.Catalog is not { } catalog)
             return;
-        var selected = Grid.SelectedItems.OfType<CatalogRow>().Select(r => r.Item.Id).ToList();
         var window = new MaintenanceWindow(new MaintenanceViewModel(_viewModel.Service, catalog, selected, _viewModel.Items.Count)) { Owner = this };
         window.ShowDialog();
         if (window.Changed)
@@ -93,17 +114,6 @@ public partial class CatalogWindow : Window
     {
         if (e.NewValue is CatalogFolder folder)
             _viewModel.Folder = folder;
-    }
-
-    /// <summary>Правый щелчок по невыделенной строке выделяет её — меню относится к ней.</summary>
-    private void Grid_OnPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        var row = ItemsControl.ContainerFromElement(Grid, (DependencyObject)e.OriginalSource) as DataGridRow;
-        if (row is null || row.IsSelected)
-            return;
-        Grid.SelectedItems.Clear();
-        row.IsSelected = true;
-        row.Focus();
     }
 
     /// <summary>Клавиши: Enter — изменить, Del — удалить, Ctrl+C — копировать обозначение.</summary>

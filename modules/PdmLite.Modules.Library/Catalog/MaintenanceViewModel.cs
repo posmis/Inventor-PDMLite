@@ -136,6 +136,40 @@ public sealed partial class MaintenanceViewModel : ObservableObject
 
     private void UpdateCount() => ToApply = _diffs.Count(d => d.Apply);
 
+    /// <summary>Отметить все файлы, которые можно обновить, или снять все отметки.</summary>
+    [RelayCommand]
+    private void CheckAllFiles(bool apply)
+    {
+        foreach (var diff in _diffs.Where(d => d.CanApply))
+            diff.Apply = apply;
+    }
+
+    /// <summary>Таблица изменений — в буфер обмена (для отчёта): компонент, свойство, сейчас, станет.</summary>
+    [RelayCommand]
+    private void CopyChanges() => UiClipboard.SetText(string.Join(Environment.NewLine,
+        ChangeRows.Select(r => $"{r.Owner.Designation}\t{r.Property}\t{r.Current}\t{r.Expected}")));
+
+    /// <summary>Строка таблицы дубликатов, выделенная пользователем.</summary>
+    [ObservableProperty] private DuplicateRow? _selectedDuplicate;
+
+    /// <summary>Оставить выделенный компонент в его группе (остальные группы будут удалены при объединении).</summary>
+    [RelayCommand]
+    private void KeepSelected()
+    {
+        if (SelectedDuplicate is { } row)
+        {
+            row.Keep = true;
+            row.Owner.Merge = true;
+        }
+    }
+
+    [RelayCommand]
+    private void CheckAllGroups(bool merge)
+    {
+        foreach (var group in _groups)
+            group.Merge = merge;
+    }
+
     // ---------- Дубликаты ----------
 
     public ObservableCollection<DuplicateRow> DuplicateRows { get; } = [];

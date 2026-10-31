@@ -32,8 +32,16 @@
             <TextBlock x:Name="CountText" Style="{StaticResource Pdm.Text.Hint}" VerticalAlignment="Center" />
         </DockPanel>
 
-        <DataGrid x:Name="Grid" ui:NaturalSort.IsEnabled="True" IsReadOnly="True" SelectionMode="Single"
+        <DataGrid x:Name="Grid" ui:NaturalSort.IsEnabled="True" ui:RightClickSelect.IsEnabled="True" IsReadOnly="True" SelectionMode="Single"
                   SelectionChanged="Grid_OnSelectionChanged" MouseDoubleClick="Grid_OnMouseDoubleClick">
+            <DataGrid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Выбрать" Click="Ok_OnClick" FontWeight="SemiBold" />
+                    <MenuItem Header="Копировать обозначение" Click="Copy_OnClick">
+                        <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.CopyPath}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                    </MenuItem>
+                </ContextMenu>
+            </DataGrid.ContextMenu>
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Обозначение" Width="380" Binding="{Binding Designation}" SortMemberPath="Designation" />
                 <DataGridTextColumn Header="Раздел" Width="200" Binding="{Binding CategoryPath}" />

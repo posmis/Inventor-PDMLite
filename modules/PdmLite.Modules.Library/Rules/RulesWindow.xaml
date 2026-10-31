@@ -53,7 +53,18 @@
         </StackPanel>
 
         <DataGrid ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" CanUserAddRows="False" CanUserSortColumns="False"
-                  SelectionMode="Single">
+                  SelectionMode="Single" ui:RightClickSelect.IsEnabled="True">
+            <DataGrid.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Добавить правило" Click="Add_OnClick" />
+                    <MenuItem Header="Удалить" Click="Delete_OnClick">
+                        <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.State.Error}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                    </MenuItem>
+                    <Separator />
+                    <MenuItem Header="Выше" Click="Up_OnClick" />
+                    <MenuItem Header="Ниже" Click="Down_OnClick" />
+                </ContextMenu>
+            </DataGrid.ContextMenu>
             <DataGrid.Columns>
                 <DataGridTemplateColumn Header="Вкл." Width="40">
                     <DataGridTemplateColumn.CellTemplate>

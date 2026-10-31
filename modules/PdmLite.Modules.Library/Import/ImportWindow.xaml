@@ -148,8 +148,38 @@
             </Grid.RowDefinitions>
 
             <DataGrid ui:NaturalSort.IsEnabled="True" x:Name="Grid" ItemsSource="{Binding View}" SelectedItem="{Binding SelectedRow}"
-                      HorizontalScrollBarVisibility="Visible" FrozenColumnCount="3"
+                      HorizontalScrollBarVisibility="Visible" FrozenColumnCount="3" ui:RightClickSelect.IsEnabled="True"
                       SelectionMode="Extended" IsEnabled="{Binding IsBusy, Converter={x:Static ui:InverseBoolConverter.Instance}}">
+                <DataGrid.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Исключить" Click="Exclude_OnClick">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Exclude}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Включить" Click="Include_OnClick">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Include}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <Separator />
+                        <MenuItem Header="Обозначение из">
+                            <MenuItem Header="«Обозначение» (Part Number)" Tag="PartNumber" Click="SourceItem_OnClick" />
+                            <MenuItem Header="«Описание» (Description)" Tag="Description" Click="SourceItem_OnClick" />
+                            <MenuItem Header="«Наименование» (Title)" Tag="Title" Click="SourceItem_OnClick" />
+                            <MenuItem Header="Имени файла" Tag="FileName" Click="SourceItem_OnClick" />
+                        </MenuItem>
+                        <MenuItem Header="Правка выделенных…" Click="BulkEdit_OnClick" />
+                        <Separator />
+                        <MenuItem Header="Показать файл" Click="ShowFile_OnClick">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.ShowInWindows}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Копировать обозначение" Click="CopyDesignation_OnClick">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.CopyPath}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Копировать путь файла" Click="CopyPath_OnClick" />
+                        <Separator />
+                        <MenuItem Header="Проверить" Command="{Binding RecheckCommand}">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Check}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                    </ContextMenu>
+                </DataGrid.ContextMenu>
                 <DataGrid.RowStyle>
                     <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
                         <Style.Triggers>

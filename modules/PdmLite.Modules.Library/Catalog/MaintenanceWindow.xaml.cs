@@ -39,3 +39,10 @@ public sealed class InverseBool : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => value is not true;
 }
+
+/// <summary>Логические значения для параметров команд в XAML.</summary>
+public static class BoolBox
+{
+    public static readonly object True = true;
+    public static readonly object False = false;
+}

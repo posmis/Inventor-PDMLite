@@ -59,6 +59,18 @@ public partial class ImportWindow : Window
 
     private void Close_OnClick(object sender, RoutedEventArgs e) => Close();
 
+    private void ShowFile_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (SelectedRows.FirstOrDefault() is { } row)
+            UiClipboard.ShowInExplorer(row.SourcePath);
+    }
+
+    private void CopyDesignation_OnClick(object sender, RoutedEventArgs e) =>
+        UiClipboard.SetText(string.Join(Environment.NewLine, SelectedRows.Select(r => r.Designation)));
+
+    private void CopyPath_OnClick(object sender, RoutedEventArgs e) =>
+        UiClipboard.SetText(string.Join(Environment.NewLine, SelectedRows.Select(r => r.SourcePath)));
+
     private List<ImportRowViewModel>? SelectionOrWarn()
     {
         var rows = SelectedRows.ToList();

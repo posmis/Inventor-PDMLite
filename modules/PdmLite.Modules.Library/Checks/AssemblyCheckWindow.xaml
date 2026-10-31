@@ -57,7 +57,31 @@
         </Border>
 
         <Grid Margin="6">
-            <DataGrid ui:NaturalSort.IsEnabled="True" ItemsSource="{Binding Rows}" IsReadOnly="False">
+            <DataGrid x:Name="Grid" ui:NaturalSort.IsEnabled="True" ui:RightClickSelect.IsEnabled="True" ItemsSource="{Binding Rows}" IsReadOnly="False">
+                <DataGrid.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Выбрать замену из библиотеки…" Click="ChooseSelected_OnClick" FontWeight="SemiBold">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Library}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Отметить для замены" Click="Mark_OnClick">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Include}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Снять отметку" Click="Unmark_OnClick">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Exclude}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <Separator />
+                        <MenuItem Header="Показать файл" Click="ShowFile_OnClick">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.ShowInWindows}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Копировать обозначение" Click="CopyDesignation_OnClick">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.CopyPath}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <Separator />
+                        <MenuItem Header="Проверить заново" Command="{Binding RunCommand}">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Refresh}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                    </ContextMenu>
+                </DataGrid.ContextMenu>
                 <DataGrid.Columns>
                     <DataGridTemplateColumn Header="" Width="28" CanUserResize="False">
                         <DataGridTemplateColumn.CellTemplate>

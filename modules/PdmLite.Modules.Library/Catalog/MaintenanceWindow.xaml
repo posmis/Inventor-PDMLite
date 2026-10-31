@@ -78,7 +78,25 @@
                         </Button>
                     </DockPanel>
 
-                    <DataGrid ItemsSource="{Binding Changes}" IsReadOnly="True" CanUserSortColumns="False" SelectionMode="Single">
+                    <DataGrid ItemsSource="{Binding Changes}" IsReadOnly="True" CanUserSortColumns="False" SelectionMode="Single"
+                              ui:RightClickSelect.IsEnabled="True">
+                        <DataGrid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Отметить все файлы" Command="{Binding CheckAllFilesCommand}">
+                                    <MenuItem.CommandParameter><x:Static Member="local:BoolBox.True" /></MenuItem.CommandParameter>
+                                </MenuItem>
+                                <MenuItem Header="Снять все отметки" Command="{Binding CheckAllFilesCommand}">
+                                    <MenuItem.CommandParameter><x:Static Member="local:BoolBox.False" /></MenuItem.CommandParameter>
+                                </MenuItem>
+                                <Separator />
+                                <MenuItem Header="Копировать таблицу изменений" Command="{Binding CopyChangesCommand}">
+                                    <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.CopyPath}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                                </MenuItem>
+                                <MenuItem Header="Проверить заново" Command="{Binding CheckCommand}">
+                                    <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Check}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                                </MenuItem>
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
                         <DataGrid.RowStyle>
                             <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
                                 <Setter Property="Height" Value="NaN" />
@@ -131,7 +149,24 @@
                         </Button>
                     </DockPanel>
 
-                    <DataGrid ItemsSource="{Binding Duplicates}" CanUserSortColumns="False" SelectionMode="Single" CanUserAddRows="False">
+                    <DataGrid ItemsSource="{Binding Duplicates}" CanUserSortColumns="False" SelectionMode="Single" CanUserAddRows="False"
+                              SelectedItem="{Binding SelectedDuplicate}" ui:RightClickSelect.IsEnabled="True">
+                        <DataGrid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Оставить этот компонент" Command="{Binding KeepSelectedCommand}" FontWeight="SemiBold" />
+                                <Separator />
+                                <MenuItem Header="Отметить все группы" Command="{Binding CheckAllGroupsCommand}">
+                                    <MenuItem.CommandParameter><x:Static Member="local:BoolBox.True" /></MenuItem.CommandParameter>
+                                </MenuItem>
+                                <MenuItem Header="Снять все отметки" Command="{Binding CheckAllGroupsCommand}">
+                                    <MenuItem.CommandParameter><x:Static Member="local:BoolBox.False" /></MenuItem.CommandParameter>
+                                </MenuItem>
+                                <Separator />
+                                <MenuItem Header="Найти заново" Command="{Binding FindDuplicatesCommand}">
+                                    <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Search}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                                </MenuItem>
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
                         <DataGrid.GroupStyle>
                             <GroupStyle>
                                 <GroupStyle.HeaderTemplate>

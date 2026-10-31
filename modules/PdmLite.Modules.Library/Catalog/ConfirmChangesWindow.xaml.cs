@@ -25,4 +25,9 @@ public partial class ConfirmChangesWindow : Window
     }
 
     private void Ok_OnClick(object sender, RoutedEventArgs e) => DialogResult = true;
+
+    /// <summary>Весь список — в буфер обмена (столбцы через табуляцию, вставляется в Excel).</summary>
+    private void Copy_OnClick(object sender, RoutedEventArgs e) =>
+        PdmLite.UI.Shared.UiClipboard.SetText(string.Join(Environment.NewLine,
+            ((IEnumerable<ChangeLine>)Grid.ItemsSource).Select(l => string.Join('\t', l.A.Replace('\n', ' '), l.B, l.C, l.D))));
 }

@@ -102,7 +102,32 @@
         </Border>
 
         <Grid>
-            <TreeView x:Name="Tree" ItemsSource="{Binding Nodes}" SelectedItemChanged="Tree_OnSelectedItemChanged">
+            <TreeView x:Name="Tree" ItemsSource="{Binding Nodes}" SelectedItemChanged="Tree_OnSelectedItemChanged"
+                      ui:RightClickSelect.IsEnabled="True">
+                <TreeView.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Вставить в сборку" Command="{Binding PlaceCommand}" FontWeight="SemiBold" InputGestureText="Двойной щелчок">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Doc.Assembly}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Открыть в Inventor" Command="{Binding OpenCommand}">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Open}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Показать файл" Command="{Binding ShowFileCommand}">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.ShowInWindows}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Копировать обозначение" Command="{Binding CopyDesignationCommand}">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.CopyPath}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <Separator />
+                        <MenuItem Header="Развернуть всё" Command="{Binding ExpandAllCommand}" />
+                        <MenuItem Header="Свернуть всё" Command="{Binding CollapseAllCommand}">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.CollapseAll}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Обновить" Command="{Binding LoadCommand}">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Refresh}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                    </ContextMenu>
+                </TreeView.ContextMenu>
                 <TreeView.ItemContainerStyle>
                     <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
                         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />

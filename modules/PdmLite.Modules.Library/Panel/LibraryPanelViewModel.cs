@@ -56,7 +56,7 @@ public sealed partial class LibraryPanelViewModel : ObservableObject
     public ObservableCollection<LibraryNode> Nodes { get; } = [];
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(PlaceCommand), nameof(OpenCommand), nameof(ShowFileCommand))]
+    [NotifyCanExecuteChangedFor(nameof(PlaceCommand), nameof(OpenCommand), nameof(ShowFileCommand), nameof(CopyDesignationCommand))]
     private LibraryNode? _selected;
 
     [ObservableProperty] private string _search = "";
@@ -190,6 +190,7 @@ public sealed partial class LibraryPanelViewModel : ObservableObject
 
     private bool HasComponent() => Selected is { IsFolder: false };
 
+
     private bool CanPlace() => HasComponent() && _placer.CanPlace;
 
     [RelayCommand(CanExecute = nameof(CanPlace))]
@@ -234,6 +235,27 @@ public sealed partial class LibraryPanelViewModel : ObservableObject
             return;
         }
         Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true })?.Dispose();
+    }
+
+    [RelayCommand(CanExecute = nameof(HasComponent))]
+    private void CopyDesignation()
+    {
+        if (Selected?.Item is { } item)
+            UiClipboard.SetText(item.Designation);
+    }
+
+    /// <summary>Развернуть или свернуть выбранную папку со всеми вложенными.</summary>
+    [RelayCommand]
+    private void ExpandAll() => SetExpanded(true);
+
+    [RelayCommand]
+    private void CollapseAll() => SetExpanded(false);
+
+    private void SetExpanded(bool expanded)
+    {
+        var roots = Selected is { IsFolder: true } folder ? [folder] : Nodes.ToList();
+        foreach (var node in roots.SelectMany(r => r.Descendants()).Where(n => n.IsFolder))
+            node.IsExpanded = expanded;
     }
 
     private async Task CheckBindingAsync()

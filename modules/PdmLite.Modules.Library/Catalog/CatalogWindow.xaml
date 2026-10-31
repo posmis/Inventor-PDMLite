@@ -91,7 +91,24 @@
             </Grid.ColumnDefinitions>
 
             <!-- Папки: раздел → группа → стандарт или производитель -->
-            <TreeView x:Name="FolderTree" ItemsSource="{Binding Folders}" SelectedItemChanged="FolderTree_OnSelectedItemChanged">
+            <TreeView x:Name="FolderTree" ItemsSource="{Binding Folders}" SelectedItemChanged="FolderTree_OnSelectedItemChanged"
+                      ui:RightClickSelect.IsEnabled="True">
+                <TreeView.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="Развернуть всё" Click="ExpandFolder_OnClick" />
+                        <MenuItem Header="Свернуть всё" Click="CollapseFolder_OnClick">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.CollapseAll}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <Separator />
+                        <MenuItem Header="Обслуживание папки…" Click="MaintenanceFolder_OnClick"
+                                  ToolTip="Обслуживание всех компонентов этой папки и вложенных">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Database}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="Обновить" InputGestureText="F5" Command="{Binding LoadCommand}">
+                            <MenuItem.Icon><Image Source="{StaticResource Pdm.Icon.Cmd.Refresh}" Style="{StaticResource Pdm.Icon16}" /></MenuItem.Icon>
+                        </MenuItem>
+                    </ContextMenu>
+                </TreeView.ContextMenu>
                 <TreeView.ItemContainerStyle>
                     <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
                         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
@@ -113,7 +130,7 @@
 
             <DataGrid ui:NaturalSort.IsEnabled="True" x:Name="Grid" Grid.Column="2" ItemsSource="{Binding View}" SelectedItem="{Binding Selected}" IsReadOnly="True"
                       SelectionMode="Extended" MouseDoubleClick="Grid_OnMouseDoubleClick"
-                      PreviewMouseRightButtonDown="Grid_OnPreviewMouseRightButtonDown" PreviewKeyDown="Grid_OnPreviewKeyDown">
+                      ui:RightClickSelect.IsEnabled="True" PreviewKeyDown="Grid_OnPreviewKeyDown">
                 <!-- Команды по правой кнопке — те же, что на панели инструментов -->
                 <DataGrid.ContextMenu>
                     <ContextMenu>
