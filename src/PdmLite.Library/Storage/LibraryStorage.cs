@@ -35,13 +35,29 @@ public sealed class LibraryStorage(string rootFolder)
         return string.Join('/', parts);
     }
 
-    /// <summary>Имя файла или папки: запрещённые в Windows символы → «-», без точек и пробелов в конце.</summary>
+    /// <summary>Имена устройств Windows: файл или папку с таким именем (и любым расширением) создать нельзя.</summary>
+    private static readonly HashSet<string> Reserved = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    };
+
+    /// <summary>
+    /// Имя файла или папки: запрещённые в Windows символы → «-», без точек и пробелов в конце. Пустое после
+    /// очистки («...», «  ») → «_» (иначе в пути «//», а «..» — выход из папки); имя устройства Windows
+    /// («CON», «NUL»…) → с «_» в конце.
+    /// </summary>
     public static string SafeName(string name)
     {
         var sb = new StringBuilder(name.Length);
         foreach (var c in name.Trim())
             sb.Append(Array.IndexOf(Forbidden, c) >= 0 || char.IsControl(c) ? '-' : c);
-        return sb.ToString().TrimEnd('.', ' ');
+        var result = sb.ToString().TrimEnd('.', ' ');
+        if (result.Length == 0)
+            return "_";
+        var stem = result.Split('.')[0].TrimEnd(' ');
+        return Reserved.Contains(stem) ? stem + "_" + result[stem.Length..] : result;
     }
 
     /// <summary>Копирует файл в библиотеку. Существующий файл не перезаписывается.</summary>
