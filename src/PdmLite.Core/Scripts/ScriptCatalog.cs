@@ -134,8 +134,11 @@ public static class ScriptCatalog
             installed.Remove(relative);
         }
 
+        // Скрытый файл в Windows нельзя перезаписать (доступ запрещён) — сначала снимаем атрибуты.
+        if (File.Exists(manifestPath))
+            File.SetAttributes(manifestPath, FileAttributes.Normal);
         File.WriteAllText(manifestPath, JsonSerializer.Serialize(installed, new JsonSerializerOptions { WriteIndented = true }));
-        File.SetAttributes(manifestPath, File.GetAttributes(manifestPath) | FileAttributes.Hidden);
+        File.SetAttributes(manifestPath, FileAttributes.Hidden);
     }
 
     private static Dictionary<string, string> ReadManifest(string path)

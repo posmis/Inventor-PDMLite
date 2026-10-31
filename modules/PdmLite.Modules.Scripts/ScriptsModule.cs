@@ -27,8 +27,17 @@ public sealed class ScriptsModule : IPdmModule
                 var folder = ScriptCatalog.DefaultFolder;
                 // Утилиты, поставляемые с PdmLite, — при первом открытии (лежат рядом с модулем).
                 var bundled = Path.Combine(Path.GetDirectoryName(typeof(ScriptsModule).Assembly.Location)!, "Scripts");
-                ScriptCatalog.Seed(folder, bundled);
-                new ScriptsWindow(folder) { Owner = context.Host == HostKind.Explorer ? Application.Current?.MainWindow : null }.Show();
+                string? seedError = null;
+                try
+                {
+                    ScriptCatalog.Seed(folder, bundled);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Не удалось обновить поставляемые утилиты — окно всё равно открываем.
+                    seedError = ex.Message;
+                }
+                new ScriptsWindow(folder, seedError) { Owner = context.Host == HostKind.Explorer ? Application.Current?.MainWindow : null }.Show();
                 return Task.CompletedTask;
             },
             Order: 0, Group: "9-scripts", Icon: IconKeys.Modules, Panel: "Утилиты"));

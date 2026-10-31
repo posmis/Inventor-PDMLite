@@ -11,11 +11,12 @@ public partial class ScriptsWindow : Window
 {
     private readonly string _folder;
 
-    public ScriptsWindow(string folder)
+    public ScriptsWindow(string folder, string? seedError = null)
     {
         InitializeComponent();
         _folder = folder;
-        FolderText.Text = "Папка утилит: " + folder;
+        FolderText.Text = "Папка утилит: " + folder
+                          + (seedError is null ? "" : $"   (поставляемые утилиты не обновлены: {seedError})");
         Load();
     }
 

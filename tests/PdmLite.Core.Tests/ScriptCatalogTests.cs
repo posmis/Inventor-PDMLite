@@ -99,5 +99,20 @@ public sealed class ScriptCatalogTests : IDisposable
         Assert.True(File.Exists(Path.Combine(folder, "collect", "Collect.exe")));
     }
 
+    [Fact]
+    public void Seed_RunsRepeatedly_OverHiddenManifest()
+    {
+        var bundled = Path.Combine(_root, "bundled");
+        var folder = Path.Combine(_root, "Scripts");
+        Add("bundled/a.cmd", "1");
+
+        // В Windows учёт скрытый: повторная запись не должна падать с «доступ запрещён».
+        for (var i = 0; i < 3; i++)
+            ScriptCatalog.Seed(folder, bundled);
+
+        Assert.True(File.Exists(Path.Combine(folder, ".bundled.json")));
+        Assert.Equal("a", Assert.Single(ScriptCatalog.List(folder)).Title);
+    }
+
     public void Dispose() => Directory.Delete(_root, true);
 }
