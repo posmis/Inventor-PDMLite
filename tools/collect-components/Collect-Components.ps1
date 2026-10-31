@@ -9,8 +9,8 @@
 
     - Поиск по имени файла во всей папке компонентов (с подпапками, без OldVersions).
     - У найденных сборок (.iam), чертежей и производных деталей читаются зависимости через Apprentice
-      (Inventor или бесплатный Inventor View) — на всех уровнях. Зависимость ищется по своему пути,
-      а если там её нет — по имени в папке компонентов.
+      (Inventor или бесплатный Inventor View) — на всех уровнях. Зависимости тоже ищутся по имени
+      в папке компонентов (старые пути из сборок не используются).
     - Несколько файлов с одним именем — берётся самый новый, остальные перечисляются в отчёте.
     - Отчёт: в окне и в файле _отчёт.txt в папке результата.
 
@@ -115,27 +115,52 @@ $apprentice = $null
 if (-not $NoDependencies) {
     try {
         $apprentice = New-Object -ComObject Inventor.ApprenticeServerComponent
+        Write-Host 'Apprentice запущен — зависимости сборок будут собраны.' -ForegroundColor Green
     } catch {
-        Write-Warning 'Apprentice (Inventor или Inventor View) не найден — зависимости сборок собраны не будут.'
+        Write-Warning "Apprentice (Inventor или Inventor View) не запустился — зависимости сборок собраны не будут. $($_.Exception.Message)"
     }
 }
 
+# Значение свойства COM или $null (у потерянной ссылки часть свойств пустая или недоступна).
+function Get-ComValue($object, [string]$name) {
+    try { return $object.$name } catch { return $null }
+}
+
+# Ссылки документа: путь (если известен) и имя файла. У ссылки, которую Apprentice не нашёл, полного пути
+# может не быть — тогда имя берётся из относительного или логического имени: искать будем по имени.
 function Get-References([string]$path) {
-    $result = @()
-    if ($null -eq $apprentice) { return $result }
+    $result = New-Object System.Collections.Generic.List[object]
+    if ($null -eq $apprentice) { return ,$result }
     $doc = $null
     try {
         $doc = $apprentice.Open($path)
-        foreach ($descriptor in $doc.File.ReferencedFileDescriptors) {
-            $full = $descriptor.FullFileName
-            if ($full) { $result += $full }
+        $descriptors = $doc.File.ReferencedFileDescriptors
+        $count = [int](Get-ComValue $descriptors 'Count')
+        for ($i = 1; $i -le $count; $i++) {
+            $descriptor = $descriptors.Item($i)
+            $full = Get-ComValue $descriptor 'FullFileName'
+            $candidates = @($full, (Get-ComValue $descriptor 'RelativeFileName'), (Get-ComValue $descriptor 'LogicalFileName'))
+            $name = $null
+            foreach ($candidate in $candidates) {
+                if ($candidate) {
+                    $leaf = [System.IO.Path]::GetFileName([string]$candidate)
+                    if ($leaf) { $name = $leaf; break }
+                }
+            }
+            if ($name) {
+                $result.Add(@{ Path = $(if ($full) { [string]$full } else { $null }); Name = $name })
+            } else {
+                $script:problems.Add("Ссылка без имени в $path (номер $i)")
+            }
         }
+        Write-Host ("  {0}: зависимостей {1}" -f [System.IO.Path]::GetFileName($path), $count)
     } catch {
         $script:problems.Add("Не прочитаны зависимости: $path — $($_.Exception.Message)")
+        Write-Warning "Не прочитаны зависимости: $path — $($_.Exception.Message)"
     } finally {
         if ($null -ne $doc) { try { $doc.Close() } catch { } }
     }
-    return $result
+    return ,$result
 }
 
 # ---------- Поиск ----------
@@ -154,10 +179,9 @@ while ($queue.Count -gt 0) {
     $key = $item.Name.ToLowerInvariant()
     if ($found.Contains($key)) { continue }
 
+    # И файлы списка, и зависимости ищутся только в папке поиска, по имени (там всё лежит вместе).
     $file = $null
-    if ($item.Path -and (Test-Path -LiteralPath $item.Path -PathType Leaf)) {
-        $file = Get-Item -LiteralPath $item.Path       # зависимость на своём месте
-    } elseif ($byName.ContainsKey($key)) {
+    if ($byName.ContainsKey($key)) {
         $candidates = $byName[$key] | Sort-Object LastWriteTime -Descending
         $file = $candidates[0]
         if (@($candidates).Count -gt 1) {
@@ -167,7 +191,10 @@ while ($queue.Count -gt 0) {
 
     if ($null -eq $file) {
         # Одна и та же пропажа может прийти от нескольких сборок — в отчёте один раз.
-        if ($missingKeys.Add($item.Name)) { $missing.Add("$($item.Name) ($($item.Reason))") }
+        if ($missingKeys.Add($item.Name)) {
+            $where = if ($item.Path) { "; сборка ссылалась на $($item.Path)" } else { '' }
+            $missing.Add("$($item.Name) ($($item.Reason)$where)")
+        }
         continue
     }
 
@@ -175,9 +202,9 @@ while ($queue.Count -gt 0) {
     $extension = $file.Extension.ToLowerInvariant()
     if ($apprentice -and $InventorExtensions -contains $extension) {
         foreach ($reference in (Get-References $file.FullName)) {
-            $refName = [System.IO.Path]::GetFileName($reference)
+            $refName = $reference.Name
             if (-not $found.Contains($refName.ToLowerInvariant()) -and -not $missingKeys.Contains($refName)) {
-                $queue.Enqueue(@{ Name = $refName; Path = $reference; Reason = "зависимость $($file.Name)" })
+                $queue.Enqueue(@{ Name = $refName; Path = $reference.Path; Reason = "зависимость $($file.Name)" })
             }
         }
     }

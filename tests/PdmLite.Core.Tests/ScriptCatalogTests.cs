@@ -36,19 +36,46 @@ public sealed class ScriptCatalogTests : IDisposable
     }
 
     [Fact]
-    public void Seed_CopiesBundledOnlyIntoEmptyFolder()
+    public void Seed_UpdatesUnchanged_KeepsUserChanges_DoesNotRestoreDeleted()
     {
         var bundled = Path.Combine(_root, "bundled");
-        Add("bundled/collect/Collect-Components.cmd", "новая");
         var folder = Path.Combine(_root, "Scripts");
+        Add("bundled/collect/Collect.ps1", "версия 1");
+        Add("bundled/collect/Collect.cmd", "запуск 1");
+        Add("bundled/other.cmd", "другая 1");
+        string Target(string relative) => Path.Combine(folder, relative);
 
         ScriptCatalog.Seed(folder, bundled);
-        Assert.True(File.Exists(Path.Combine(folder, "collect", "Collect-Components.cmd")));
+        Assert.Equal("версия 1", File.ReadAllText(Target("collect/Collect.ps1")));
 
-        // Пользователь что-то поменял — повторный запуск ничего не перезаписывает.
-        File.WriteAllText(Path.Combine(folder, "collect", "Collect-Components.cmd"), "моя");
+        // Пользователь поправил запуск и удалил «другую»; вышла новая версия всех трёх.
+        File.WriteAllText(Target("collect/Collect.cmd"), "мой запуск");
+        File.Delete(Target("other.cmd"));
+        File.WriteAllText(Path.Combine(bundled, "collect", "Collect.ps1"), "версия 2");
+        File.WriteAllText(Path.Combine(bundled, "collect", "Collect.cmd"), "запуск 2");
+        File.WriteAllText(Path.Combine(bundled, "other.cmd"), "другая 2");
+        Add("bundled/new.cmd", "новая");
+
         ScriptCatalog.Seed(folder, bundled);
-        Assert.Equal("моя", File.ReadAllText(Path.Combine(folder, "collect", "Collect-Components.cmd")));
+
+        Assert.Equal("версия 2", File.ReadAllText(Target("collect/Collect.ps1"))); // не меняли — обновлена
+        Assert.Equal("мой запуск", File.ReadAllText(Target("collect/Collect.cmd"))); // правка пользователя сохранена
+        Assert.False(File.Exists(Target("other.cmd"))); // удалённую не возвращаем
+        Assert.Equal("новая", File.ReadAllText(Target("new.cmd"))); // новая утилита — добавлена
+        Assert.DoesNotContain(ScriptCatalog.List(folder), s => s.FileName.StartsWith('.'));
+    }
+
+    [Fact]
+    public void Seed_FolderFromFirstVersion_WithoutManifest_GetsUpdated()
+    {
+        var bundled = Path.Combine(_root, "bundled");
+        var folder = Path.Combine(_root, "Scripts");
+        Add("Scripts/collect/Collect.ps1", "версия 1"); // скопировано первой версией, без учёта
+        Add("bundled/collect/Collect.ps1", "версия 2");
+
+        ScriptCatalog.Seed(folder, bundled);
+
+        Assert.Equal("версия 2", File.ReadAllText(Path.Combine(folder, "collect", "Collect.ps1")));
     }
 
     public void Dispose() => Directory.Delete(_root, true);

@@ -67,21 +67,79 @@ public static class ScriptCatalog
         Process.Start(start)?.Dispose();
     }
 
+    /// <summary>Учёт установленных поставляемых утилит: путь → контрольная сумма установленной версии.</summary>
+    private const string BundledManifest = ".bundled.json";
+
     /// <summary>
-    /// Первый запуск: в пустую (или новую) папку утилит копируются утилиты, поставляемые с PdmLite
-    /// (<paramref name="bundled"/>). Существующие файлы пользователя не перезаписываются.
+    /// Поставляемые с PdmLite утилиты (<paramref name="bundled"/>) — в папку утилит пользователя:
+    /// новые копируются; обновлённые заменяют старые, если пользователь их не менял; изменённые пользователем
+    /// не трогаются; удалённые пользователем не возвращаются. Учёт — в <c>.bundled.json</c> в папке утилит.
     /// </summary>
     public static void Seed(string folder, string bundled)
     {
-        if (!Directory.Exists(bundled) || (Directory.Exists(folder) && Directory.EnumerateFileSystemEntries(folder).Any()))
+        if (!Directory.Exists(bundled))
             return;
+        Directory.CreateDirectory(folder);
+        var manifestPath = System.IO.Path.Combine(folder, BundledManifest);
+        // Папка заполнена ещё до учёта (первые версии PdmLite): лежащие там поставляемые утилиты считаем нашими.
+        var legacy = !File.Exists(manifestPath);
+        var installed = ReadManifest(manifestPath);
+
         foreach (var file in Directory.EnumerateFiles(bundled, "*", SearchOption.AllDirectories))
         {
-            var target = System.IO.Path.Combine(folder, System.IO.Path.GetRelativePath(bundled, file));
-            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target)!);
-            if (!File.Exists(target))
+            var relative = System.IO.Path.GetRelativePath(bundled, file).Replace('\\', '/');
+            var target = System.IO.Path.Combine(folder, relative);
+            var shipped = Hash(file);
+
+            if (File.Exists(target))
+            {
+                // Обновляем, только если на месте — ровно то, что ставили мы (пользователь не менял).
+                if (installed.TryGetValue(relative, out var previous) && previous == Hash(target) && previous != shipped)
+                {
+                    File.SetAttributes(target, FileAttributes.Normal);
+                    File.Copy(file, target, overwrite: true);
+                    installed[relative] = shipped;
+                }
+                else if (!installed.ContainsKey(relative) && (legacy || Hash(target) == shipped))
+                {
+                    if (Hash(target) != shipped)
+                    {
+                        File.SetAttributes(target, FileAttributes.Normal);
+                        File.Copy(file, target, overwrite: true);
+                    }
+                    installed[relative] = shipped;
+                }
+            }
+            else if (!installed.ContainsKey(relative))
+            {
+                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(target)!);
                 File.Copy(file, target);
+                installed[relative] = shipped;
+            }
+            // Есть в учёте, но файла нет — пользователь удалил: не возвращаем.
         }
+
+        File.WriteAllText(manifestPath, JsonSerializer.Serialize(installed, new JsonSerializerOptions { WriteIndented = true }));
+        File.SetAttributes(manifestPath, File.GetAttributes(manifestPath) | FileAttributes.Hidden);
+    }
+
+    private static Dictionary<string, string> ReadManifest(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                return JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path)) ?? [];
+        }
+        catch (JsonException)
+        {
+        }
+        return [];
+    }
+
+    private static string Hash(string path)
+    {
+        using var stream = File.OpenRead(path);
+        return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream));
     }
 
     private static ScriptInfo Describe(string path)
