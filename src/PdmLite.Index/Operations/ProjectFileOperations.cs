@@ -466,8 +466,16 @@ public sealed class ProjectFileOperations(
     private Task ScanIndexAsync(string root, IProgress<string>? progress, CancellationToken ct)
     {
         progress?.Report("Обновление индекса ссылок проекта");
-        return index.ScanAsync(root, new Progress<(int Done, int Total, string? Current)>(p =>
-            progress?.Report(p.Current is null ? "Индекс ссылок обновлён" : $"Индекс ссылок: {p.Done} из {p.Total} — {p.Current}")), ct);
+        return EnsureCompleteAsync();
+
+        async Task<IndexScanResult> EnsureCompleteAsync()
+        {
+            var scan = await index.ScanAsync(root, new Progress<(int Done, int Total, string? Current)>(p =>
+                progress?.Report(p.Current is null ? "Индекс ссылок обновлён" : $"Индекс ссылок: {p.Done} из {p.Total} — {p.Current}")), ct).ConfigureAwait(false);
+            if (scan.Errors.Count > 0)
+                throw new InvalidOperationException("Не удалось прочитать ссылки документов: " + string.Join("; ", scan.Errors));
+            return scan;
+        }
     }
 
     /// <summary>Ссылки всех документов проекта (без базы); повторно читаются только изменённые с прошлого раза.</summary>
@@ -500,6 +508,7 @@ public sealed class ProjectFileOperations(
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 logger.LogDebug(ex, "Ссылки не прочитаны: {Path}", file.FullName);
+                throw new InvalidOperationException($"Не удалось прочитать ссылки документа {file.FullName}: {ex.Message}", ex);
             }
         }
         return result;

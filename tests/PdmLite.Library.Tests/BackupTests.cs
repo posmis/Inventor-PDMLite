@@ -182,12 +182,11 @@ public class BackupTests
         Assert.True(tampered.IsDamaged);
         Assert.Contains("повреждён", tampered.MissingFiles[0]);
 
-        // Файл библиотеки изменили вне PdmLite (сумма в базе устарела) — копия при этом честная.
+        // Файл изменён вне PdmLite: снимок базы и файла не согласован, копию создавать нельзя.
         var item = Assert.Single(await s.Items.ListAsync(await s.Items.LoadCatalogAsync()));
         var file = folders.InLibrary(item.RelativePath);
         File.SetAttributes(file, FileAttributes.Normal);
         File.AppendAllText(file, "изменён в Inventor");
-        var honest = await s.Backup.CreateAsync(BackupReason.Manual);
-        Assert.False((await s.Backup.PlanRestoreAsync(honest.Path)).IsDamaged);
+        await Assert.ThrowsAsync<InvalidDataException>(() => s.Backup.CreateAsync(BackupReason.Manual));
     }
 }

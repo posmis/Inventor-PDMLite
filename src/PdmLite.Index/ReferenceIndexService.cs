@@ -171,7 +171,7 @@ public sealed class ReferenceIndexService
         db.IndexedFiles.RemoveRange(gone);
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
 
-        var changed = files.Where(f => !known.TryGetValue(Key(f.FullName), out var k) || k.Size != f.Length || !SameTime(k.ModifiedUtc, f.LastWriteTimeUtc)).ToList();
+        var changed = files.Where(f => !known.TryGetValue(Key(f.FullName), out var k) || k.Error != null || k.Size != f.Length || !SameTime(k.ModifiedUtc, f.LastWriteTimeUtc)).ToList();
         var errors = new List<string>();
         for (var i = 0; i < changed.Count; i++)
         {
@@ -199,9 +199,10 @@ public sealed class ReferenceIndexService
                 db.IndexedFiles.Add(entry);
                 known[key] = entry;
             }
-            else
+            else if (error is null)
             {
-                await db.IndexedReferences.Where(r => r.FileId == entry.Id).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+                var oldReferences = await db.IndexedReferences.Where(r => r.FileId == entry.Id).ToListAsync(ct).ConfigureAwait(false);
+                db.IndexedReferences.RemoveRange(oldReferences);
                 entry.References.Clear();
             }
 
@@ -211,8 +212,11 @@ public sealed class ReferenceIndexService
             entry.Size = file.Length;
             entry.ModifiedUtc = file.LastWriteTimeUtc;
             entry.ScannedAt = DateTime.UtcNow;
-            entry.PartNumber = Trim(props?.PartNumber, 400);
-            entry.Title = Trim(props?.Title, 400);
+            if (error is null)
+            {
+                entry.PartNumber = Trim(props?.PartNumber, 400);
+                entry.Title = Trim(props?.Title, 400);
+            }
             entry.Error = Trim(error, 1000);
             foreach (var target in (props?.References ?? []).Distinct(StringComparer.OrdinalIgnoreCase))
                 entry.References.Add(new IndexedReference { TargetPath = target, TargetKey = Key(target) });
@@ -368,7 +372,7 @@ public sealed class ReferenceIndexService
         var options = new EnumerationOptions
         {
             RecurseSubdirectories = true,
-            IgnoreInaccessible = true,
+            IgnoreInaccessible = false,
             AttributesToSkip = FileAttributes.ReparsePoint | FileAttributes.Hidden | FileAttributes.System,
         };
         return new DirectoryInfo(root).EnumerateFiles("*", options)

@@ -134,6 +134,12 @@ public sealed class LibraryBackupService(
                     size += source.Length;
                 }
 
+                foreach (var item in snapshot.Items)
+                {
+                    if (!checksums.TryGetValue(item.RelativePath, out var actual) ||
+                        !string.Equals(actual, item.FileHash, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException($"Файл {item.RelativePath} отсутствует или не соответствует снимку базы. Повторите копирование после завершения изменений библиотеки.");
+                }
                 await WriteEntryAsync(zip, DataEntry, snapshot, ct).ConfigureAwait(false);
                 var manifest = new BackupManifest
                 {
@@ -414,6 +420,10 @@ public sealed class LibraryBackupService(
         using var zip = ZipFile.OpenRead(path);
         foreach (var item in snapshot.Items.Where(i => zip.GetEntry(FilesPrefix + i.RelativePath) is null))
             problems.Add($"{item.Designation} — нет файла");
+
+        foreach (var item in snapshot.Items)
+            if (!manifest.Checksums.TryGetValue(item.RelativePath, out var hash) || !string.Equals(hash, item.FileHash, StringComparison.OrdinalIgnoreCase))
+                problems.Add($"{item.Designation} — контрольная сумма файла не соответствует данным базы");
 
         foreach (var (relative, expected) in manifest.Checksums)
         {

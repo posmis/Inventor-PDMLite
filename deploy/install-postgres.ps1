@@ -67,7 +67,7 @@ $userPassword = -join (1..24 | ForEach-Object { $chars | Get-Random })
 Write-Host "Создание пользователя и базы $Database..." -ForegroundColor Cyan
 $roleExists = Invoke-Sql ("SELECT 1 FROM pg_roles WHERE rolname = '{0}'" -f $User)
 if ($roleExists -eq "1") {
-    Invoke-Sql ("ALTER ROLE ""{0}"" WITH LOGIN PASSWORD '{1}'" -f $User, $userPassword) | Out-Null
+    throw "Роль $User уже существует. Используйте другое имя роли; её пароль не изменён."
 } else {
     Invoke-Sql ("CREATE ROLE ""{0}"" WITH LOGIN PASSWORD '{1}'" -f $User, $userPassword) | Out-Null
 }

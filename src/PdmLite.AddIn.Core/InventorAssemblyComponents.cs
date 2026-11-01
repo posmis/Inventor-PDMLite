@@ -71,7 +71,9 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
                 if (File.Exists(file))
                 {
                     backupFolder ??= CreateBackupFolder(top.FullFileName);
-                    File.Copy(file, Path.Combine(backupFolder, Path.GetFileName(file)), overwrite: true);
+                    var copy = Path.Combine(backupFolder, $"{Guid.NewGuid():N}_{Path.GetFileName(file)}");
+                    File.Copy(file, copy);
+                    File.AppendAllText(Path.Combine(backupFolder, "files.txt"), $"{Path.GetFileName(copy)} = {file}{Environment.NewLine}");
                 }
 
                 var newPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

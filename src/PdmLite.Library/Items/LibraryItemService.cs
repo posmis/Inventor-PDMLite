@@ -168,6 +168,7 @@ public sealed class LibraryItemService(
 
         // Резервные копии на время операции: свойства в файле перезаписываются, сборки перевязываются.
         var backups = new List<(string Path, string Backup)> { (oldFull, LibraryStorage.Backup(oldFull)) };
+        var didMove = false;
         try
         {
             LibraryStorage.ClearReadOnly(oldFull);
@@ -175,6 +176,7 @@ public sealed class LibraryItemService(
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(newFull)!);
                 File.Move(oldFull, newFull);
+                didMove = true;
             }
 
             await properties.WriteAsync(newFull, LibraryProperties.For(check.CanonicalDesignation, edit.Kind, check.Standard, manufacturer, category.Path, id), ct)
@@ -220,12 +222,16 @@ public sealed class LibraryItemService(
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
             logger.LogInformation("Компонент библиотеки изменён: {Before} → {After}", before.Designation, item.Designation);
         }
-        catch
+        catch (Exception failure)
         {
-            if (moved)
+            if (didMove)
                 TryDelete(newFull);
+            var retained = new List<string>();
             foreach (var (path, backup) in backups)
-                TryRestore(backup, path);
+                if (TryRestore(backup, path)) TryDelete(backup); else retained.Add(backup);
+            backups.Clear();
+            if (retained.Count > 0)
+                throw new IOException($"Не удалось восстановить файлы. Резервные копии: {string.Join(", ", retained)}", failure);
             throw;
         }
         finally
@@ -394,14 +400,19 @@ public sealed class LibraryItemService(
             await properties.WriteAsync(full, changes, ct).ConfigureAwait(false);
             LibraryStorage.MakeReadOnly(full);
         }
-        catch
+        catch (Exception failure)
         {
-            TryRestore(backup, full);
+            var restored = TryRestore(backup, full);
+            if (restored) TryDelete(backup);
+            var retained = backup;
+            backup = "";
+            if (!restored)
+                throw new IOException($"Не удалось восстановить файл. Резервная копия: {retained}", failure);
             throw;
         }
         finally
         {
-            TryDelete(backup);
+            if (backup.Length > 0) TryDelete(backup);
         }
     }
 
@@ -663,10 +674,14 @@ public sealed class LibraryItemService(
                 });
                 await db.SaveChangesAsync(ct).ConfigureAwait(false);
             }
-            catch
+            catch (Exception failure)
             {
+                var retained = new List<string>();
                 foreach (var (path, backup) in backups)
-                    TryRestore(backup, path);
+                    if (TryRestore(backup, path)) TryDelete(backup); else retained.Add(backup);
+                backups.Clear();
+                if (retained.Count > 0)
+                    throw new IOException($"Не удалось восстановить файлы. Резервные копии: {string.Join(", ", retained)}", failure);
                 throw;
             }
             finally
@@ -743,15 +758,17 @@ public sealed class LibraryItemService(
 
     private static bool SamePath(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
-    private void TryRestore(string backup, string path)
+    private bool TryRestore(string backup, string path)
     {
         try
         {
             LibraryStorage.Restore(backup, path);
+            return true;
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Не удалось восстановить {Path} из резервной копии {Backup}", path, backup);
+            return false;
         }
     }
 
