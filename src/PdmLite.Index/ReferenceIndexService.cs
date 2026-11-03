@@ -81,11 +81,11 @@ public sealed class ReferenceIndexService
     /// (так его находит сам Inventor) или в библиотеке PdmLite (переехал или переименован).
     /// </summary>
     /// <param name="usedIn">Документы со ссылкой (Inventor ищет файл и рядом с ними).</param>
-    public string? Locate(string reference, IEnumerable<string>? usedIn = null)
+    public string? Locate(string reference, IEnumerable<string>? usedIn = null, ProjectInfo? project = null)
     {
         try
         {
-            if (searchPaths?.Locate(reference, usedIn) is { } inProject)
+            if (searchPaths?.Locate(reference, usedIn, project) is { } inProject)
                 return inProject;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

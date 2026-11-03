@@ -1,4 +1,5 @@
 using PdmLite.Core.Projects;
+using PdmLite.Core.Domain;
 
 namespace PdmLite.Index;
 
@@ -17,9 +18,10 @@ public sealed class ProjectSearchPaths(IProjectSession session)
     private (string? Project, DateTime At, IReadOnlyList<string> Folders) _cache = (null, DateTime.MinValue, []);
 
     /// <summary>Папки поиска текущего проекта (проект, папки из .ipj, стандартная папка Content Center).</summary>
-    public IReadOnlyList<string> Folders()
+    public IReadOnlyList<string> Folders(ProjectInfo? project = null)
     {
-        if (session.Project is not { } project)
+        project ??= session.Project;
+        if (project is null)
             return [];
         var key = project.ProjectFile ?? project.RootFolder;
         lock (_gate)
@@ -50,9 +52,9 @@ public sealed class ProjectSearchPaths(IProjectSession session)
     /// и её); 3) файл с тем же именем в папках поиска проекта с подпапками — если такой один.
     /// </summary>
     /// <param name="usedIn">Документы со ссылкой на файл (для поиска рядом с ними).</param>
-    public string? Locate(string reference, IEnumerable<string>? usedIn = null)
+    public string? Locate(string reference, IEnumerable<string>? usedIn = null, ProjectInfo? project = null)
     {
-        var folders = Folders();
+        var folders = Folders(project);
         if (Locate(reference, folders) is { } byTail)
             return byTail;
         var name = FileName(reference);

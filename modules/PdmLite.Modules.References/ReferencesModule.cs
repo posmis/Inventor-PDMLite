@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using PdmLite.Core.Events;
+using PdmLite.Core.Documents;
+using PdmLite.Core.Projects;
 using PdmLite.Core.Modularity;
 using PdmLite.Core.Threading;
 using PdmLite.Core.UI;
@@ -28,6 +30,10 @@ public sealed class ReferencesModule : IPdmModule
         services.TryAddSingleton<ReferenceIndexService>();
         services.AddSingleton<ReferencesPanelViewModel>();
         services.AddTransient<IndexViewModel>();
+        services.AddSingleton(sp => new ProjectHealthService(
+            sp.GetRequiredService<IDocumentPropertyStore>(),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PdmLite", "ProjectHealth"),
+            (project, path, usedIn) => sp.GetRequiredService<ReferenceIndexService>().Locate(path, usedIn, project)));
     }
 
     public void Initialize(IModuleContext context)
@@ -51,6 +57,22 @@ public sealed class ReferencesModule : IPdmModule
                 return Task.CompletedTask;
             },
             Order: 0, Group: "2-references", Icon: IconKeys.ProjectTree));
+
+        var session = services.GetRequiredService<IProjectSession>();
+        void ShowHealth(bool analyze)
+        {
+            if (session.Project is not { } project) return;
+            new ProjectHealthWindow(services.GetRequiredService<ProjectHealthService>(), project, analyze)
+                { Owner = Application.Current?.MainWindow }.Show();
+        }
+        context.Ui.RegisterCommand(new CommandDescriptor(
+            "References.AnalyzeProject", "Анализ проекта…", CommandPlacement.Toolbar,
+            _ => { ShowHealth(true); return Task.CompletedTask; },
+            _ => session.Project is not null, Order: 0, Group: "0-project-health", Icon: IconKeys.Check));
+        context.Ui.RegisterCommand(new CommandDescriptor(
+            "References.ProjectHealth", "Карточка проекта…", CommandPlacement.Toolbar,
+            _ => { ShowHealth(false); return Task.CompletedTask; },
+            _ => session.Project is not null, Order: 1, Group: "0-project-health", Icon: IconKeys.Info));
 
         // Проект уже индексировался — при открытии тихо дочитываем изменения в фоне.
         var events = services.GetRequiredService<IEventBus>();

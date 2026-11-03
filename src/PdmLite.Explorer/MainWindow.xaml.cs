@@ -62,7 +62,7 @@ public partial class MainWindow : Window
 
     private static string FunctionalGroup(CommandDescriptor command) => command.Id switch
     {
-        "InventorLink.OpenActiveProject" => "Проект",
+        "InventorLink.OpenActiveProject" or "References.AnalyzeProject" or "References.ProjectHealth" => "Проект",
         "Library.Settings" or "Library.Backups" => "Сервис",
         _ when command.Id.StartsWith("Library.", StringComparison.Ordinal) => "Библиотека",
         _ when command.Id.StartsWith("References.", StringComparison.Ordinal)
