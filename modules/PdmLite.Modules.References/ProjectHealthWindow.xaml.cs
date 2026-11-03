@@ -20,7 +20,7 @@ public partial class ProjectHealthWindow : Window
     private bool _ready;
     private sealed record CheckFilter(string? Category, string Title, int Count);
 
-    public ProjectHealthWindow(ProjectHealthService service, ProjectInfo project, bool analyze)
+    public ProjectHealthWindow(ProjectHealthService service, ProjectInfo project)
     {
         InitializeComponent();
         _service = service;
@@ -32,7 +32,7 @@ public partial class ProjectHealthWindow : Window
         _ready = true;
         EmptyText.Text = "Откройте сохранённую карточку или запустите анализ.";
         EmptyText.Visibility = Visibility.Visible;
-        Loaded += async (_, _) => { if (analyze) await AnalyzeAsync(); else await LoadAsync(); };
+        Loaded += async (_, _) => await LoadAsync();
     }
 
     private async Task WorkAsync(Func<CancellationToken, Task> action)
