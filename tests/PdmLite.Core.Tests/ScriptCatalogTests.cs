@@ -1,3 +1,4 @@
+using System.Globalization;
 using PdmLite.Core.Scripts;
 
 namespace PdmLite.Core.Tests;
@@ -14,25 +15,38 @@ public sealed class ScriptCatalogTests : IDisposable
         return path;
     }
 
-    [Fact]
-    public void List_LaunchableFiles_LauncherHidesScript_TitlesFromManifest()
+    [Theory]
+    [InlineData("en-US")]
+    [InlineData("ru-RU")]
+    public void List_LaunchableFiles_LauncherHidesScript_TitlesFromManifest(string culture)
     {
-        var folder = Path.Combine(_root, "Scripts");
-        Add("Scripts/collect/Collect-Components.ps1");
-        var cmd = Add("Scripts/collect/Collect-Components.cmd");
-        Add("Scripts/collect/Collect-Components.json", """{"Title":"Сбор файлов по списку","Description":"С зависимостями сборок"}""");
-        Add("Scripts/collect/README.md");
-        var ps1 = Add("Scripts/Отчёт 10.ps1");
-        var exe = Add("Scripts/Отчёт 2.exe");
-        Add("Scripts/broken.json", "{не json");
-        var broken = Add("Scripts/broken.bat");
+        var previous = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(culture);
+        try
+        {
+            var folder = Path.Combine(_root, "Scripts");
+            Add("Scripts/collect/Collect-Components.ps1");
+            var cmd = Add("Scripts/collect/Collect-Components.cmd");
+            Add("Scripts/collect/Collect-Components.json", """{"Title":"Сбор файлов по списку","Description":"С зависимостями сборок"}""");
+            Add("Scripts/collect/README.md");
+            var ps1 = Add("Scripts/Отчёт 10.ps1");
+            var exe = Add("Scripts/Отчёт 2.exe");
+            Add("Scripts/broken.json", "{не json");
+            var broken = Add("Scripts/broken.bat");
 
-        var scripts = ScriptCatalog.List(folder);
+            var scripts = ScriptCatalog.List(folder);
 
-        Assert.Equal(["broken", "Отчёт 2", "Отчёт 10", "Сбор файлов по списку"], scripts.Select(s => s.Title)); // числа — по величине
-        Assert.Equal([broken, exe, ps1, cmd], scripts.Select(s => s.Path));
-        Assert.Equal("С зависимостями сборок", scripts[^1].Description);
-        Assert.Empty(ScriptCatalog.List(Path.Combine(_root, "нет такой")));
+            // Положение латиницы относительно кириллицы зависит от культуры Windows (NLS/ICU).
+            var latinFirst = CultureInfo.CurrentCulture.CompareInfo.Compare("broken", "Отчёт", CompareOptions.IgnoreCase) < 0;
+            string[] titles = latinFirst ? ["broken", "Отчёт 2", "Отчёт 10", "Сбор файлов по списку"]
+                : ["Отчёт 2", "Отчёт 10", "Сбор файлов по списку", "broken"];
+            string[] paths = latinFirst ? [broken, exe, ps1, cmd] : [exe, ps1, cmd, broken];
+            Assert.Equal(titles, scripts.Select(s => s.Title)); // числа — по величине
+            Assert.Equal(paths, scripts.Select(s => s.Path));
+            Assert.Equal("С зависимостями сборок", scripts.Single(s => s.Path == cmd).Description);
+            Assert.Empty(ScriptCatalog.List(Path.Combine(_root, "нет такой")));
+        }
+        finally { CultureInfo.CurrentCulture = previous; }
     }
 
     [Fact]

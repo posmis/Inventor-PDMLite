@@ -97,8 +97,11 @@ public class ShortenerTests
     {
         var folder = Path.Combine(Root, new string('п', 150));
         var file = Path.Combine(folder, new string('и', 60) + ".ipt");
-        var change = Assert.Single(Shortener.Plan(Root, [file], maxPath: 200, maxName: 100));
-        Assert.True(change.To!.Length <= 200);
+        // Бюджет именно имени, независимо от длины профиля пользователя и TEMP в Windows.
+        var maxPath = folder.Length + 1 + ".ipt".Length + 30;
+        var change = Assert.Single(Shortener.Plan(Root, [file], maxPath: maxPath, maxName: 100));
+        Assert.NotNull(change.To);
+        Assert.True(change.To.Length <= maxPath);
         Assert.Contains("путь", change.Reason);
     }
 

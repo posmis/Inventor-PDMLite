@@ -114,11 +114,16 @@ public sealed class ProjectFileOperations(
         IProgress<string>? progress = null, CancellationToken ct = default, IReadOnlyList<FileMove>? folders = null)
     {
         root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
-        folders = (folders ?? []).Select(f => new FileMove(Path.TrimEndingDirectorySeparator(Path.GetFullPath(f.From)),
+        // Windows убирает конечную точку при GetFullPath: проверяем исходное имя до нормализации.
+        var requestedFolders = (folders ?? []).ToList();
+        var invalidFolderNames = requestedFolders.Select(f => Path.GetFileName(Path.TrimEndingDirectorySeparator(f.To)))
+            .Where(n => n.Length == 0 || n.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+                || n.IndexOfAny(['<', '>', ':', '"', '|', '?', '*']) >= 0 || n.EndsWith('.') || n.EndsWith(' ')).ToList();
+        folders = requestedFolders.Select(f => new FileMove(Path.TrimEndingDirectorySeparator(Path.GetFullPath(f.From)),
             Path.TrimEndingDirectorySeparator(Path.GetFullPath(f.To)))).ToList();
         moves = moves.Select(m => new FileMove(Path.GetFullPath(m.From), Path.GetFullPath(m.To))).ToList();
         properties = properties.Select(p => p with { Path = Path.GetFullPath(p.Path) }).ToList();
-        var problems = new List<string>();
+        var problems = invalidFolderNames.Select(n => $"Недопустимое имя папки «{n}».").ToList();
         var warnings = new List<string>();
 
         if (!Directory.Exists(root))

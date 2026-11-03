@@ -12,7 +12,7 @@ public static class AtomicFile
 
     /// <summary>Открывает снимок файла, не запрещая его замену через rename в Windows.</summary>
     public static FileStream OpenRead(string path) =>
-        new(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+        new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 
     public static void WriteAllText(string path, string text)
     {
@@ -22,7 +22,7 @@ public static class AtomicFile
         try
         {
             var temporary = Prepare(path);
-            try { File.WriteAllText(temporary, text); File.Move(temporary, path, overwrite: true); }
+            try { File.WriteAllText(temporary, text); Commit(temporary, path); }
             finally { Cleanup(temporary); }
         }
         finally { gate.Release(); }
@@ -40,11 +40,20 @@ public static class AtomicFile
             {
                 await File.WriteAllTextAsync(temporary, text, ct).ConfigureAwait(false);
                 ct.ThrowIfCancellationRequested();
-                File.Move(temporary, path, overwrite: true);
+                Commit(temporary, path);
             }
             finally { Cleanup(temporary); }
         }
         finally { gate.Release(); }
+    }
+
+    private static void Commit(string temporary, string path)
+    {
+        // В Windows ReplaceFile предназначен для замены существующего файла и
+        // сохраняет открытым читателям прежний снимок. MoveFileEx(overwrite)
+        // не предоставляет ту же семантику для открытого назначения.
+        if (File.Exists(path)) File.Replace(temporary, path, destinationBackupFileName: null);
+        else File.Move(temporary, path);
     }
 
     private static string Prepare(string path)

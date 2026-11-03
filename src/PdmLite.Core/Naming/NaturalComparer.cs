@@ -10,7 +10,7 @@ public sealed class NaturalComparer : IComparer<string?>, System.Collections.ICo
 {
     public static NaturalComparer Instance { get; } = new();
 
-    private static readonly CompareInfo Culture = CultureInfo.CurrentCulture.CompareInfo;
+    private static CompareInfo Culture => CultureInfo.CurrentCulture.CompareInfo;
 
     int System.Collections.IComparer.Compare(object? x, object? y) => CompareCore(x?.ToString(), y?.ToString());
 
