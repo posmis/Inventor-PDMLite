@@ -17,6 +17,7 @@ public sealed partial class LibrarySettingsViewModel(
     [ObservableProperty] private string _database1 = databaseSettings.Value.Database;
     [ObservableProperty] private string _username = databaseSettings.Value.Username;
     [ObservableProperty] private string _rootFolder = librarySettings.Value.RootFolder;
+    [ObservableProperty] private bool _warnOnContentCenter = librarySettings.Value.WarnOnContentCenter;
 
     [ObservableProperty] private string _testMessage = "";
     [ObservableProperty] private string? _testIcon;
@@ -67,6 +68,7 @@ public sealed partial class LibrarySettingsViewModel(
         database.Configure(databaseSettings.Value);
 
         librarySettings.Value.RootFolder = Path.GetFullPath(RootFolder);
+        librarySettings.Value.WarnOnContentCenter = WarnOnContentCenter;
         librarySettings.Save();
         return null;
     }

@@ -33,7 +33,8 @@ public sealed class ContentCenterPrompt(
 
     private async Task PromptAsync(ContentCenterComponentPlaced placed)
     {
-        if (!settings.Value.WarnOnContentCenter || !_asked.Add(placed.AssemblyPath + "|" + placed.ComponentPath))
+        // Настройки меняются в Explorer, а предупреждение работает в процессе Inventor.
+        if (!settings.Reload().WarnOnContentCenter || !_asked.Add(placed.AssemblyPath + "|" + placed.ComponentPath))
             return;
         // Файл из нашей библиотеки — всё правильно, даже если в нём осталась метка Content Center.
         if (storage().Contains(placed.ComponentPath))
