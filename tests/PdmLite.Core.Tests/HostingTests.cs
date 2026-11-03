@@ -100,6 +100,8 @@ public sealed class HostingTests : IDisposable
         host.Start();
 
         Assert.True(good.Started);
+        Assert.Equal(ModuleState.Failed, host.Modules.Single(m => m.Info.Id == "BadStart").State);
+        Assert.Contains("сбой запуска", host.Modules.Single(m => m.Info.Id == "BadStart").Reason);
         Assert.Equal(ModuleState.Failed, host.Modules.Single(m => m.Info.Id == "BadConfigure").State);
         Assert.Contains("сбой регистрации", host.Modules.Single(m => m.Info.Id == "BadConfigure").Reason);
     }

@@ -89,8 +89,14 @@ public class ReferenceIndexTests
         Assert.Contains(result.Errors, e => e.Contains("AutoCAD"));
         Assert.Empty(await index.WhereUsedAsync(p.Part, allLevels: true));
         Assert.Empty(await index.BrokenReferencesAsync(p.Root));
-        Assert.NotNull(await index.ScannedAtAsync(acad)); // с ошибкой — тоже в индексе, повторно не читается
-        Assert.Equal(0, (await index.ScanAsync(p.Root)).Read);
+        Assert.Null(await index.ScannedAtAsync(acad)); // ошибка не является подтверждённой индексацией
+        Assert.NotNull(await index.ReadErrorAsync(acad));
+        var failedRetry = await index.ScanAsync(p.Root);
+        Assert.Equal(1, failedRetry.Read); Assert.Single(failedRetry.Errors);
+        store.FailReadFor = null;
+        var recovered = await index.ScanAsync(p.Root);
+        Assert.Equal(1, recovered.Read); Assert.Empty(recovered.Errors);
+        Assert.NotNull(await index.ScannedAtAsync(acad)); Assert.Null(await index.ReadErrorAsync(acad));
     }
 
     [Fact]

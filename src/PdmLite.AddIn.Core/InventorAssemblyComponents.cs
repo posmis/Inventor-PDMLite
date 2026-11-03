@@ -1,3 +1,4 @@
+using PdmLite.Core.IO;
 using Microsoft.Extensions.Logging;
 using PdmLite.Core.Documents;
 using PdmLite.Core.Threading;
@@ -46,6 +47,7 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
             var map = replacements.ToDictionary(r => r.OldPath, r => r.NewPath, StringComparer.OrdinalIgnoreCase);
             var problems = new List<string>();
             var modified = new List<string>();
+            DocumentBackupSet? backups = null;
             string? backupFolder = null;
             var replaced = 0;
 
@@ -70,8 +72,9 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
 
                 if (File.Exists(file))
                 {
-                    backupFolder ??= CreateBackupFolder(top.FullFileName);
-                    File.Copy(file, Path.Combine(backupFolder, Path.GetFileName(file)), overwrite: true);
+                    backups ??= new DocumentBackupSet(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PdmLite", "backups"), top.FullFileName);
+                    backupFolder = backups.Folder;
+                    backups.Copy(file);
                 }
 
                 var newPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -286,11 +289,4 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
         }
     }
 
-    private static string CreateBackupFolder(string assemblyPath)
-    {
-        var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PdmLite", "backups",
-            $"{DateTime.Now:yyyyMMdd-HHmmss}_{Path.GetFileNameWithoutExtension(assemblyPath)}");
-        Directory.CreateDirectory(folder);
-        return folder;
-    }
 }

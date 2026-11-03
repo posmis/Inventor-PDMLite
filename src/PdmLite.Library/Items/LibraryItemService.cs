@@ -640,6 +640,7 @@ public sealed class LibraryItemService(
                 throw new InvalidOperationException($"Нет файла оставляемого компонента: {keep.RelativePath}.");
 
             var backups = new List<(string Path, string Backup)>();
+            string? staged = null;
             try
             {
                 // Сборки библиотеки: ссылки в файлах и состав в базе — на оставляемый компонент.
@@ -661,12 +662,23 @@ public sealed class LibraryItemService(
                     ItemId = keepId,
                     Details = JsonSerializer.Serialize(new { remove.Designation, remove.RelativePath, mergedId = removeId, into = keep.Designation }),
                 });
+                if (File.Exists(removeFull) && !SamePath(removeFull, keepFull))
+                {
+                    staged = removeFull + ".pdmlite-merge-" + Guid.NewGuid().ToString("N");
+                    File.Move(removeFull, staged);
+                }
                 await db.SaveChangesAsync(ct).ConfigureAwait(false);
             }
-            catch
+            catch (Exception failure)
             {
                 foreach (var (path, backup) in backups)
                     TryRestore(backup, path);
+                if (staged is not null && File.Exists(staged))
+                {
+                    try { File.Move(staged, removeFull); }
+                    catch (Exception restore) when (restore is IOException or UnauthorizedAccessException)
+                    { throw new AggregateException($"Не удалось вернуть файл после сбоя объединения. Копия: {staged}", failure, restore); }
+                }
                 throw;
             }
             finally
@@ -675,11 +687,10 @@ public sealed class LibraryItemService(
                     TryDelete(backup);
             }
 
-            if (File.Exists(removeFull) && !SamePath(removeFull, keepFull))
-            {
-                LibraryStorage.Delete(removeFull);
-                storage.RemoveEmptyFolders(Path.GetDirectoryName(removeFull)!);
-            }
+            if (staged is not null) TryDelete(staged);
+            try { storage.RemoveEmptyFolders(Path.GetDirectoryName(removeFull)!); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            { logger.LogWarning(ex, "Не удалось убрать пустую папку после объединения {Path}", removeFull); }
             logger.LogInformation("Дубликат {Removed} объединён с {Kept}", remove.Designation, keep.Designation);
         }
     }
@@ -742,7 +753,7 @@ public sealed class LibraryItemService(
         List<(string Path, string Backup)> backups, CancellationToken ct)
     {
         var assemblies = await db.LibraryItemReferences.Where(r => r.ComponentId == componentId)
-            .Join(db.LibraryItems, r => r.AssemblyId, i => i.Id, (_, i) => i).ToListAsync(ct).ConfigureAwait(false);
+            .Join(db.LibraryItems, r => r.AssemblyId, i => i.Id, (_, i) => i).Include(i => i.Versions).ToListAsync(ct).ConfigureAwait(false);
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { [oldFull] = newFull };
 
         foreach (var assembly in assemblies)
@@ -751,10 +762,20 @@ public sealed class LibraryItemService(
             backups.Add((path, LibraryStorage.Backup(path)));
             LibraryStorage.ClearReadOnly(path);
             await properties.ReplaceReferencesAsync(path, map, ct).ConfigureAwait(false);
+            var remaining = (await properties.ReadWithoutGeometryAsync(path, ct).ConfigureAwait(false)).References
+                .Where(r => ReferenceKey(r) == ReferenceKey(oldFull)).ToList();
+            if (remaining.Count > 0)
+                throw new InvalidOperationException($"В сборке «{Path.GetFileName(path)}» не заменились ссылки: {oldFull}. Изменение отменено.");
             LibraryStorage.MakeReadOnly(path);
             (assembly.FileHash, assembly.FileSize) = await LibraryStorage.HashAsync(path, ct).ConfigureAwait(false);
+            assembly.ModifiedAt = DateTime.UtcNow;
+            assembly.ModifiedBy = Environment.UserName;
+            if (assembly.Versions.SingleOrDefault(v => v.Version == assembly.Version) is { } current)
+                (current.FileHash, current.FileSize) = (assembly.FileHash, assembly.FileSize);
         }
     }
+
+    private static string ReferenceKey(string path) => Path.GetFullPath(path).Replace('\\', '/').ToUpperInvariant();
 
     /// <summary>Карточка «было/стало» для журнала.</summary>
     private sealed record ItemSnapshot(string Designation, LibraryItemKind Kind, string? Standard, string? Manufacturer, string? Category, string RelativePath);

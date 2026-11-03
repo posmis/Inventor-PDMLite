@@ -20,7 +20,7 @@ public sealed class ExplorerLinkServer : IAsyncDisposable
         _server = new LinkServer(LinkEndpoints.Explorer, logger);
 
         _server.Handle(LinkProtocol.Requests.Ping, (_, _) =>
-            Task.FromResult<object?>(new PingResult("PdmLite.Explorer", typeof(App).Assembly.GetName().Version!.ToString(), LinkProtocol.Version)));
+            Task.FromResult<object?>(new PingResult("PdmLite.Explorer", typeof(ExplorerLinkServer).Assembly.GetName().Version!.ToString(), LinkProtocol.Version)));
 
         _server.Handle<ProjectArgs>(LinkProtocol.Requests.OpenProject, async (args, ct) =>
         {
@@ -44,11 +44,12 @@ public sealed class ExplorerLinkServer : IAsyncDisposable
 
     public void Start() => _server.Start();
 
-    private static async Task OpenProjectIfNeededAsync(IProjectSession session, string path, CancellationToken ct)
+    internal static async Task OpenProjectIfNeededAsync(IProjectSession session, string path, CancellationToken ct)
     {
         var project = ProjectInfo.FromPath(path);
         var current = session.Project;
-        if (current is not null && string.Equals(current.RootFolder, project.RootFolder, StringComparison.OrdinalIgnoreCase))
+        if (current is not null && string.Equals(current.RootFolder, project.RootFolder, StringComparison.OrdinalIgnoreCase)
+            && (project.ProjectFile is null || string.Equals(current.ProjectFile, project.ProjectFile, StringComparison.OrdinalIgnoreCase)))
             return;
         await session.OpenAsync(project, ct);
     }

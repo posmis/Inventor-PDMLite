@@ -468,11 +468,12 @@ public sealed class ProjectFileOperations(
         return result;
     }
 
-    private Task ScanIndexAsync(string root, IProgress<string>? progress, CancellationToken ct)
+    private async Task ScanIndexAsync(string root, IProgress<string>? progress, CancellationToken ct)
     {
         progress?.Report("Обновление индекса ссылок проекта");
-        return index.ScanAsync(root, new Progress<(int Done, int Total, string? Current)>(p =>
-            progress?.Report(p.Current is null ? "Индекс ссылок обновлён" : $"Индекс ссылок: {p.Done} из {p.Total} — {p.Current}")), ct);
+        var result = await index.ScanAsync(root, new Progress<(int Done, int Total, string? Current)>(p =>
+            progress?.Report(p.Current is null ? "Индекс ссылок обновлён" : $"Индекс ссылок: {p.Done} из {p.Total} — {p.Current}")), ct).ConfigureAwait(false);
+        EnsureCompleteRead(result.Errors);
     }
 
     /// <summary>Ссылки всех документов проекта (без базы); повторно читаются только изменённые с прошлого раза.</summary>
@@ -481,6 +482,7 @@ public sealed class ProjectFileOperations(
     {
         var result = new List<(string, IReadOnlyList<string>)>();
         var documents = ReferenceIndexService.Enumerate(root);
+        var errors = new List<string>();
         for (var i = 0; i < documents.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
@@ -504,10 +506,19 @@ public sealed class ProjectFileOperations(
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogDebug(ex, "Ссылки не прочитаны: {Path}", file.FullName);
+                logger.LogWarning(ex, "Ссылки не прочитаны: {Path}", file.FullName);
+                errors.Add($"{file.FullName}: {ex.Message}");
             }
         }
+        EnsureCompleteRead(errors);
         return result;
+    }
+
+    private static void EnsureCompleteRead(IReadOnlyList<string> errors)
+    {
+        if (errors.Count > 0)
+            throw new InvalidOperationException("План операции не построен: не удалось прочитать ссылки всех документов проекта. " +
+                "Исправьте ошибки чтения и повторите. " + string.Join(Environment.NewLine, errors));
     }
 
     /// <summary>

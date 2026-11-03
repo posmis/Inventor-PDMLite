@@ -89,6 +89,7 @@ public sealed partial class ReferencesPanelViewModel(
         try
         {
             var scanned = await index.ScannedAtAsync(item.Path);
+            var readError = await index.ReadErrorAsync(item.Path);
             var usedIn = await index.WhereUsedAsync(item.Path, AllLevels);
             var components = await index.ComponentsAsync(item.Path);
             var missing = await Task.Run(() => index.MissingComponentsAsync(item.Path));
@@ -103,7 +104,9 @@ public sealed partial class ReferencesPanelViewModel(
             foreach (var file in missing.Where(m => !m.IsFound))
                 Missing.Add(file);
 
-            Status = scanned is null
+            Status = readError is not null
+                ? $"Ошибка чтения: {readError}. Показаны последние известные связи; актуальность не подтверждена. Повторите обновление индекса."
+                : scanned is null
                 ? "Документ не проиндексирован — обновите индекс проекта (PdmLite Explorer → «Индекс ссылок проекта…»)."
                 : $"Индекс от {scanned.Value.ToLocalTime():g}.";
         }

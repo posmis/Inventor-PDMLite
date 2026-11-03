@@ -107,10 +107,14 @@ public sealed class LibraryBackupService(
         Directory.CreateDirectory(opts.Folder);
         var storage = storageFactory();
 
+        var backupFolder = Path.GetFullPath(opts.Folder);
+        if (backupFolder.Equals(storage.Root, StringComparison.OrdinalIgnoreCase) || storage.Contains(backupFolder))
+            throw new InvalidOperationException("Папка резервных копий должна находиться вне библиотеки.");
+        var files = LibraryFiles(storage.Root);
+        // Файлы должны оставаться неизменными до и после снимка БД и всего копирования.
+        var baseline = new Dictionary<string, (string Hash, long Size)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in files) baseline[file] = await LibraryStorage.HashAsync(file, ct).ConfigureAwait(false);
         var snapshot = await LoadSnapshotAsync(ct).ConfigureAwait(false);
-        var files = Directory.Exists(storage.Root)
-            ? Directory.EnumerateFiles(storage.Root, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal).ToList()
-            : [];
 
         var now = DateTime.Now;
         var name = $"PdmLite-Library_{now:yyyy-MM-dd_HH-mm-ss}_{ReasonText(reason).Replace(' ', '-')}_{Guid.NewGuid():N}";
@@ -133,9 +137,19 @@ public sealed class LibraryBackupService(
                     await using var source = new FileStream(files[i], FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
                     await using var target = entry.Open();
                     checksums[relative] = await CopyWithHashAsync(source, target, ct).ConfigureAwait(false);
+                    if (checksums[relative] != baseline[files[i]].Hash || source.Length != baseline[files[i]].Size)
+                        throw new IOException("Файлы библиотеки изменились во время резервного копирования. Повторите создание копии.");
                     size += source.Length;
                 }
 
+                if (!files.SequenceEqual(LibraryFiles(storage.Root), StringComparer.OrdinalIgnoreCase))
+                    throw new IOException("Состав файлов библиотеки изменился во время резервного копирования.");
+                foreach (var file in files)
+                    if ((await LibraryStorage.HashAsync(file, ct).ConfigureAwait(false)) != baseline[file])
+                        throw new IOException("Файлы библиотеки изменились после копирования. Повторите создание копии.");
+                var current = await LoadSnapshotAsync(ct).ConfigureAwait(false);
+                if (JsonSerializer.Serialize(snapshot, Json) != JsonSerializer.Serialize(current, Json))
+                    throw new IOException("База библиотеки изменилась во время резервного копирования. Повторите создание копии.");
                 await WriteEntryAsync(zip, DataEntry, snapshot, ct).ConfigureAwait(false);
                 var manifest = new BackupManifest
                 {
@@ -323,6 +337,9 @@ public sealed class LibraryBackupService(
 
     // ---------- Внутреннее ----------
 
+    private static List<string> LibraryFiles(string root) => Directory.Exists(root)
+        ? Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal).ToList() : [];
+
     /// <summary>Все таблицы библиотеки на один момент (одна транзакция).</summary>
     private async Task<LibrarySnapshot> LoadSnapshotAsync(CancellationToken ct)
     {
@@ -335,8 +352,8 @@ public sealed class LibraryBackupService(
             CategoryRules = await db.LibraryCategoryRules.AsNoTracking().OrderBy(r => r.Id).ToListAsync(ct).ConfigureAwait(false),
             Items = await db.LibraryItems.AsNoTracking().OrderBy(i => i.Designation).ToListAsync(ct).ConfigureAwait(false),
             Versions = await db.Set<LibraryItemVersion>().AsNoTracking().OrderBy(v => v.Id).ToListAsync(ct).ConfigureAwait(false),
-            Properties = await db.Set<LibraryItemProperty>().AsNoTracking().ToListAsync(ct).ConfigureAwait(false),
-            References = await db.LibraryItemReferences.AsNoTracking().ToListAsync(ct).ConfigureAwait(false),
+            Properties = await db.Set<LibraryItemProperty>().AsNoTracking().OrderBy(p => p.ItemId).ThenBy(p => p.Name).ToListAsync(ct).ConfigureAwait(false),
+            References = await db.LibraryItemReferences.AsNoTracking().OrderBy(r => r.AssemblyId).ThenBy(r => r.ComponentId).ToListAsync(ct).ConfigureAwait(false),
             DesignationRules = await db.DesignationRules.AsNoTracking().OrderBy(r => r.Id).ToListAsync(ct).ConfigureAwait(false),
             Log = await db.LibraryLog.AsNoTracking().OrderBy(l => l.Id).ToListAsync(ct).ConfigureAwait(false),
         };

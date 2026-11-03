@@ -39,12 +39,14 @@ public sealed class PdmHost : IDisposable
     private readonly ServiceProvider _services;
     private readonly Microsoft.Extensions.Logging.ILogger _logger;
     private readonly List<IPdmModule> _initialized = [];
+    private readonly List<ModuleStatus> _statuses;
 
     private PdmHost(HostKind host, IReadOnlyList<IPdmModule> modules, IReadOnlyList<ModuleStatus> statuses, ServiceProvider services)
     {
         Host = host;
         _modules = modules;
-        Modules = statuses;
+        _statuses = statuses.ToList();
+        Modules = _statuses.AsReadOnly();
         _services = services;
         _logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("PdmLite.Host");
     }
@@ -123,6 +125,7 @@ public sealed class PdmHost : IDisposable
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Ошибка инициализации модуля {Id}", module.Info.Id);
+                Fail(_statuses, module, ex);
             }
         }
     }

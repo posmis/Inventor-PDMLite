@@ -30,4 +30,7 @@
     <Compile Include="..\..\tools\ShortenNames\Relinker.cs" Link="ShortenNames\Relinker.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="../../src/PdmLite.Explorer/ExplorerLinkServer.cs" Link="ExplorerLinkServer.cs" />
+  </ItemGroup>
 </Project>
