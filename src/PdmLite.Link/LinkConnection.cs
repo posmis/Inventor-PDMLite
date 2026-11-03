@@ -55,15 +55,18 @@ internal sealed class LinkConnection : IAsyncDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
 
-        _reader.Dispose();
+        // Закрытие канала сначала разблокирует активные чтение/запись.
+        await _pipe.DisposeAsync().ConfigureAwait(false);
+        await _writeLock.WaitAsync().ConfigureAwait(false);
         try
         {
+            _reader.Dispose();
             await _writer.DisposeAsync().ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException)
         {
             // канал уже разорван — дописывать некуда
         }
-        await _pipe.DisposeAsync().ConfigureAwait(false);
+        finally { _writeLock.Release(); }
     }
 }

@@ -303,7 +303,7 @@ public sealed class ProjectFileOperations(
             throw new InvalidOperationException("Закройте в Inventor документы (или сборки, в которые они входят): "
                                                 + string.Join(", ", open.Select(d => Path.GetFileName(d.Path)).Distinct().Take(10)) + ".");
 
-        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff");
+        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + "-" + Guid.NewGuid().ToString("N");
         var backupFolder = Path.Combine(BackupRoot, stamp);
         Directory.CreateDirectory(backupFolder);
         WriteJournal(backupFolder, plan);

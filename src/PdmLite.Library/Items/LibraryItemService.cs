@@ -709,10 +709,31 @@ public sealed class LibraryItemService(
             ItemId = id,
             Details = JsonSerializer.Serialize(new { item.Designation, item.RelativePath }),
         });
-        await db.SaveChangesAsync(ct).ConfigureAwait(false);
-
-        LibraryStorage.Delete(full);
-        storage.RemoveEmptyFolders(Path.GetDirectoryName(full)!);
+        // До фиксации БД файл остаётся восстановимым. Занятый файл — ошибка до удаления записи.
+        var staged = full + ".pdmlite-delete-" + Guid.NewGuid().ToString("N");
+        var hasFile = File.Exists(full);
+        if (hasFile) File.Move(full, staged);
+        try
+        {
+            await db.SaveChangesAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception failure)
+        {
+            if (hasFile)
+            {
+                try { File.Move(staged, full); }
+                catch (Exception restore) when (restore is IOException or UnauthorizedAccessException)
+                {
+                    throw new AggregateException($"Не удалось вернуть файл после сбоя удаления. Копия: {staged}", failure, restore);
+                }
+            }
+            throw;
+        }
+        // БД уже зафиксирована: ошибка очистки не должна выдавать удаление за неуспешное.
+        TryDelete(staged);
+        try { storage.RemoveEmptyFolders(Path.GetDirectoryName(full)!); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        { logger.LogWarning(ex, "Не удалось убрать пустую папку после удаления {Path}", full); }
         logger.LogInformation("Компонент удалён из библиотеки: {Designation}", item.Designation);
     }
 

@@ -23,10 +23,13 @@ public sealed class ProjectItem
     /// <summary>Обход поддерева в глубину, включая сам элемент.</summary>
     public IEnumerable<ProjectItem> Descendants()
     {
-        yield return this;
-        foreach (var child in Children)
-            foreach (var item in child.Descendants())
-                yield return item;
+        var pending = new Stack<ProjectItem>();
+        pending.Push(this);
+        while (pending.TryPop(out var item))
+        {
+            yield return item;
+            for (var i = item.Children.Count - 1; i >= 0; i--) pending.Push(item.Children[i]);
+        }
     }
 
     public override string ToString() => Path;

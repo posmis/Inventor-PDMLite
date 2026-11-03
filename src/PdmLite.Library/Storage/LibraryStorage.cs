@@ -1,3 +1,4 @@
+using PdmLite.Core.IO;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -20,14 +21,17 @@ public sealed class LibraryStorage(string rootFolder)
     public string Root { get; } = Path.TrimEndingDirectorySeparator(Path.GetFullPath(rootFolder));
 
     public string GetFullPath(string relativePath) =>
-        Path.Combine(Root, relativePath.Replace('/', Path.DirectorySeparatorChar));
+        ContainedPath.Resolve(Root, relativePath);
 
     public bool Contains(string fullPath) =>
-        Path.GetFullPath(fullPath).StartsWith(Root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        ContainedPath.Contains(Root, fullPath);
 
     /// <summary>Относительный путь файла компонента (разделитель — «/»).</summary>
     public static string BuildRelativePath(IEnumerable<string> categoryPath, string? subfolder, string designation, string extension)
     {
+        if (string.IsNullOrWhiteSpace(extension) || !extension.StartsWith('.') || extension.Length < 2
+            || extension.Skip(1).Any(c => !char.IsLetterOrDigit(c)))
+            throw new ArgumentException("Недопустимое расширение файла.", nameof(extension));
         var parts = categoryPath.Select(SafeName).ToList();
         if (!string.IsNullOrWhiteSpace(subfolder))
             parts.Add(SafeName(subfolder));
@@ -38,7 +42,8 @@ public sealed class LibraryStorage(string rootFolder)
     /// <summary>Имена устройств Windows: файл или папку с таким именем (и любым расширением) создать нельзя.</summary>
     private static readonly HashSet<string> Reserved = new(StringComparer.OrdinalIgnoreCase)
     {
-        "CON", "PRN", "AUX", "NUL",
+        "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+        "COM¹", "COM²", "COM³", "LPT¹", "LPT²", "LPT³",
         "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
         "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     };

@@ -1,3 +1,4 @@
+using PdmLite.Core.IO;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Unicode;
@@ -13,7 +14,8 @@ public sealed class JsonSettings<T> where T : class, new()
 
     public JsonSettings(string name, string? folder = null)
     {
-        _path = Path.Combine(folder ?? PdmLitePaths.UserSettingsFolder, name + ".json");
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        _path = ContainedPath.Resolve(folder ?? PdmLitePaths.UserSettingsFolder, name + ".json");
         Value = Load();
     }
 
@@ -25,10 +27,8 @@ public sealed class JsonSettings<T> where T : class, new()
 
     public void Save()
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-        var tmp = _path + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(Value, JsonSettings.Options));
-        File.Move(tmp, _path, overwrite: true);
+        // Сериализация до записи: её ошибка не должна затронуть предыдущий файл.
+        AtomicFile.WriteAllText(_path, JsonSerializer.Serialize(Value, JsonSettings.Options));
     }
 
     private T Load()

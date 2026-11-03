@@ -1,6 +1,4 @@
 using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using PdmLite.Core.Documents;
 using PdmLite.Core.Domain;
 
@@ -23,24 +21,13 @@ public sealed class ProjectHealthService(
     Func<ProjectInfo, string, IEnumerable<string>, string?>? locate = null)
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
-
-    public string CardPath(ProjectInfo project) => Path.Combine(folder,
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(Identity(project)))) + ".json");
-
-    public async Task<ProjectHealthCard?> LoadAsync(ProjectInfo project, CancellationToken ct = default)
-    {
-        var path = CardPath(project);
-        if (!File.Exists(path)) return null;
-        await using var stream = File.OpenRead(path);
-        var card = await JsonSerializer.DeserializeAsync<ProjectHealthCard>(stream, Json, ct);
-        if (card is null || card.Version != 1 || Identity(card.Project) != Identity(project))
-            throw new InvalidDataException("Формат карточки не поддерживается или карточка относится к другому проекту. Выполните анализ заново.");
-        return card;
-    }
+    private readonly ProjectHealthCardStore _cards = new(folder);
+    public string CardPath(ProjectInfo project) => _cards.CardPath(project);
+    public Task<ProjectHealthCard?> LoadAsync(ProjectInfo project, CancellationToken ct = default) => _cards.LoadAsync(project, ct);
 
     public async Task<bool> IsCurrentAsync(ProjectHealthCard card, CancellationToken ct = default)
     {
+        ProjectHealthCardStore.Validate(card);
         var current = await SnapshotAsync(card.Project, ct);
         foreach (var input in card.Inputs.Where(i => !current.ContainsKey(i.Key)))
             current[input.Key] = Stamp(input.Key);
@@ -120,23 +107,12 @@ public sealed class ProjectHealthService(
                 Count(DocumentKind.Part), Count(DocumentKind.Assembly), Count(DocumentKind.Drawing), Count(DocumentKind.Presentation),
                 inputs, issues.OrderBy(i => i.Severity == "Ошибка" ? 0 : 1).ThenBy(i => i.Category).ThenBy(i => i.Path).ToList());
             ct.ThrowIfCancellationRequested();
-            Directory.CreateDirectory(folder);
-            var destination = CardPath(project);
-            var temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
-            try
-            {
-                await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(card, Json), ct);
-                ct.ThrowIfCancellationRequested();
-                File.Move(temporary, destination, overwrite: true);
-            }
-            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+            await _cards.SaveAsync(card, ct);
             return card;
         }
         finally { _gate.Release(); }
     }
 
-    private static string Identity(ProjectInfo p) => ReferenceIndexService.Key(p.RootFolder) + "|" +
-        (p.ProjectFile is null ? "" : ReferenceIndexService.Key(p.ProjectFile));
     private static bool IsDocument(string path) => DocumentKinds.FromPath(path) is
         DocumentKind.Part or DocumentKind.Assembly or DocumentKind.Drawing or DocumentKind.Presentation;
     private static bool Equal(Dictionary<string, string> a, Dictionary<string, string> b) =>
@@ -153,14 +129,15 @@ public sealed class ProjectHealthService(
         var options = new EnumerationOptions { IgnoreInaccessible = false,
             AttributesToSkip = FileAttributes.ReparsePoint | FileAttributes.Hidden | FileAttributes.System };
         var paths = new List<string>();
-        void Walk(string directory)
+        var pending = new Stack<string>();
+        pending.Push(project.RootFolder);
+        while (pending.TryPop(out var directory))
         {
             ct.ThrowIfCancellationRequested();
             paths.AddRange(Directory.EnumerateFiles(directory, "*", options).Where(p => IsDocument(p) || Path.GetExtension(p).Equals(".ipj", StringComparison.OrdinalIgnoreCase)));
             foreach (var child in Directory.EnumerateDirectories(directory, "*", options))
-                if (!Path.GetFileName(child).Equals("OldVersions", StringComparison.OrdinalIgnoreCase)) Walk(child);
+                if (!Path.GetFileName(child).Equals("OldVersions", StringComparison.OrdinalIgnoreCase)) pending.Push(child);
         }
-        Walk(project.RootFolder);
         if (project.ProjectFile is not null) paths.Add(project.ProjectFile);
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var path in paths.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase))

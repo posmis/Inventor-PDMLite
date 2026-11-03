@@ -25,33 +25,39 @@ public interface IPdmDatabase
 
 public sealed class PdmDatabase(DatabaseSettings settings, ILoggerFactory loggerFactory) : IPdmDatabase
 {
-    private DatabaseSettings _settings = settings;
+    private sealed record Configuration(DatabaseSettings Settings, bool Migrated = false);
+    private Configuration _configuration = new(settings);
     private readonly SemaphoreSlim _migrateGate = new(1, 1);
-    private bool _migrated;
 
-    public bool IsConfigured => _settings.IsConfigured;
-    public DatabaseSettings Settings => _settings;
+    public bool IsConfigured => Settings.IsConfigured;
+    public DatabaseSettings Settings => Volatile.Read(ref _configuration).Settings;
 
     public void Configure(DatabaseSettings settings)
     {
-        _settings = settings;
-        _migrated = false;
+        ArgumentNullException.ThrowIfNull(settings);
+        Volatile.Write(ref _configuration, new Configuration(settings));
     }
 
-    public PdmDbContext CreateContext() => new(BuildOptions(_settings.BuildConnectionString(), loggerFactory));
+    public PdmDbContext CreateContext() => new(BuildOptions(Settings.BuildConnectionString(), loggerFactory));
 
     public async Task MigrateAsync(CancellationToken cancellationToken = default)
     {
-        if (_migrated)
+        if (Volatile.Read(ref _configuration).Migrated)
             return;
         await _migrateGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_migrated)
-                return;
-            await using var db = CreateContext();
-            await db.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
-            _migrated = true;
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var configuration = Volatile.Read(ref _configuration);
+                if (configuration.Migrated) return;
+                await using var db = new PdmDbContext(BuildOptions(configuration.Settings.BuildConnectionString(), loggerFactory));
+                await db.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
+                // Configure во время миграции не должен пометить новую базу как уже обновлённую.
+                if (ReferenceEquals(Interlocked.CompareExchange(ref _configuration,
+                    configuration with { Migrated = true }, configuration), configuration)) return;
+            }
         }
         finally
         {
@@ -61,6 +67,7 @@ public sealed class PdmDatabase(DatabaseSettings settings, ILoggerFactory logger
 
     public async Task<(bool Ok, string Message)> TestAsync(DatabaseSettings settings, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         try
         {
             await using var connection = new NpgsqlConnection(settings.BuildConnectionString());
@@ -81,6 +88,7 @@ public sealed class PdmDatabase(DatabaseSettings settings, ILoggerFactory logger
         {
             return (false, $"Сервер {settings.Host}:{settings.Port} не отвечает. Проверьте, что PostgreSQL запущен.");
         }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             return (false, ex.Message);

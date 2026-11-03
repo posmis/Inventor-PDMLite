@@ -13,6 +13,8 @@ public sealed class LinkClient : IAsyncDisposable
     private LinkConnection? _connection;
     private Task? _readLoop;
     private int _disconnected;
+    private int _disposed;
+    private readonly SemaphoreSlim _connectGate = new(1, 1);
 
     public LinkClient(string endpoint) => _pipeName = LinkEndpoints.PipeName(endpoint);
 
@@ -28,27 +30,40 @@ public sealed class LinkClient : IAsyncDisposable
     /// <returns><c>false</c>, если сервер не запущен или не ответил за отведённое время.</returns>
     public async Task<bool> TryConnectAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
     {
-        if (_connection is not null)
-            throw new InvalidOperationException("Клиент уже подключался. Для повторного подключения создайте новый.");
-
-        var pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut,
-            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ValidateTimeout(timeout);
+        await _connectGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(timeout);
-            await pipe.ConnectAsync(timeoutCts.Token).ConfigureAwait(false);
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            if (_connection is not null)
+                throw new InvalidOperationException("Клиент уже подключался. Для повторного подключения создайте новый.");
+            var pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.InOut,
+                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            try
+            {
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cts.Token);
+                timeoutCts.CancelAfter(timeout);
+                await pipe.ConnectAsync(timeoutCts.Token).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or IOException or UnauthorizedAccessException)
+            {
+                await pipe.DisposeAsync().ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+                return false;
+            }
+            _connection = new LinkConnection(pipe);
+            _readLoop = Task.Run(() => ReadLoopAsync(_connection, _cts.Token));
+            return true;
         }
-        catch (Exception ex) when (ex is OperationCanceledException or TimeoutException or IOException or UnauthorizedAccessException)
-        {
-            await pipe.DisposeAsync().ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
-            return false;
-        }
+        finally { _connectGate.Release(); }
+    }
 
-        _connection = new LinkConnection(pipe);
-        _readLoop = Task.Run(() => ReadLoopAsync(_connection, _cts.Token));
-        return true;
+    private static void ValidateTimeout(TimeSpan timeout)
+    {
+        if (timeout != Timeout.InfiniteTimeSpan && (timeout < TimeSpan.Zero || timeout.TotalMilliseconds > uint.MaxValue - 1))
+            throw new ArgumentOutOfRangeException(nameof(timeout));
     }
 
     public async Task<TResult?> RequestAsync<TResult>(string name, object? args = null, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
@@ -62,6 +77,9 @@ public sealed class LinkClient : IAsyncDisposable
 
     private async Task<LinkMessage> SendAsync(string name, object? args, TimeSpan timeout, CancellationToken ct)
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+        ValidateTimeout(timeout);
+        ct.ThrowIfCancellationRequested();
         var connection = _connection ?? throw new InvalidOperationException("Нет подключения.");
         var id = Guid.NewGuid().ToString("N");
         var tcs = new TaskCompletionSource<LinkMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -69,6 +87,7 @@ public sealed class LinkClient : IAsyncDisposable
 
         try
         {
+            if (!IsConnected) throw new IOException("Связь разорвана.");
             await connection.WriteAsync(new LinkMessage { Type = LinkMessage.RequestType, Id = id, Name = name, Payload = LinkMessage.ToPayload(args) }, ct)
                 .ConfigureAwait(false);
 
@@ -93,8 +112,11 @@ public sealed class LinkClient : IAsyncDisposable
                         tcs.TrySetResult(message);
                         break;
                     case LinkMessage.EventType:
-                        try { EventReceived?.Invoke(message); }
-                        catch { /* ошибка подписчика не рвёт связь */ }
+                        foreach (var handler in EventReceived?.GetInvocationList() ?? [])
+                        {
+                            try { ((Action<LinkMessage>)handler)(message); }
+                            catch { /* один подписчик не прерывает доставку остальным */ }
+                        }
                         break;
                 }
             }
@@ -114,16 +136,24 @@ public sealed class LinkClient : IAsyncDisposable
             return;
         foreach (var tcs in _pending.Values)
             tcs.TrySetException(new IOException("Связь разорвана."));
-        Disconnected?.Invoke();
+        foreach (var handler in Disconnected?.GetInvocationList() ?? [])
+        {
+            try { ((Action)handler)(); }
+            catch { /* уведомление не должно ломать завершение соединения */ }
+        }
     }
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         await _cts.CancelAsync().ConfigureAwait(false);
-        if (_connection is not null)
-            await _connection.DisposeAsync().ConfigureAwait(false);
-        if (_readLoop is not null)
-            await _readLoop.ConfigureAwait(false);
-        _cts.Dispose();
+        await _connectGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_connection is not null) await _connection.DisposeAsync().ConfigureAwait(false);
+            if (_readLoop is not null) await _readLoop.ConfigureAwait(false);
+            _cts.Dispose();
+        }
+        finally { _connectGate.Release(); }
     }
 }

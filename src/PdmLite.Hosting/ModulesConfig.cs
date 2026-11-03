@@ -13,7 +13,7 @@ public sealed class ModulesConfig
     public List<ModuleEntry> Modules { get; set; } = [];
 
     public bool IsEnabled(string moduleId) =>
-        Modules.FirstOrDefault(m => string.Equals(m.Id, moduleId, StringComparison.OrdinalIgnoreCase))?.Enabled ?? true;
+        Modules?.FirstOrDefault(m => m is not null && string.Equals(m.Id, moduleId, StringComparison.OrdinalIgnoreCase))?.Enabled ?? true;
 
     /// <summary>Ошибка чтения файла (тогда включены все модули).</summary>
     [System.Text.Json.Serialization.JsonIgnore]
@@ -31,7 +31,11 @@ public sealed class ModulesConfig
         try
         {
             using var stream = File.OpenRead(path);
-            return JsonSerializer.Deserialize<ModulesConfig>(stream, JsonSettings.Options) ?? new ModulesConfig();
+            var config = JsonSerializer.Deserialize<ModulesConfig>(stream, JsonSettings.Options);
+            if (config is null || config.Modules is null || config.Modules.Any(m => m is null || string.IsNullOrWhiteSpace(m.Id))
+                || config.Modules.Select(m => m.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count() != config.Modules.Count)
+                throw new JsonException("Некорректный список модулей.");
+            return config;
         }
         catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
         {

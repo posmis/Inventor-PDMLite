@@ -1,3 +1,4 @@
+using PdmLite.Core.IO;
 using System.Data;
 using System.IO.Compression;
 using System.Security.Cryptography;
@@ -112,8 +113,9 @@ public sealed class LibraryBackupService(
             : [];
 
         var now = DateTime.Now;
-        var path = UniquePath(opts.Folder, $"PdmLite-Library_{now:yyyy-MM-dd_HH-mm-ss}_{ReasonText(reason).Replace(' ', '-')}");
-        var temp = path + ".part";
+        var name = $"PdmLite-Library_{now:yyyy-MM-dd_HH-mm-ss}_{ReasonText(reason).Replace(' ', '-')}_{Guid.NewGuid():N}";
+        var path = Path.Combine(opts.Folder, name + ".zip");
+        var temp = path + "." + Guid.NewGuid().ToString("N") + ".part";
         long size = 0;
         var checksums = new Dictionary<string, string>(StringComparer.Ordinal);
         try
@@ -212,7 +214,8 @@ public sealed class LibraryBackupService(
                 return null;
             using var stream = entry.Open();
             var manifest = JsonSerializer.Deserialize<BackupManifest>(stream, Json);
-            return manifest is null ? null : new BackupInfo(path, manifest, new FileInfo(path).Length);
+            return manifest is null || manifest.Checksums is null || manifest.Items < 0 || manifest.Files < 0 || manifest.FilesSize < 0
+                ? null : new BackupInfo(path, manifest, new FileInfo(path).Length);
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or JsonException or UnauthorizedAccessException)
         {
@@ -227,8 +230,8 @@ public sealed class LibraryBackupService(
     public async Task<RestorePlan> PlanRestoreAsync(string path, CancellationToken ct = default)
     {
         var info = Read(path) ?? throw new InvalidDataException("Файл не является резервной копией PdmLite.");
-        if (info.Manifest.Format > BackupManifest.CurrentFormat)
-            throw new InvalidDataException("Копия сделана более новой версией PdmLite — обновите программу.");
+        if (info.Manifest.Format != BackupManifest.CurrentFormat)
+            throw new InvalidDataException("Формат резервной копии не поддерживается этой версией PdmLite.");
 
         var (snapshot, _) = ReadArchive(path);
         await database.MigrateAsync(ct).ConfigureAwait(false);
@@ -267,7 +270,7 @@ public sealed class LibraryBackupService(
 
         var storage = storageFactory();
         var root = storage.Root;
-        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        var stamp = Guid.NewGuid().ToString("N");
         var staging = root + ".restore-" + stamp;
         var previous = root + ".before-restore-" + stamp;
 
@@ -358,7 +361,7 @@ public sealed class LibraryBackupService(
         await db.Database.ExecuteSqlRawAsync(truncate, ct).ConfigureAwait(false);
 
         // Сначала разделы-родители, потом вложенные.
-        db.LibraryCategories.AddRange(OrderByDepth(snapshot.Categories));
+        db.LibraryCategories.AddRange(BackupValidation.OrderCategories(snapshot.Categories));
         db.LibraryCategoryRules.AddRange(snapshot.CategoryRules);
         db.LibraryItems.AddRange(snapshot.Items);
         db.Set<LibraryItemVersion>().AddRange(snapshot.Versions);
@@ -397,13 +400,6 @@ public sealed class LibraryBackupService(
     /// <summary>Идентификатор PostgreSQL в кавычках; кавычки внутри удваиваются.</summary>
     internal static string QuoteIdentifier(string name) => "\"" + name.Replace("\"", "\"\"") + "\"";
 
-    private static IEnumerable<LibraryCategory> OrderByDepth(IReadOnlyList<LibraryCategory> categories)
-    {
-        var byId = categories.ToDictionary(c => c.Id);
-        int Depth(LibraryCategory c) => c.ParentId is { } p && byId.TryGetValue(p, out var parent) ? Depth(parent) + 1 : 0;
-        return categories.OrderBy(Depth).ThenBy(c => c.Id);
-    }
-
     /// <summary>
     /// Целостность копии: у каждого компонента есть файл в архиве, и суммы файлов совпадают с записанными
     /// при создании копии. Возвращает описания проблем.
@@ -414,6 +410,10 @@ public sealed class LibraryBackupService(
         using var zip = ZipFile.OpenRead(path);
         foreach (var item in snapshot.Items.Where(i => zip.GetEntry(FilesPrefix + i.RelativePath) is null))
             problems.Add($"{item.Designation} — нет файла");
+
+        foreach (var entry in zip.Entries.Where(e => e.FullName.StartsWith(FilesPrefix, StringComparison.Ordinal) && e.Name.Length > 0))
+            if (!manifest.Checksums.ContainsKey(entry.FullName[FilesPrefix.Length..]))
+                problems.Add($"{entry.FullName} — нет контрольной суммы");
 
         foreach (var (relative, expected) in manifest.Checksums)
         {
@@ -452,13 +452,13 @@ public sealed class LibraryBackupService(
         var data = zip.GetEntry(DataEntry) ?? throw new InvalidDataException("В копии нет данных базы.");
         using var stream = data.Open();
         var snapshot = JsonSerializer.Deserialize<LibrarySnapshot>(stream, Json) ?? throw new InvalidDataException("Данные базы в копии пусты.");
+        BackupValidation.Validate(snapshot, zip.Entries.Select(e => e.FullName));
         return (snapshot, zip.Entries.Select(e => e.FullName).ToHashSet(StringComparer.Ordinal));
     }
 
     private static void Extract(string path, string folder, LibrarySnapshot snapshot, IProgress<(int, int, string?)>? progress, CancellationToken ct)
     {
         Directory.CreateDirectory(folder);
-        var fullFolder = Path.GetFullPath(folder) + Path.DirectorySeparatorChar;
         var componentFiles = snapshot.Items.Select(i => i.RelativePath).ToHashSet(StringComparer.OrdinalIgnoreCase);
         using var zip = ZipFile.OpenRead(path);
         var files = zip.Entries.Where(e => e.FullName.StartsWith(FilesPrefix, StringComparison.Ordinal) && e.Name.Length > 0).ToList();
@@ -467,9 +467,7 @@ public sealed class LibraryBackupService(
             ct.ThrowIfCancellationRequested();
             var relative = files[i].FullName[FilesPrefix.Length..];
             progress?.Report((i, files.Count, relative));
-            var target = Path.GetFullPath(Path.Combine(folder, relative.Replace('/', Path.DirectorySeparatorChar)));
-            if (!target.StartsWith(fullFolder, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException($"Недопустимый путь в копии: {relative}."); // защита от «../» в архиве
+            var target = ContainedPath.Resolve(folder, relative);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             files[i].ExtractToFile(target, overwrite: true);
             if (componentFiles.Contains(relative))
@@ -482,14 +480,6 @@ public sealed class LibraryBackupService(
         var entry = zip.CreateEntry(name, CompressionLevel.Optimal);
         await using var stream = entry.Open();
         await JsonSerializer.SerializeAsync(stream, value, Json, ct).ConfigureAwait(false);
-    }
-
-    private static string UniquePath(string folder, string name)
-    {
-        var path = Path.Combine(folder, name + ".zip");
-        for (var i = 2; File.Exists(path); i++)
-            path = Path.Combine(folder, $"{name}_{i}.zip");
-        return path;
     }
 
     private void TryDeleteFile(string path)

@@ -20,6 +20,7 @@ public sealed class LinkServer : IAsyncDisposable
     private readonly ConcurrentDictionary<LinkConnection, byte> _clients = new();
     private readonly CancellationTokenSource _cts = new();
     private Task? _acceptLoop;
+    private int _disposed;
 
     public LinkServer(string endpoint, ILogger? logger = null)
     {
@@ -43,6 +44,7 @@ public sealed class LinkServer : IAsyncDisposable
 
     public void Start()
     {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         if (_acceptLoop is not null)
             throw new InvalidOperationException("Сервер уже запущен.");
         _acceptLoop = Task.Run(() => AcceptLoopAsync(_cts.Token));
@@ -153,6 +155,7 @@ public sealed class LinkServer : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         await _cts.CancelAsync().ConfigureAwait(false);
         if (_acceptLoop is not null)
             await _acceptLoop.ConfigureAwait(false);
