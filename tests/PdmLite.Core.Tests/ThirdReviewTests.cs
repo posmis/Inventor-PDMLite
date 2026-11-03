@@ -346,7 +346,7 @@ public sealed class ScriptCatalogEdgeTests : IDisposable
 
     private string Add(string relative, string content = "x")
     {
-        var path = Path.Combine(_root, relative);
+        var path = Path.GetFullPath(Path.Combine(_root, relative));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, content);
         return path;
@@ -518,7 +518,7 @@ public sealed class CollectComponentsEdgeTests : IDisposable
 
     private string Add(string relative)
     {
-        var path = Path.Combine(Source, relative);
+        var path = Path.GetFullPath(Path.Combine(Source, relative));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, relative);
         return path;

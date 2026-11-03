@@ -161,13 +161,13 @@ public sealed class RelinkerTests : IDisposable
 
     private string Create(string relative, params string[] references)
     {
-        var path = Path.Combine(_root, relative);
+        var path = Path.GetFullPath(Path.Combine(_root, relative));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllLines(path, references.Select(r => "ref:" + r));
         return path;
     }
 
-    private string P(string relative) => Path.Combine(_root, relative);
+    private string P(string relative) => Path.GetFullPath(Path.Combine(_root, relative));
 
     private Relinker Relinker(FileLinks links) => new(links, _ => { }) { BackupRoot = Path.Combine(_root, "_backup") };
 

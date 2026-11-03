@@ -1,0 +1,28 @@
+name: Windows core tests
+
+on:
+  push:
+    branches: [main, work]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Test core, settings, IPC and file utilities on Windows
+        run: dotnet test tests/PdmLite.Core.Tests -c Release --logger "trx;LogFileName=windows-core.trx" --results-directory TestResults
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-core-test-results
+          path: TestResults/*.trx
+          if-no-files-found: warn

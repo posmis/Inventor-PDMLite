@@ -13,7 +13,7 @@ public sealed class CoreTests : IDisposable
 
     private string Touch(string relative, string content = "")
     {
-        var path = Path.Combine(_root, relative);
+        var path = Path.GetFullPath(Path.Combine(_root, relative));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, content);
         return path;

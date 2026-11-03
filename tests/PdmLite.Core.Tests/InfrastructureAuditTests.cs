@@ -67,8 +67,38 @@ public sealed class InfrastructureAuditTests : IDisposable
     {
         var target = Path.Combine(_root, "directory"); Directory.CreateDirectory(target);
         var unrelated = target + ".tmp"; File.WriteAllText(unrelated, "keep");
-        Assert.ThrowsAny<IOException>(() => AtomicFile.WriteAllText(target, "data"));
+        var failure = Record.Exception(() => AtomicFile.WriteAllText(target, "data"));
+        Assert.True(failure is IOException or UnauthorizedAccessException, failure?.ToString());
+        Assert.True(Directory.Exists(target));
         Assert.Equal("keep", File.ReadAllText(unrelated)); Assert.Single(Directory.GetFiles(_root));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AtomicWrite_OpenReaderAllowsReplacementAndKeepsOldSnapshot(bool asynchronous)
+    {
+        var file = Path.Combine(_root, "snapshot.txt");
+        AtomicFile.WriteAllText(file, "old snapshot");
+        using var reader = new StreamReader(AtomicFile.OpenRead(file));
+        if (asynchronous) await AtomicFile.WriteAllTextAsync(file, "new snapshot");
+        else AtomicFile.WriteAllText(file, "new snapshot");
+        Assert.Equal("old snapshot", await reader.ReadToEndAsync());
+        Assert.Equal("new snapshot", File.ReadAllText(file));
+        Assert.Single(Directory.GetFiles(_root));
+    }
+
+    [Fact]
+    public async Task AtomicWrites_MixedSyncAndAsyncWritersShareLockForNormalizedPath()
+    {
+        var file = Path.Combine(_root, "mixed.txt");
+        var alias = Path.Combine(_root, "unused", "..", "mixed.txt");
+        var contents = Enumerable.Range(0, 40).Select(i => $"{i}:" + new string((char)('a' + i % 26), 20000)).ToArray();
+        await Task.WhenAll(contents.Select((text, i) => i % 2 == 0
+            ? Task.Run(() => AtomicFile.WriteAllText(file, text))
+            : AtomicFile.WriteAllTextAsync(alias, text)));
+        Assert.Contains(File.ReadAllText(file), contents);
+        Assert.Single(Directory.GetFiles(_root));
     }
 
     [Fact]

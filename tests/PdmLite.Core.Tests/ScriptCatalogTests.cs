@@ -8,7 +8,7 @@ public sealed class ScriptCatalogTests : IDisposable
 
     private string Add(string relative, string content = "x")
     {
-        var path = Path.Combine(_root, relative);
+        var path = Path.GetFullPath(Path.Combine(_root, relative));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, content);
         return path;

@@ -9,7 +9,7 @@ public sealed class CollectComponentsTests : IDisposable
 
     private string Add(string relative)
     {
-        var path = Path.Combine(_root, relative);
+        var path = Path.GetFullPath(Path.Combine(_root, relative));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, relative);
         return path;
@@ -86,7 +86,6 @@ public sealed class CollectComponentsTests : IDisposable
         Assert.True(File.Exists(copy));
         Assert.False(File.GetAttributes(copy).HasFlag(FileAttributes.ReadOnly));
         Assert.Contains("Нет такой.ipt (из списка)", File.ReadAllText(report));
-        File.SetAttributes(newer, FileAttributes.Normal);
     }
 
     [Fact]
@@ -124,5 +123,10 @@ public sealed class CollectComponentsTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(target, "Деталь")));
     }
 
-    public void Dispose() => Directory.Delete(_root, true);
+    public void Dispose()
+    {
+        foreach (var file in Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories))
+            File.SetAttributes(file, FileAttributes.Normal);
+        Directory.Delete(_root, true);
+    }
 }

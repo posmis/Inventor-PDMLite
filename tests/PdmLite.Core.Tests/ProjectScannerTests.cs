@@ -10,7 +10,7 @@ public sealed class ProjectScannerTests : IDisposable
 
     private void Touch(string relative)
     {
-        var path = Path.Combine(_root, relative);
+        var path = Path.GetFullPath(Path.Combine(_root, relative));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, "");
     }

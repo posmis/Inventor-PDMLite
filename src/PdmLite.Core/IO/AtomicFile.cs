@@ -3,29 +3,53 @@ namespace PdmLite.Core.IO;
 /// <summary>Сохранение через уникальный соседний файл: ошибка и отмена оставляют прежний результат.</summary>
 public static class AtomicFile
 {
+    // Ограниченный набор блокировок не растёт с количеством файлов. Одинаковый путь
+    // использует один шлюз во всех экземплярах настроек, включая sync/async вызовы.
+    private static readonly SemaphoreSlim[] Gates = Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+
+    private static SemaphoreSlim Gate(string fullPath) =>
+        Gates[(uint)StringComparer.OrdinalIgnoreCase.GetHashCode(fullPath) % (uint)Gates.Length];
+
+    /// <summary>Открывает снимок файла, не запрещая его замену через rename в Windows.</summary>
+    public static FileStream OpenRead(string path) =>
+        new(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+
     public static void WriteAllText(string path, string text)
     {
-        var temporary = Prepare(path);
-        try { File.WriteAllText(temporary, text); File.Move(temporary, path, overwrite: true); }
-        finally { Cleanup(temporary); }
+        path = Path.GetFullPath(path);
+        var gate = Gate(path);
+        gate.Wait();
+        try
+        {
+            var temporary = Prepare(path);
+            try { File.WriteAllText(temporary, text); File.Move(temporary, path, overwrite: true); }
+            finally { Cleanup(temporary); }
+        }
+        finally { gate.Release(); }
     }
 
     public static async Task WriteAllTextAsync(string path, string text, CancellationToken ct = default)
     {
-        ct.ThrowIfCancellationRequested();
-        var temporary = Prepare(path);
+        path = Path.GetFullPath(path);
+        var gate = Gate(path);
+        await gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            await File.WriteAllTextAsync(temporary, text, ct).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
-            File.Move(temporary, path, overwrite: true);
+            var temporary = Prepare(path);
+            try
+            {
+                await File.WriteAllTextAsync(temporary, text, ct).ConfigureAwait(false);
+                ct.ThrowIfCancellationRequested();
+                File.Move(temporary, path, overwrite: true);
+            }
+            finally { Cleanup(temporary); }
         }
-        finally { Cleanup(temporary); }
+        finally { gate.Release(); }
     }
 
     private static string Prepare(string path)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         return path + "." + Guid.NewGuid().ToString("N") + ".tmp";
     }
     private static void Cleanup(string path)

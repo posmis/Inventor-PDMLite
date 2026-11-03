@@ -17,7 +17,7 @@ internal sealed class ProjectHealthCardStore(string folder)
     {
         var path = CardPath(project);
         if (!File.Exists(path)) return null;
-        await using var stream = File.OpenRead(path);
+        await using var stream = AtomicFile.OpenRead(path);
         ProjectHealthCard? card;
         try { card = await JsonSerializer.DeserializeAsync<ProjectHealthCard>(stream, Json, ct).ConfigureAwait(false); }
         catch (JsonException ex) { throw new InvalidDataException("Карточка повреждена. Выполните анализ заново.", ex); }

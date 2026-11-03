@@ -35,9 +35,9 @@ public sealed class JsonSettings<T> where T : class, new()
     {
         try
         {
-            return File.Exists(_path)
-                ? JsonSerializer.Deserialize<T>(File.ReadAllText(_path), JsonSettings.Options) ?? new T()
-                : new T();
+            if (!File.Exists(_path)) return new T();
+            using var stream = AtomicFile.OpenRead(_path);
+            return JsonSerializer.Deserialize<T>(stream, JsonSettings.Options) ?? new T();
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
         {
