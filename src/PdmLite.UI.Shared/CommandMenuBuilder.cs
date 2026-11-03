@@ -56,7 +56,7 @@ public static class CommandMenuBuilder
     }
 
     /// <summary>Плоская кнопка панели инструментов в стиле <c>Pdm.ToolButton</c>.</summary>
-    public static Button ToolButton(string title, string? icon, System.Windows.Input.ICommand command, bool showText)
+    public static Button ToolButton(string title, string? icon, System.Windows.Input.ICommand? command, bool showText)
     {
         var content = new StackPanel { Orientation = Orientation.Horizontal };
         if (PdmIcons.Image(icon) is { } image)

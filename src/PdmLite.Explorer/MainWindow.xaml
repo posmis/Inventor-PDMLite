@@ -65,28 +65,31 @@
 
         <!-- Панель инструментов: основные действия с подписями -->
         <Border DockPanel.Dock="Top" Style="{StaticResource Pdm.Toolbar}" BorderBrush="{StaticResource Pdm.Brush.Border}">
-            <ui:ToolbarPanel x:Name="Toolbar">
-                <Button Style="{StaticResource Pdm.ToolButton}" Command="{Binding OpenFolderCommand}" ToolTip="Открыть папку проекта (Ctrl+O)">
-                    <StackPanel Orientation="Horizontal">
-                        <Image Source="{StaticResource Pdm.Icon.Cmd.OpenFolder}" Style="{StaticResource Pdm.Icon16}" />
-                        <TextBlock Text="Открыть папку" Margin="5,0,2,0" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
-                <Button Style="{StaticResource Pdm.ToolButton}" Command="{Binding OpenProjectFileCommand}" ToolTip="Открыть файл проекта Inventor (.ipj)">
-                    <StackPanel Orientation="Horizontal">
-                        <Image Source="{StaticResource Pdm.Icon.Cmd.OpenProjectFile}" Style="{StaticResource Pdm.Icon16}" />
-                        <TextBlock Text="Открыть .ipj" Margin="5,0,2,0" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
-                <Rectangle Style="{StaticResource Pdm.ToolSeparator}" />
-                <Button Style="{StaticResource Pdm.ToolButton}" Command="{Binding RefreshCommand}" ToolTip="Обновить дерево проекта (F5)">
-                    <StackPanel Orientation="Horizontal">
-                        <Image Source="{StaticResource Pdm.Icon.Cmd.Refresh}" Style="{StaticResource Pdm.Icon16}" />
-                        <TextBlock Text="Обновить" Margin="5,0,2,0" VerticalAlignment="Center" />
-                    </StackPanel>
-                </Button>
-                <!-- Сюда добавляются команды модулей -->
-            </ui:ToolbarPanel>
+            <WrapPanel x:Name="Toolbar" VerticalAlignment="Top">
+                <GroupBox Header="Проект" Margin="0,0,8,0" Padding="4,2,4,4" VerticalAlignment="Top">
+                    <WrapPanel x:Name="ProjectToolbar" MaxWidth="550">
+                        <Button Style="{StaticResource Pdm.ToolButton}" Command="{Binding OpenFolderCommand}" ToolTip="Открыть папку проекта (Ctrl+O)">
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="{StaticResource Pdm.Icon.Cmd.OpenFolder}" Style="{StaticResource Pdm.Icon16}" />
+                                <TextBlock Text="Открыть папку" Margin="5,0,2,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource Pdm.ToolButton}" Command="{Binding OpenProjectFileCommand}" ToolTip="Открыть файл проекта Inventor (.ipj)">
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="{StaticResource Pdm.Icon.Cmd.OpenProjectFile}" Style="{StaticResource Pdm.Icon16}" />
+                                <TextBlock Text="Открыть .ipj" Margin="5,0,2,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button Style="{StaticResource Pdm.ToolButton}" Command="{Binding RefreshCommand}" ToolTip="Обновить дерево проекта (F5)">
+                            <StackPanel Orientation="Horizontal">
+                                <Image Source="{StaticResource Pdm.Icon.Cmd.Refresh}" Style="{StaticResource Pdm.Icon16}" />
+                                <TextBlock Text="Обновить" Margin="5,0,2,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </WrapPanel>
+                </GroupBox>
+                <!-- Остальные функциональные группы добавляются из команд модулей. -->
+            </WrapPanel>
         </Border>
 
         <!-- Строка состояния: проект | связь с Inventor | активный документ -->
