@@ -15,7 +15,7 @@ public sealed class ProjectHealthTests : IDisposable
     public ProjectHealthTests() => Directory.CreateDirectory(Root);
     private string FileAt(string name, string content = "part")
     {
-        var path = Path.Combine(Root, name);
+        var path = Path.GetFullPath(Path.Combine(Root, name));
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, content);
         return path;
@@ -24,7 +24,9 @@ public sealed class ProjectHealthTests : IDisposable
     [Fact]
     public async Task Analyze_SavesAndReloadsCard_WithoutRereadingProperties()
     {
-        FileAt("Болт.ipt"); FileAt("Узел.iam"); FileAt("Узел.idw"); FileAt("Взрыв.ipn");
+        var part = FileAt("Болт.ipt"); var assembly = FileAt("Узел.iam"); FileAt("Узел.idw"); FileAt("Взрыв.ipn");
+        _store.Read = path => new DocumentProperties { PartNumber = "A", Title = "Название",
+            References = path == part ? [] : path == assembly ? [part] : [assembly] };
         var service = Service;
         var result = await service.AnalyzeAsync(Project);
         Assert.Equal(4, result.Files);

@@ -8,7 +8,7 @@ public sealed record ProjectHealthIssue(string Severity, string Category, string
 public sealed record ProjectHealthCard(
     int Version, ProjectInfo Project, DateTime CreatedUtc, int Files, int Read,
     int Parts, int Assemblies, int Drawings, int Presentations,
-    Dictionary<string, string> Inputs, List<ProjectHealthIssue> Issues)
+    Dictionary<string, string> Inputs, List<ProjectHealthIssue> Issues, int AnalysisVersion = 1)
 {
     public int Errors => Issues.Count(i => i.Severity == "Ошибка");
     public int Warnings => Issues.Count(i => i.Severity == "Предупреждение");
@@ -20,6 +20,7 @@ public sealed class ProjectHealthService(
     IDocumentPropertyStore properties, string folder,
     Func<ProjectInfo, string, IEnumerable<string>, string?>? locate = null)
 {
+    private const int CurrentAnalysisVersion = 2;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ProjectHealthCardStore _cards = new(folder);
     public string CardPath(ProjectInfo project) => _cards.CardPath(project);
@@ -28,6 +29,7 @@ public sealed class ProjectHealthService(
     public async Task<bool> IsCurrentAsync(ProjectHealthCard card, CancellationToken ct = default)
     {
         ProjectHealthCardStore.Validate(card);
+        if (card.AnalysisVersion != CurrentAnalysisVersion) return false;
         var current = await SnapshotAsync(card.Project, ct);
         foreach (var input in card.Inputs.Where(i => !current.ContainsKey(i.Key)))
             current[input.Key] = Stamp(input.Key);
@@ -46,6 +48,8 @@ public sealed class ProjectHealthService(
             var files = before.Keys.Where(IsDocument).ToList();
             var issues = new List<ProjectHealthIssue>();
             var documents = new List<(string Path, DocumentProperties Properties)>();
+            var usedModels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var usageComplete = true;
             var inputs = new Dictionary<string, string>(before, StringComparer.OrdinalIgnoreCase);
             for (var i = 0; i < files.Count; i++)
             {
@@ -56,6 +60,7 @@ public sealed class ProjectHealthService(
                 try { props = await properties.ReadWithoutGeometryAsync(path, ct); }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
+                    usageComplete = false;
                     issues.Add(new("Ошибка", "Не прочитан", path, ex.Message));
                     continue;
                 }
@@ -73,20 +78,45 @@ public sealed class ProjectHealthService(
                     {
                         var target = Path.GetFullPath(reference);
                         if (!inputs.ContainsKey(target)) inputs[target] = Stamp(target);
-                        if (File.Exists(target)) continue;
+                        if (File.Exists(target))
+                        {
+                            if (ReferenceIndexService.Key(target) != ReferenceIndexService.Key(path))
+                                usedModels.Add(ReferenceIndexService.Key(target));
+                            continue;
+                        }
                         var found = locate?.Invoke(project, target, [path]);
                         if (found is not null && File.Exists(found))
                         {
                             found = Path.GetFullPath(found);
                             if (!inputs.ContainsKey(found)) inputs[found] = Stamp(found);
+                            if (ReferenceIndexService.Key(found) != ReferenceIndexService.Key(path))
+                                usedModels.Add(ReferenceIndexService.Key(found));
                             issues.Add(new("Предупреждение", "Ссылка по другому пути", path, $"{target} → {found}"));
                         }
                         else issues.Add(new("Ошибка", "Ненайденная ссылка", path, target));
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
-                    { issues.Add(new("Ошибка", "Проверка ссылки", path, $"{reference}: {ex.Message}")); }
+                    { usageComplete = false; issues.Add(new("Ошибка", "Проверка ссылки", path, $"{reference}: {ex.Message}")); }
                 }
             }
+            progress?.Report("Поиск деталей и сборок без использований…");
+            if (usageComplete)
+            {
+                foreach (var path in files.Where(p => DocumentKinds.FromPath(p) is DocumentKind.Part or DocumentKind.Assembly))
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (usedModels.Contains(ReferenceIndexService.Key(path))) continue;
+                    var assembly = DocumentKinds.FromPath(path) == DocumentKind.Assembly;
+                    issues.Add(new("Предупреждение", assembly ? "Неиспользуемые сборки" : "Неиспользуемые детали", path,
+                        "На этот файл не ссылается ни один другой прочитанный документ проекта (сборка, чертёж, презентация или деталь). " +
+                        (assembly ? "Это может быть самостоятельная или главная сборка проекта. " : "Это может быть самостоятельная деталь. ") +
+                        "Использование в других проектах не проверялось. Кандидат для проверки, не рекомендация к удалению."));
+                }
+            }
+            else
+                issues.Add(new("Предупреждение", "Поиск неиспользуемых не завершён", project.RootFolder,
+                    "Не все документы или ссылки удалось прочитать. Список неиспользуемых деталей и сборок не сформирован, " +
+                    "чтобы не пометить используемые файлы как лишние. Исправьте ошибки чтения и повторите анализ."));
             foreach (var group in files.GroupBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
                 foreach (var path in group)
                     issues.Add(new("Предупреждение", "Одинаковое имя файла", path, string.Join(Environment.NewLine, group.Where(p => p != path))));
@@ -105,7 +135,7 @@ public sealed class ProjectHealthService(
             int Count(DocumentKind kind) => files.Count(p => DocumentKinds.FromPath(p) == kind);
             var card = new ProjectHealthCard(1, project, DateTime.UtcNow, files.Count, documents.Count,
                 Count(DocumentKind.Part), Count(DocumentKind.Assembly), Count(DocumentKind.Drawing), Count(DocumentKind.Presentation),
-                inputs, issues.OrderBy(i => i.Severity == "Ошибка" ? 0 : 1).ThenBy(i => i.Category).ThenBy(i => i.Path).ToList());
+                inputs, issues.OrderBy(i => i.Severity == "Ошибка" ? 0 : 1).ThenBy(i => i.Category).ThenBy(i => i.Path).ToList(), CurrentAnalysisVersion);
             ct.ThrowIfCancellationRequested();
             await _cards.SaveAsync(card, ct);
             return card;

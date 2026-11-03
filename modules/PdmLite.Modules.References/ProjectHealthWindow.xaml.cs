@@ -72,7 +72,7 @@ public partial class ProjectHealthWindow : Window
         {
             var current = await Task.Run(() => _service.IsCurrentAsync(card, ct), ct);
             StatusText.Text = current ? "Карточка актуальна — " + card.Summary
-                : "Карточка устарела: проект изменился. Запустите полный анализ для обновления.";
+                : "Карточка устарела: изменился проект или состав проверок. Запустите анализ заново.";
             ProgressText.Text = "";
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

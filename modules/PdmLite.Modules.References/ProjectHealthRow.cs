@@ -30,6 +30,8 @@ public sealed record ProjectHealthRow(ProjectHealthIssue Issue, string Root)
         "Ссылка по другому пути" => "Найден: " + FileName(Details.Split('→')[^1].Trim()),
         "Одинаковое имя файла" or "Повтор обозначения" =>
             $"Совпадение с другими документами: {Details.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).Length}",
+        "Неиспользуемые детали" or "Неиспользуемые сборки" => "Нет ссылок из документов проекта",
+        "Поиск неиспользуемых не завершён" => "Сначала исправьте ошибки чтения",
         "Не прочитан" => "Не удалось прочитать документ",
         "Проверка ссылки" => "Не удалось проверить ссылку",
         _ => Details.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "",
