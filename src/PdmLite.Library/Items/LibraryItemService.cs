@@ -168,6 +168,7 @@ public sealed class LibraryItemService(
 
         // Резервные копии на время операции: свойства в файле перезаписываются, сборки перевязываются.
         var backups = new List<(string Path, string Backup)> { (oldFull, LibraryStorage.Backup(oldFull)) };
+        var preserveBackups = false;
         try
         {
             LibraryStorage.ClearReadOnly(oldFull);
@@ -220,22 +221,25 @@ public sealed class LibraryItemService(
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
             logger.LogInformation("Компонент библиотеки изменён: {Before} → {After}", before.Designation, item.Designation);
         }
-        catch
+        catch (Exception failure)
         {
-            if (moved)
-                TryDelete(newFull);
-            foreach (var (path, backup) in backups)
-                TryRestore(backup, path);
+            var errors = new List<Exception>();
+            if (moved) AttemptRollback(() => LibraryStorage.Delete(newFull), newFull, errors);
+            RestoreBackups(backups, errors);
+            if (errors.Count > 0)
+            {
+                preserveBackups = true;
+                throw new LibraryRollbackException(failure, errors, backups.Select(b => new RecoveryCopy(b.Path, b.Backup)));
+            }
             throw;
         }
         finally
         {
-            foreach (var (_, backup) in backups)
-                TryDelete(backup);
+            if (!preserveBackups)
+                foreach (var (_, backup) in backups) TryDelete(backup);
         }
 
-        if (moved)
-            storage.RemoveEmptyFolders(Path.GetDirectoryName(oldFull)!);
+        if (moved) CleanupFolders(storage, Path.GetDirectoryName(oldFull)!);
     }
 
     /// <summary>
@@ -388,21 +392,25 @@ public sealed class LibraryItemService(
     private async Task WriteSafelyAsync(string full, DocumentPropertyChanges changes, CancellationToken ct)
     {
         var backup = LibraryStorage.Backup(full);
+        var preserveBackup = false;
         try
         {
             LibraryStorage.ClearReadOnly(full);
             await properties.WriteAsync(full, changes, ct).ConfigureAwait(false);
             LibraryStorage.MakeReadOnly(full);
         }
-        catch
+        catch (Exception failure)
         {
-            TryRestore(backup, full);
+            var errors = new List<Exception>();
+            RestoreBackups([(full, backup)], errors);
+            if (errors.Count > 0)
+            {
+                preserveBackup = true;
+                throw new LibraryRollbackException(failure, errors, [new RecoveryCopy(full, backup)]);
+            }
             throw;
         }
-        finally
-        {
-            TryDelete(backup);
-        }
+        finally { if (!preserveBackup) TryDelete(backup); }
     }
 
     /// <summary>Запоминает геометрию компонента (файл не меняется) — для поиска дубликатов.</summary>
@@ -641,6 +649,7 @@ public sealed class LibraryItemService(
 
             var backups = new List<(string Path, string Backup)>();
             string? staged = null;
+            var preserveBackups = false;
             try
             {
                 // Сборки библиотеки: ссылки в файлах и состав в базе — на оставляемый компонент.
@@ -671,20 +680,23 @@ public sealed class LibraryItemService(
             }
             catch (Exception failure)
             {
-                foreach (var (path, backup) in backups)
-                    TryRestore(backup, path);
+                var errors = new List<Exception>();
+                RestoreBackups(backups, errors);
                 if (staged is not null && File.Exists(staged))
+                    AttemptRollback(() => File.Move(staged, removeFull), removeFull, errors);
+                if (errors.Count > 0)
                 {
-                    try { File.Move(staged, removeFull); }
-                    catch (Exception restore) when (restore is IOException or UnauthorizedAccessException)
-                    { throw new AggregateException($"Не удалось вернуть файл после сбоя объединения. Копия: {staged}", failure, restore); }
+                    preserveBackups = true;
+                    var copies = backups.Select(b => new RecoveryCopy(b.Path, b.Backup)).ToList();
+                    if (staged is not null && File.Exists(staged)) copies.Add(new(removeFull, staged));
+                    throw new LibraryRollbackException(failure, errors, copies);
                 }
                 throw;
             }
             finally
             {
-                foreach (var (_, backup) in backups)
-                    TryDelete(backup);
+                if (!preserveBackups)
+                    foreach (var (_, backup) in backups) TryDelete(backup);
             }
 
             if (staged is not null) TryDelete(staged);
@@ -785,16 +797,25 @@ public sealed class LibraryItemService(
 
     private static bool SamePath(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
 
-    private void TryRestore(string backup, string path)
+    private void RestoreBackups(IEnumerable<(string Path, string Backup)> backups, List<Exception> errors)
     {
-        try
-        {
-            LibraryStorage.Restore(backup, path);
-        }
+        foreach (var (path, backup) in backups)
+            AttemptRollback(() => LibraryStorage.Restore(backup, path), path, errors);
+    }
+    private void AttemptRollback(Action restore, string path, List<Exception> errors)
+    {
+        try { restore(); }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Не удалось восстановить {Path} из резервной копии {Backup}", path, backup);
+            logger.LogError(ex, "Неполное восстановление {Path}", path);
+            errors.Add(new IOException($"{path}: {ex.Message}", ex));
         }
+    }
+    private void CleanupFolders(LibraryStorage storage, string folder)
+    {
+        try { storage.RemoveEmptyFolders(folder); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        { logger.LogWarning(ex, "Изменение сохранено, но пустая папка не удалена: {Path}", folder); }
     }
 
     /// <summary>Удаляет файл. Не удалось — не ошибка операции, только запись в журнал.</summary>

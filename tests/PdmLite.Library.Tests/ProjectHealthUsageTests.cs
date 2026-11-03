@@ -154,6 +154,16 @@ public sealed class ProjectHealthUsageTests : IDisposable
         Assert.DoesNotContain(Unused(card), i => i.Path == external);
     }
 
+    [Fact]
+    public async Task UnresolvedMissingReference_DoesNotMarkExistingModelsAsUnused()
+    {
+        Add("moved/part.ipt"); Add("assembly.iam", Path.Combine(_home, "old", "part.ipt"));
+        var card = await Service.AnalyzeAsync(Project);
+        Assert.Empty(Unused(card));
+        Assert.Contains(card.Issues, i => i.Category == "Ненайденная ссылка");
+        Assert.Contains(card.Issues, i => i.Category == "Поиск неиспользуемых не завершён");
+    }
+
     public void Dispose() => Directory.Delete(_home, true);
     private sealed class Store : IDocumentPropertyStore
     {

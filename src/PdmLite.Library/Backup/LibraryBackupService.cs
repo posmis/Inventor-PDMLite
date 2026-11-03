@@ -275,6 +275,25 @@ public sealed class LibraryBackupService(
     public async Task<BackupInfo> RestoreAsync(string path, IProgress<(int Done, int Total, string? Current)>? progress = null,
         CancellationToken ct = default)
     {
+        // Проверяем и распаковываем только частную копию. Исходный ZIP может быть
+        // изменён или удалён (в том числе Prune) во время BeforeRestore.
+        var work = Path.Combine(Path.GetTempPath(), "pdmlite-restore-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(work);
+        var pinned = Path.Combine(work, "archive.zip");
+        try
+        {
+            await using (var source = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            await using (var target = new FileStream(pinned, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                await source.CopyToAsync(target, ct).ConfigureAwait(false);
+            await using var pinnedReadLock = new FileStream(pinned, FileMode.Open, FileAccess.Read, FileShare.Read);
+            return await RestorePinnedAsync(pinned, path, progress, ct).ConfigureAwait(false);
+        }
+        finally { TryDeleteFolder(work); }
+    }
+
+    private async Task<BackupInfo> RestorePinnedAsync(string path, string originalPath,
+        IProgress<(int Done, int Total, string? Current)>? progress, CancellationToken ct)
+    {
         var plan = await PlanRestoreAsync(path, ct).ConfigureAwait(false);
         if (plan.IsDamaged)
             throw new InvalidDataException("Копия повреждена: " + string.Join("; ", plan.MissingFiles.Take(5)) + ".");
@@ -318,7 +337,7 @@ public sealed class LibraryBackupService(
         {
             Directory.Move(staging, root);
             staged = true;
-            await ReplaceDatabaseAsync(snapshot, Path.GetFileName(path), ct).ConfigureAwait(false);
+            await ReplaceDatabaseAsync(snapshot, Path.GetFileName(originalPath), ct).ConfigureAwait(false);
         }
         catch
         {
@@ -331,7 +350,7 @@ public sealed class LibraryBackupService(
 
         if (hadRoot)
             TryDeleteFolder(previous);
-        logger.LogInformation("Библиотека восстановлена из {Path}; копия перед восстановлением: {Before}", path, before.Path);
+        logger.LogInformation("Библиотека восстановлена из {Path}; копия перед восстановлением: {Before}", originalPath, before.Path);
         return before;
     }
 

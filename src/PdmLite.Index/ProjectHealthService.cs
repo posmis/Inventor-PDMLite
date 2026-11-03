@@ -20,7 +20,7 @@ public sealed class ProjectHealthService(
     IDocumentPropertyStore properties, string folder,
     Func<ProjectInfo, string, IEnumerable<string>, string?>? locate = null)
 {
-    private const int CurrentAnalysisVersion = 2;
+    private const int CurrentAnalysisVersion = 3;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly ProjectHealthCardStore _cards = new(folder);
     public string CardPath(ProjectInfo project) => _cards.CardPath(project);
@@ -93,7 +93,11 @@ public sealed class ProjectHealthService(
                                 usedModels.Add(ReferenceIndexService.Key(found));
                             issues.Add(new("Предупреждение", "Ссылка по другому пути", path, $"{target} → {found}"));
                         }
-                        else issues.Add(new("Ошибка", "Ненайденная ссылка", path, target));
+                        else
+                        {
+                            usageComplete = false;
+                            issues.Add(new("Ошибка", "Ненайденная ссылка", path, target));
+                        }
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     { usageComplete = false; issues.Add(new("Ошибка", "Проверка ссылки", path, $"{reference}: {ex.Message}")); }

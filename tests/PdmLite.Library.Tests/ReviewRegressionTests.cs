@@ -11,7 +11,7 @@ using PdmLite.Library.Storage;
 
 namespace PdmLite.Library.Tests;
 
-public sealed class ReviewRegressionTests : IDisposable
+public sealed partial class ReviewRegressionTests : IDisposable
 {
     private readonly TempFolders _folders = new();
     private readonly SwitchableStore _store = new();
@@ -199,14 +199,18 @@ public sealed class ReviewRegressionTests : IDisposable
     private sealed class SwitchableStore : IDocumentPropertyStore
     {
         public FileBackedStore Inner { get; } = new();
+        public Action<string>? BeforeWrite { get; set; }
+        public Action<string>? BeforeReplace { get; set; }
         public HashSet<string> Failed { get; } = new(StringComparer.OrdinalIgnoreCase);
         public bool IsAvailable => true;
         public string? UnavailableReason => null;
         public Task<DocumentProperties> ReadAsync(string path, CancellationToken cancellationToken = default) => ReadWithoutGeometryAsync(path, cancellationToken);
         public Task<DocumentProperties> ReadWithoutGeometryAsync(string path, CancellationToken cancellationToken = default) =>
             Failed.Contains(path) ? throw new IOException("Unreadable parent") : Inner.ReadWithoutGeometryAsync(path, cancellationToken);
-        public Task WriteAsync(string path, DocumentPropertyChanges changes, CancellationToken cancellationToken = default) => Inner.WriteAsync(path, changes, cancellationToken);
-        public Task ReplaceReferencesAsync(string path, IReadOnlyDictionary<string, string> map, CancellationToken cancellationToken = default) => Inner.ReplaceReferencesAsync(path, map, cancellationToken);
+        public Task WriteAsync(string path, DocumentPropertyChanges changes, CancellationToken cancellationToken = default)
+        { BeforeWrite?.Invoke(path); return Inner.WriteAsync(path, changes, cancellationToken); }
+        public Task ReplaceReferencesAsync(string path, IReadOnlyDictionary<string, string> map, CancellationToken cancellationToken = default)
+        { BeforeReplace?.Invoke(path); return Inner.ReplaceReferencesAsync(path, map, cancellationToken); }
     }
     public void Dispose() => _folders.Dispose();
 }

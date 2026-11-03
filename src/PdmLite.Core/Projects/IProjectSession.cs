@@ -8,7 +8,10 @@ public interface IProjectSession
     ProjectInfo? Project { get; }
     ProjectItem? Root { get; }
 
-    /// <summary>Открывает проект, строит дерево и публикует <see cref="Events.ProjectOpened"/>.</summary>
+    /// <summary>
+    /// Открывает проект и строит дерево. События ProjectOpened доставляются в порядке фиксации:
+    /// при конкурентном или повторном открытии доставка может завершиться после возврата метода.
+    /// </summary>
     Task OpenAsync(ProjectInfo project, CancellationToken cancellationToken = default);
 
     /// <summary>Перестраивает дерево текущего проекта.</summary>

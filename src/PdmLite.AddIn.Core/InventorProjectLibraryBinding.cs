@@ -32,11 +32,10 @@ public sealed class InventorProjectLibraryBinding(Inv.Application inventor, IUiD
                 throw new InvalidOperationException("Закройте все документы Inventor и повторите: проект нельзя менять, пока в нём открыты файлы.");
 
             Directory.CreateDirectory(folder);
-            Find(project, libraryName)?.Delete();
-            project.LibraryPaths.Add(libraryName, folder);
-
-            if (Find(project, libraryName) is not { } added || !SameFolder(added.Path, folder))
-                throw new InvalidOperationException("Inventor не сохранил библиотеку в проекте. Добавьте её вручную: Проекты → Библиотеки.");
+            ProjectLibraryUpdate.Apply(folder,
+                () => Find(project, libraryName)?.Path,
+                () => Find(project, libraryName)?.Delete(),
+                path => project.LibraryPaths.Add(libraryName, path));
         });
 
     private static Inv.ProjectPath? Find(Inv.DesignProject project, string name)
