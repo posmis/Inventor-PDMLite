@@ -21,4 +21,7 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="../../modules/PdmLite.Modules.References/ProjectHealthRow.cs" Link="ProjectHealthRow.cs" />
+  </ItemGroup>
 </Project>
