@@ -1,6 +1,6 @@
 # Первый релиз PdmLite 0.1
 
-Два результата одной сборки:
+Два варианта установщика:
 
 - `PdmLite-Setup-0.1-Online.exe`: Explorer, плагин и начальная библиотека внутри; PostgreSQL скачивается при первой установке.
 - `PdmLite-Setup-0.1-Offline.exe`: дополнительно содержит установщик PostgreSQL; интернет при установке не нужен.
@@ -12,20 +12,23 @@
 1. Закрыть Inventor и PdmLite Explorer.
 2. Один раз установить [.NET 8 SDK x64](https://dotnet.microsoft.com/download/dotnet/8.0) и [Inno Setup 6.3 или новее](https://jrsoftware.org/isdl.php). После установки открыть новый терминал, если используете командную строку.
 3. Сохранить резервную копию PdmLite как `%USERPROFILE%\Documents\PdmLite-Library-ver-0.1.zip`. Для перенаправленных «Документов» используется реальная системная папка, включая OneDrive. Архив в Git добавлять не нужно.
-4. Открыть папку **исходников**, где лежат `PdmLite.sln`, `deploy` и файл **`build-installers.cmd`**. Дважды щёлкнуть последний. Папка `Документы\PdmLite` на скриншоте — данные приложения, не исходники.
-5. Дождаться сообщения «Готово». Откроется `artifacts\release` с двумя EXE и `SHA256SUMS.txt`.
+4. Открыть папку **исходников**, где лежат `PdmLite.sln`, `deploy` и файлы `build-installer-online.cmd`, `build-installer-offline.cmd`. Запустить нужный: первый собирает Online, второй — Offline. Папка `Документы\PdmLite` на скриншоте — данные приложения, не исходники.
+5. Дождаться сообщения «Готово». Откроется `artifacts\release` с выбранным EXE и `SHA256SUMS.txt`. Для второго варианта запустить второй CMD-файл.
 
 Если исходников на компьютере нет: скачать ZIP ветки `work` из GitHub, распаковать и выполнить шаг 4. Репозиторий: https://github.com/posmis/Inventor-PDMLite/tree/work (Code → Download ZIP).
 
-Сборка требует интернета для NuGet и получения PostgreSQL, даже если готовится автономный установщик. Можно передать ранее скачанный официальный EXE PostgreSQL; его SHA-256 всё равно проверяется:
+Обе сборки требуют интернета для NuGet. Offline дополнительно загружает PostgreSQL; Online при сборке PostgreSQL не скачивает. Можно передать ранее скачанный официальный EXE PostgreSQL; его SHA-256 всё равно проверяется:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\deploy\build-release.ps1 `
+  -Variant Offline `
   -LibraryBackup 'C:\Users\ilyap\Documents\PdmLite-Library-ver-0.1.zip' `
   -PostgreSqlInstaller 'D:\Downloads\postgresql-16.14-1-windows-x64.exe'
 ```
 
 Компилятор Inno Setup автоматически ищется в PATH, реестре Windows, обеих папках Program Files и пользовательской папке Programs. Если он установлен в нестандартное место и не найден, передайте `-IsccPath 'D:\Inno Setup 6\ISCC.exe'`.
+
+Для сборки обоих вариантов одной командой можно запустить `deploy\build-release.ps1 -Variant Both`.
 
 Путь к исходникам вычисляется автоматически относительно скрипта. Выходные файлы и копия библиотеки находятся в игнорируемой Git папке `artifacts`. Установщики содержат **полную копию переданной библиотеки**: распространяйте их только тем, кому она предназначена. Если библиотека слишком велика для единого EXE, Inno остановит сборку; разделение установщика на части пока не предусмотрено.
 
