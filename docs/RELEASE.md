@@ -12,7 +12,7 @@
 1. Закрыть Inventor и PdmLite Explorer.
 2. Один раз установить [.NET 8 SDK x64](https://dotnet.microsoft.com/download/dotnet/8.0) и [Inno Setup 6.3 или новее](https://jrsoftware.org/isdl.php). После установки открыть новый терминал, если используете командную строку.
 3. Сохранить резервную копию PdmLite как `%USERPROFILE%\Documents\PdmLite-Library-ver-0.1.zip`. Для перенаправленных «Документов» используется реальная системная папка, включая OneDrive. Архив в Git добавлять не нужно.
-4. Открыть папку **исходников**, где лежат `PdmLite.sln`, `deploy` и файл **«Собрать установщики.cmd»**. Дважды щёлкнуть последний. Папка `Документы\PdmLite` на скриншоте — данные приложения, не исходники.
+4. Открыть папку **исходников**, где лежат `PdmLite.sln`, `deploy` и файл **`build-installers.cmd`**. Дважды щёлкнуть последний. Папка `Документы\PdmLite` на скриншоте — данные приложения, не исходники.
 5. Дождаться сообщения «Готово». Откроется `artifacts\release` с двумя EXE и `SHA256SUMS.txt`.
 
 Если исходников на компьютере нет: скачать ZIP ветки `work` из GitHub, распаковать и выполнить шаг 4. Репозиторий: https://github.com/posmis/Inventor-PDMLite/tree/work (Code → Download ZIP).
