@@ -1,0 +1,6 @@
+{
+  "Version": "16.14-1",
+  "Url": "https://get.enterprisedb.com/postgresql/postgresql-16.14-1-windows-x64.exe",
+  "Sha256": "D389834DF279A9B7CE4B4A030B6545FD0BEFB05385FF66932AC37454AD9B9312",
+  "ManifestSource": "https://raw.githubusercontent.com/microsoft/winget-pkgs/master/manifests/p/PostgreSQL/PostgreSQL/16/16.14-1/PostgreSQL.PostgreSQL.16.installer.yaml"
+}

@@ -1,0 +1,76 @@
+﻿<#
+.SYNOPSIS
+    Builds both PdmLite 0.1 installers on Windows with Inventor 2025.
+.EXAMPLE
+    .\deploy\build-release.ps1
+.EXAMPLE
+    .\deploy\build-release.ps1 -LibraryBackup 'D:\Library.zip'
+#>
+param(
+    [string]$LibraryBackup = (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'PdmLite-Library-ver-0.1.zip'),
+    [string]$IsccPath,
+    [string]$PostgreSqlInstaller,
+    [string]$InventorInteropPath = (Join-Path $env:ProgramFiles 'Autodesk\Inventor 2025\Bin\Public Assemblies\Autodesk.Inventor.Interop.dll')
+)
+$ErrorActionPreference = 'Stop'
+$repo = Split-Path -Parent $PSScriptRoot
+$build = Join-Path $repo 'artifacts\installer'
+$payload = Join-Path $build 'payload'
+$output = Join-Path $repo 'artifacts\release'
+$pg = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'installer\postgresql.json') -Raw | ConvertFrom-Json
+
+if (-not (Test-Path -LiteralPath $LibraryBackup -PathType Leaf)) { throw "Не найден архив библиотеки: $LibraryBackup" }
+if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { throw 'Установите .NET 8 SDK x64: https://dotnet.microsoft.com/download/dotnet/8.0' }
+if (-not (Test-Path -LiteralPath $InventorInteropPath)) { throw "Не найден Inventor 2025 API: $InventorInteropPath" }
+if (Get-Process -Name Inventor,PdmLite.Explorer -ErrorAction SilentlyContinue) { throw 'Закройте Inventor и PdmLite Explorer.' }
+if (-not $IsccPath) {
+    $candidate = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+    if ($candidate) { $IsccPath = $candidate.Source }
+    else { $IsccPath = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe' }
+}
+if (-not (Test-Path -LiteralPath $IsccPath)) { throw 'Установите Inno Setup 6.3 или новее: https://jrsoftware.org/isdl.php' }
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $LibraryBackup).Path)
+try {
+    if (-not $zip.GetEntry('manifest.json') -or -not $zip.GetEntry('data/library.json')) { throw 'Требуется ZIP резервной копии PdmLite, а не обычная папка с деталями.' }
+} finally { $zip.Dispose() }
+
+New-Item -ItemType Directory -Force -Path $build,$output | Out-Null
+if (Test-Path -LiteralPath $payload) { Remove-Item -LiteralPath $payload -Recurse -Force }
+New-Item -ItemType Directory -Force -Path (Join-Path $payload 'Setup') | Out-Null
+
+function Publish-PdmLite([string]$Project, [string]$Destination, [bool]$Standalone) {
+    $arguments = @('publish', (Join-Path $repo $Project), '-c', 'Release', '-r', 'win-x64', '--self-contained', $Standalone.ToString().ToLowerInvariant(), '-o', $Destination,
+        '-p:Version=0.1.0', '-p:PublishSingleFile=false', '-p:PublishTrimmed=false', '-p:PdmLiteRegisterAddIn=false', "-p:InventorInteropPath=$InventorInteropPath")
+    & dotnet @arguments
+    if ($LASTEXITCODE -ne 0) { throw "Не удалось собрать $Project" }
+}
+Write-Host 'Сборка готовых приложений...' -ForegroundColor Cyan
+Publish-PdmLite 'src\PdmLite.AddIn\PdmLite.AddIn.csproj' (Join-Path $payload 'AddIn') $false
+Publish-PdmLite 'src\PdmLite.AddIn.Core\PdmLite.AddIn.Core.csproj' (Join-Path $payload 'AddIn\core') $false
+Publish-PdmLite 'src\PdmLite.Explorer\PdmLite.Explorer.csproj' (Join-Path $payload 'Explorer') $true
+Publish-PdmLite 'tools\PdmLite.Setup\PdmLite.Setup.csproj' (Join-Path $payload 'Setup') $true
+# Apprentice must resolve the API also outside the Inventor process.
+Copy-Item -LiteralPath $InventorInteropPath -Destination (Join-Path $payload 'Explorer\Autodesk.Inventor.Interop.dll')
+Copy-Item -LiteralPath $LibraryBackup -Destination (Join-Path $payload 'Setup\library.zip')
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'PdmLite.addin.template') -Destination (Join-Path $payload 'Setup')
+Copy-Item -Path (Join-Path $PSScriptRoot 'installer\install-postgresql-machine.ps1'),(Join-Path $PSScriptRoot 'installer\postgresql.json') -Destination (Join-Path $payload 'Setup')
+
+# A local, previously downloaded EXE is accepted only with the same pinned hash.
+$pgFile = Join-Path $payload 'Setup\postgresql.exe'
+if ($PostgreSqlInstaller) { Copy-Item -LiteralPath $PostgreSqlInstaller -Destination $pgFile }
+else {
+    Write-Host 'Загрузка PostgreSQL для автономного установщика...' -ForegroundColor Cyan
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -Uri $pg.Url -OutFile $pgFile -UseBasicParsing
+}
+if ((Get-FileHash -LiteralPath $pgFile -Algorithm SHA256).Hash -ne $pg.Sha256) { throw 'Контрольная сумма PostgreSQL не совпала. Сборка остановлена.' }
+foreach ($variant in @('Online','Offline')) {
+    & $IsccPath "/DPayloadDir=$payload" "/DOutputDir=$output" "/DVariant=$variant" (Join-Path $PSScriptRoot 'installer\PdmLite.iss')
+    if ($LASTEXITCODE -ne 0) { throw "Не удалось собрать установщик $variant" }
+}
+$hashes = Get-ChildItem -LiteralPath $output -Filter 'PdmLite-Setup-0.1-*.exe' | Get-FileHash -Algorithm SHA256
+$hashes | ForEach-Object { '{0}  {1}' -f $_.Hash, [IO.Path]::GetFileName($_.Path) } | Set-Content -LiteralPath (Join-Path $output 'SHA256SUMS.txt') -Encoding ASCII
+Write-Host "Готово: $output" -ForegroundColor Green
+Start-Process explorer.exe -ArgumentList ('"{0}"' -f $output)

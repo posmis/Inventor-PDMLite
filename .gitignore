@@ -29,3 +29,6 @@ appsettings.Local.json
 # OS
 Thumbs.db
 .DS_Store
+
+# Installer payloads contain private library backups and large redistributables.
+artifacts/

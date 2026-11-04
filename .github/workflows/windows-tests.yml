@@ -21,6 +21,17 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Test core, settings, IPC and file utilities on Windows
         run: dotnet test tests/PdmLite.Core.Tests -c Release --logger "trx;LogFileName=windows-core.trx" --results-directory TestResults
+      - name: Build installer bootstrapper
+        run: dotnet build tools/PdmLite.Setup -c Release
+      - name: Check installer scripts and compile online and offline recipes
+        shell: powershell
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --version=6.4.3 --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+          }
+          & .\deploy\installer\test-installer.ps1 -IsccPath $iscc
       - name: Start isolated PostgreSQL for library tests
         if: ${{ !cancelled() }}
         shell: pwsh

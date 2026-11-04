@@ -22,6 +22,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../../src/PdmLite.Hosting/PdmLite.Hosting.csproj" />
+    <Compile Include="../../tools/PdmLite.Setup/SetupState.cs" Link="Installer/SetupState.cs" />
     <Compile Include="../../modules/PdmLite.Modules.References/ProjectHealthRow.cs" Link="ProjectHealthRow.cs" />
   </ItemGroup>
 </Project>

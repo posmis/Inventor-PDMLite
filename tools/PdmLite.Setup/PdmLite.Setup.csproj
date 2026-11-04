@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>PdmLite.Setup</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/PdmLite.Library/PdmLite.Library.csproj" />
+    <ProjectReference Include="../../src/PdmLite.Hosting/PdmLite.Hosting.csproj" />
+  </ItemGroup>
+</Project>
