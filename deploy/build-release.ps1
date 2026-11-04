@@ -23,12 +23,12 @@ if (-not (Test-Path -LiteralPath $LibraryBackup -PathType Leaf)) { throw "Не �
 if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) { throw 'Установите .NET 8 SDK x64: https://dotnet.microsoft.com/download/dotnet/8.0' }
 if (-not (Test-Path -LiteralPath $InventorInteropPath)) { throw "Не найден Inventor 2025 API: $InventorInteropPath" }
 if (Get-Process -Name Inventor,PdmLite.Explorer -ErrorAction SilentlyContinue) { throw 'Закройте Inventor и PdmLite Explorer.' }
+. (Join-Path $PSScriptRoot 'installer\find-inno-setup.ps1')
+$IsccPath = Find-InnoSetupCompiler -ExplicitPath $IsccPath
 if (-not $IsccPath) {
-    $candidate = Get-Command ISCC.exe -ErrorAction SilentlyContinue
-    if ($candidate) { $IsccPath = $candidate.Source }
-    else { $IsccPath = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe' }
+    throw 'Не удалось найти ISCC.exe установленного Inno Setup. Укажите путь вручную: .\deploy\build-release.ps1 -IsccPath "C:\папка Inno Setup\ISCC.exe". Требуется Inno Setup 6.3 или новее.'
 }
-if (-not (Test-Path -LiteralPath $IsccPath)) { throw 'Установите Inno Setup 6.3 или новее: https://jrsoftware.org/isdl.php' }
+Write-Host "Inno Setup: $IsccPath" -ForegroundColor Cyan
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $LibraryBackup).Path)

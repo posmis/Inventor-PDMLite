@@ -9,8 +9,9 @@ foreach ($file in @((Join-Path $repo 'deploy\build-release.ps1'), (Join-Path $PS
     [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$tokens, [ref]$errors) | Out-Null
     if ($errors.Count) { throw ($errors | Out-String) }
 }
-if (-not $IsccPath) { $IsccPath = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe' }
-if (-not (Test-Path -LiteralPath $IsccPath)) { throw 'Inno Setup 6.3+ is required.' }
+. (Join-Path $PSScriptRoot 'find-inno-setup.ps1')
+$IsccPath = Find-InnoSetupCompiler -ExplicitPath $IsccPath
+if (-not $IsccPath) { throw 'Inno Setup 6.3+ is required.' }
 $temp = Join-Path ([IO.Path]::GetTempPath()) ('pdmlite-installer-check-' + [guid]::NewGuid().ToString('N'))
 try {
     $payload = Join-Path $temp 'payload'
