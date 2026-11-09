@@ -20,5 +20,8 @@ public interface IPdmModule
     /// <summary>Подписки на события, регистрация панелей и команд.</summary>
     void Initialize(IModuleContext context);
 
+    /// <summary>Must be safe after a partially failed Initialize and release resources owned by the module.</summary>
     void Shutdown();
+
+    ValueTask ShutdownAsync() { Shutdown(); return ValueTask.CompletedTask; }
 }

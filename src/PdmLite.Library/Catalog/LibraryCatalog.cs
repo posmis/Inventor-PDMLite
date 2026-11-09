@@ -88,8 +88,15 @@ public sealed class LibraryCatalog
     /// <summary>Заполняет классификатор и правила по умолчанию, если база пустая.</summary>
     public static async Task SeedAsync(PdmDbContext db, CancellationToken ct = default)
     {
+        await using var transaction = db.Database.CurrentTransaction is null
+            ? await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false) : null;
+        // A transaction-scoped database lock coordinates Explorer and Inventor processes.
+        await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(726384901)", ct).ConfigureAwait(false);
         if (await db.LibraryCategories.AnyAsync(ct))
+        {
+            if (transaction is not null) await transaction.CommitAsync(ct).ConfigureAwait(false);
             return;
+        }
 
         var groups = new Dictionary<string, LibraryCategory>();
         var order = 0;
@@ -110,6 +117,7 @@ public sealed class LibraryCatalog
             db.LibraryCategoryRules.Add(new LibraryCategoryRule { Kind = LibraryRuleKind.FirstWord, Pattern = word, Category = groups[path] });
 
         await db.SaveChangesAsync(ct);
+        if (transaction is not null) await transaction.CommitAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>

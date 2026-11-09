@@ -54,5 +54,7 @@ public sealed class ExplorerLinkServer : IAsyncDisposable
         await session.OpenAsync(project, ct);
     }
 
+    public Task StopAsync() => _server.StopAsync();
+
     public ValueTask DisposeAsync() => _server.DisposeAsync();
 }

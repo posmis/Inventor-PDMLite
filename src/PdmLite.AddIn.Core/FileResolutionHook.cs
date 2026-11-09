@@ -16,6 +16,7 @@ public sealed class FileResolutionHook : IDisposable
     private readonly IServiceProvider _services;
     private readonly IEventBus _events;
     private readonly ILogger _logger;
+    private int _disposed;
 
     public FileResolutionHook(Inv.Application inventor, IServiceProvider services, IEventBus events, ILogger logger)
     {
@@ -24,14 +25,16 @@ public sealed class FileResolutionHook : IDisposable
         _events = events;
         _logger = logger;
         _fileAccessEvents = inventor.FileAccessEvents;
-        _fileAccessEvents.OnFileResolution += OnFileResolution;
     }
+
+    public void Attach() => _fileAccessEvents.OnFileResolution += OnFileResolution;
 
     private void OnFileResolution(string relativeFileName, string libraryName, ref byte[] customLogicalName, Inv.EventTimingEnum beforeOrAfter,
         Inv.NameValueMap context, out string fullFileName, out Inv.HandlingCodeEnum handlingCode)
     {
         fullFileName = "";
         handlingCode = Inv.HandlingCodeEnum.kEventNotHandled;
+        if (Volatile.Read(ref _disposed) != 0) return;
         if (beforeOrAfter != Inv.EventTimingEnum.kBefore || string.IsNullOrEmpty(relativeFileName))
             return;
 
@@ -58,5 +61,5 @@ public sealed class FileResolutionHook : IDisposable
         }
     }
 
-    public void Dispose() => _fileAccessEvents.OnFileResolution -= OnFileResolution;
+    public void Dispose() { if (Interlocked.Exchange(ref _disposed, 1) == 0) _fileAccessEvents.OnFileResolution -= OnFileResolution; }
 }

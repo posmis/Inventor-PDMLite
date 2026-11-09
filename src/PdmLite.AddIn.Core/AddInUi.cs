@@ -29,6 +29,9 @@ internal sealed class AddInUi : IDisposable
 
     private Inv.DockableWindow? _window;
     private ElementHost? _elementHost;
+    private int _disposed;
+    private int _stopping;
+    private bool _createdSuccessfully;
 
     public AddInUi(PdmHost host, string clientId, ILogger logger)
     {
@@ -93,6 +96,7 @@ internal sealed class AddInUi : IDisposable
                 _logger.LogWarning(ex, "Не удалось добавить вкладку на ленту {Ribbon}", ribbonName);
             }
         }
+        _createdSuccessfully = true;
     }
 
     private void CreateWindow(bool firstTime)
@@ -102,7 +106,8 @@ internal sealed class AddInUi : IDisposable
 
         var content = BuildContent();
         DockableWindowHost.EnableKeyboardInput(content, () => _logger.LogInformation("Ввод с клавиатуры в окне PdmLite включён"));
-        _elementHost = new ElementHost { Dock = System.Windows.Forms.DockStyle.Fill, Child = content };
+        _elementHost = new ElementHost { Dock = System.Windows.Forms.DockStyle.Fill };
+        _elementHost.Child = content;
         DockableWindowHost.AddChild(_window, _elementHost.Handle);
 
         // Положение окна Inventor запоминает сам; задаём его только при первой загрузке.
@@ -157,8 +162,8 @@ internal sealed class AddInUi : IDisposable
             title, internalName, Inv.CommandTypesEnum.kQueryOnlyCmdType, _clientId, description, description,
             Icon(icon, 16), Icon(icon, 32));
 
-        button.OnExecute += _ => Run(title, action);
         _buttons.Add(button);
+        button.OnExecute += _ => Run(title, action);
         return button;
     }
 
@@ -178,6 +183,7 @@ internal sealed class AddInUi : IDisposable
 
     private async void Run(string title, Func<Task> action)
     {
+        if (Volatile.Read(ref _disposed) != 0 || Volatile.Read(ref _stopping) != 0) return;
         try
         {
             await action();
@@ -230,27 +236,27 @@ internal sealed class AddInUi : IDisposable
         return null;
     }
 
+    public void StopAcceptingCommands() => Interlocked.Exchange(ref _stopping, 1);
+
     public void Dispose()
     {
-        // Удаление определений команд убирает и кнопки с ленты.
-        foreach (var button in _buttons)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        var errors = new List<Exception>();
+        void Attempt(Action action)
         {
-            try
+            try { action(); }
+            catch (Exception ex)
             {
-                button.Delete();
-            }
-            catch (COMException ex)
-            {
-                _logger.LogWarning(ex, "Не удалось удалить команду {Command}", button.InternalName);
+                errors.Add(ex);
+                try { _logger.LogWarning(ex, "Не удалось полностью освободить интерфейс Inventor"); } catch { }
             }
         }
+        foreach (var button in _buttons) Attempt(button.Delete);
         _buttons.Clear();
-
-        // Само закрепляемое окно не удаляем: Inventor хранит его положение и размер.
-        // При повторной загрузке плагина окно будет найдено по InternalName.
+        if (!_createdSuccessfully && _window is { } window) Attempt(() => window.Visible = false);
         _window = null;
-
-        _elementHost?.Dispose();
+        if (_elementHost is { } element) Attempt(element.Dispose);
         _elementHost = null;
+        if (errors.Count > 0) throw new AggregateException(errors);
     }
 }

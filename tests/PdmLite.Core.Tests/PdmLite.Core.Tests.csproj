@@ -31,6 +31,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="../../src/PdmLite.Apprentice/StaWorker.cs" Link="StaWorker.cs" />
     <Compile Include="../../src/PdmLite.AddIn.Core/ExplorerLauncher.cs" Link="ExplorerLauncher.cs" />
     <Compile Include="../../src/PdmLite.Explorer/ExplorerInstanceForwarder.cs" Link="ExplorerInstanceForwarder.cs" />
     <Compile Include="../../src/PdmLite.Explorer/StartupArgs.cs" Link="StartupArgs.cs" />

@@ -24,17 +24,23 @@ public sealed class JsonSettings<T> where T : class, new()
     public string FilePath => _path;
 
     public T Reload() => Value = Load();
+    internal void Accept(T value) => Value = value;
 
     public void Save()
     {
         // Сериализация до записи: её ошибка не должна затронуть предыдущий файл.
-        AtomicFile.WriteAllText(_path, JsonSerializer.Serialize(Value, JsonSettings.Options));
+        var text = JsonSerializer.Serialize(Value, JsonSettings.Options);
+        using var gate = SettingsTransaction.IsGrouped(_path) ? SettingsTransaction.Enter(Path.GetDirectoryName(_path)!) : null;
+        if (gate is not null) SettingsTransaction.Recover(Path.GetDirectoryName(_path)!);
+        AtomicFile.WriteAllText(_path, text);
     }
 
     private T Load()
     {
         try
         {
+            using var gate = SettingsTransaction.IsGrouped(_path) ? SettingsTransaction.Enter(Path.GetDirectoryName(_path)!) : null;
+            if (gate is not null) SettingsTransaction.Recover(Path.GetDirectoryName(_path)!);
             if (!File.Exists(_path)) return new T();
             using var stream = AtomicFile.OpenRead(_path);
             return JsonSerializer.Deserialize<T>(stream, JsonSettings.Options) ?? new T();

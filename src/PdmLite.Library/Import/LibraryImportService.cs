@@ -558,11 +558,13 @@ public sealed class LibraryImportService(
             progress?.Report(new ImportProgress(i, queue.Count, c.FileName));
 
             string? copied = null;
+            var id = Guid.NewGuid();
+            var registered = false;
+            var commitAttempted = false;
             try
             {
                 var category = session.Catalog.Get(c.CategoryId)!;
                 copied = storage.CopyIn(c.SourcePath, c.TargetRelativePath!);
-                var id = Guid.NewGuid();
 
                 await using var db = database.CreateContext();
                 var componentIds = c.DocumentType == LibraryDocumentType.Assembly
@@ -623,7 +625,9 @@ public sealed class LibraryImportService(
                     await LibraryCatalog.LearnAsync(db, c.Designation, c.Standard, category.Id, ct).ConfigureAwait(false);
 
                 await db.SaveChangesAsync(ct).ConfigureAwait(false);
+                commitAttempted = true;
                 await tx.CommitAsync(ct).ConfigureAwait(false);
+                registered = true;
 
                 committed[PathKey(c.SourcePath)] = (id, copied);
                 session.Remember(key, c.Designation, c.TargetRelativePath!, c.FileHash, hash);
@@ -631,12 +635,42 @@ public sealed class LibraryImportService(
                     session.ExistingGeometry.Add((c.Designation, c.DocumentType, shape.Volume!.Value, shape.Area!.Value));
                 logger.LogInformation("В библиотеку добавлен {Designation} ({Path})", c.Designation, c.TargetRelativePath);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex)
             {
+                string? retained = null;
+                if (commitAttempted && !registered)
+                {
+                    // Commit cancellation/connection loss may occur after PostgreSQL committed.
+                    try
+                    {
+                        using var verifyTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                        await using var verify = database.CreateContext();
+                        registered = await verify.LibraryItems.AsNoTracking().AnyAsync(item => item.Id == id, verifyTimeout.Token).ConfigureAwait(false);
+                        if (!registered) retained = $"Фиксация БД не подтверждена; файл сохранён для проверки: {copied}.";
+                    }
+                    catch (Exception check)
+                    {
+                        retained = $"Статус фиксации БД неизвестен; файл сохранён для проверки: {copied}. {check.Message}";
+                    }
+                }
+                if (registered)
+                {
+                    committed[PathKey(c.SourcePath)] = (id, copied!);
+                    if (ex is OperationCanceledException) throw;
+                    logger.LogWarning(ex, "Компонент {Path} уже сохранён; его файл не удаляется", copied);
+                    continue;
+                }
+                var cleanup = copied is not null && retained is null ? TryDelete(copied) : null;
+                var detail = retained ?? (cleanup is null ? null : $"Не удалось очистить копию {copied}: {cleanup.Message}");
+                if (ex is OperationCanceledException cancelled)
+                {
+                    if (detail is null) throw;
+                    throw new OperationCanceledException($"Импорт отменён. {detail}",
+                        cleanup is null ? ex : new AggregateException(ex, cleanup), cancelled.CancellationToken);
+                }
                 logger.LogError(ex, "Не удалось добавить {Path}", c.SourcePath);
-                if (copied is not null)
-                    TryDelete(copied);
-                failed.Add((c, ex is DbUpdateException { InnerException: { } inner } ? inner.Message : ex.Message));
+                var message = ex is DbUpdateException { InnerException: { } inner } ? inner.Message : ex.Message;
+                failed.Add((c, detail is null ? message : message + " " + detail));
             }
         }
 
@@ -702,15 +736,18 @@ public sealed class LibraryImportService(
                 + ". Неожиданные ссылки: " + string.Join("; ", actual.Except(expected, StringComparer.OrdinalIgnoreCase)));
     }
 
-    private void TryDelete(string path)
+    private Exception? TryDelete(string path)
     {
         try
         {
             LibraryStorage.Delete(path);
+            if (File.Exists(path) || Directory.Exists(path)) throw new IOException("Путь остался после удаления.");
+            return null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             logger.LogWarning(ex, "Не удалось удалить {Path} после ошибки", path);
+            return ex;
         }
     }
 }

@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
@@ -23,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/PdmLite.Hosting/PdmLite.Hosting.csproj" />
+    <Compile Include="../../modules/PdmLite.Modules.Library/Settings/LibrarySettingsViewModel.cs" Link="LibrarySettingsViewModel.cs" />
     <Compile Include="../../tools/PdmLite.Setup/PostgresSecretChannel.cs" Link="Installer/PostgresSecretChannel.cs" />
     <Compile Include="../../tools/PdmLite.Setup/SetupState.cs" Link="Installer/SetupState.cs" />
     <Compile Include="../../modules/PdmLite.Modules.References/ProjectHealthRow.cs" Link="ProjectHealthRow.cs" />

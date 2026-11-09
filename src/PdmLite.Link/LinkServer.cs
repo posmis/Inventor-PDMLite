@@ -21,6 +21,10 @@ public sealed class LinkServer : IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
     private Task? _acceptLoop;
     private int _disposed;
+    private readonly object _workGate = new();
+    private readonly HashSet<Task> _work = [];
+    private Task? _stopTask;
+    public TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
     public LinkServer(string endpoint, ILogger? logger = null)
     {
@@ -88,7 +92,11 @@ public sealed class LinkServer : IAsyncDisposable
                 pipe = null;
                 _clients[connection] = 0;
                 // Без токена: обслуживание должно стартовать, иначе соединение не будет закрыто.
-                _ = Task.Run(() => ServeClientAsync(connection, ct));
+                if (!Track(() => ServeClientAsync(connection, ct)))
+                {
+                    _clients.TryRemove(connection, out _);
+                    await connection.DisposeAsync().ConfigureAwait(false);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -114,7 +122,7 @@ public sealed class LinkServer : IAsyncDisposable
             while (!ct.IsCancellationRequested && await connection.ReadAsync(ct).ConfigureAwait(false) is { } message)
             {
                 if (message.Type == LinkMessage.RequestType)
-                    _ = Task.Run(() => RespondAsync(connection, message, ct), ct);
+                    Track(() => RespondAsync(connection, message, ct));
             }
         }
         catch (Exception ex) when (ex is IOException or OperationCanceledException or ObjectDisposedException or JsonException)
@@ -133,6 +141,7 @@ public sealed class LinkServer : IAsyncDisposable
         var response = new LinkMessage { Type = LinkMessage.ResponseType, Id = request.Id, Name = request.Name };
         try
         {
+            ct.ThrowIfCancellationRequested();
             // Legacy clients omitted this field only in protocol v1.
             if ((request.ProtocolVersion ?? 1) != LinkProtocol.Version)
                 throw new NotSupportedException($"Несовместимый протокол PdmLite: {request.ProtocolVersion ?? 1}; ожидается {LinkProtocol.Version}. Обновите Explorer и плагин Inventor.");
@@ -156,15 +165,47 @@ public sealed class LinkServer : IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
+    private bool Track(Func<Task> operation)
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        await _cts.CancelAsync().ConfigureAwait(false);
-        if (_acceptLoop is not null)
-            await _acceptLoop.ConfigureAwait(false);
-        foreach (var client in _clients.Keys)
-            await client.DisposeAsync().ConfigureAwait(false);
-        _clients.Clear();
-        _cts.Dispose();
+        lock (_workGate)
+        {
+            if (_disposed != 0) return false;
+            var task = Task.Run(operation);
+            _work.Add(task);
+            _ = task.ContinueWith(done => { _ = done.Exception; lock (_workGate) _work.Remove(done); },
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            return true;
+        }
     }
+
+    /// <summary>Stops admission immediately; completion means every handler has actually finished.</summary>
+    public Task StopAsync()
+    {
+        lock (_workGate)
+        {
+            if (_stopTask is not null) return _stopTask;
+            Interlocked.Exchange(ref _disposed, 1);
+            var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _stopTask = completion.Task;
+            _ = DrainAsync(completion);
+            return _stopTask;
+        }
+    }
+    private async Task DrainAsync(TaskCompletionSource completion)
+    {
+        var errors = new List<Exception>();
+        try { await _cts.CancelAsync().ConfigureAwait(false); } catch (Exception ex) { errors.Add(ex); }
+        foreach (var client in _clients.Keys)
+            try { await client.DisposeAsync().ConfigureAwait(false); } catch (Exception ex) { errors.Add(ex); }
+        if (_acceptLoop is not null)
+            try { await _acceptLoop.ConfigureAwait(false); } catch (Exception ex) { errors.Add(ex); }
+        foreach (var client in _clients.Keys)
+            try { await client.DisposeAsync().ConfigureAwait(false); } catch (Exception ex) { errors.Add(ex); }
+        Task[] pending; lock (_workGate) pending = _work.ToArray();
+        try { await Task.WhenAll(pending).ConfigureAwait(false); } catch (Exception ex) { errors.Add(ex); }
+        _clients.Clear(); _cts.Dispose();
+        if (errors.Count == 0) completion.TrySetResult();
+        else completion.TrySetException(new AggregateException("Ошибки при остановке IPC после завершения запросов.", errors));
+    }
+    public async ValueTask DisposeAsync() => await StopAsync().WaitAsync(ShutdownTimeout).ConfigureAwait(false);
 }

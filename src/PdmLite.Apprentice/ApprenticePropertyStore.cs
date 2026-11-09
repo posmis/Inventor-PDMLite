@@ -15,6 +15,7 @@ public sealed class ApprenticePropertyStore : IDocumentPropertyStore, IDisposabl
     private readonly StaWorker _worker = new("PdmLite Apprentice");
     private readonly Lazy<string?> _initError;
     private Inv.ApprenticeServerComponent? _apprentice;
+    private int _disposed;
 
     public ApprenticePropertyStore(ILogger<ApprenticePropertyStore> logger)
     {
@@ -22,8 +23,8 @@ public sealed class ApprenticePropertyStore : IDocumentPropertyStore, IDisposabl
         _initError = new Lazy<string?>(() => _worker.InvokeAsync(Initialize).GetAwaiter().GetResult());
     }
 
-    public bool IsAvailable => _initError.Value is null;
-    public string? UnavailableReason => _initError.Value;
+    public bool IsAvailable => Volatile.Read(ref _disposed) == 0 && _initError.Value is null;
+    public string? UnavailableReason => Volatile.Read(ref _disposed) != 0 ? "служба Apprentice остановлена" : _initError.Value;
 
     private string? Initialize()
     {
@@ -100,12 +101,12 @@ public sealed class ApprenticePropertyStore : IDocumentPropertyStore, IDisposabl
 
     public void Dispose()
     {
-        if (_apprentice is not null)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) { _worker.Dispose(); return; }
+        // Read the COM reference on its owning thread, after any still-running Initialize/Open/Save.
+        _worker.Stop(() =>
         {
-            var apprentice = _apprentice;
-            _apprentice = null;
-            _worker.InvokeAsync(() => Marshal.ReleaseComObject(apprentice)).Wait(TimeSpan.FromSeconds(5));
-        }
-        _worker.Dispose();
+            var apprentice = _apprentice; _apprentice = null;
+            if (apprentice is not null) Marshal.ReleaseComObject(apprentice);
+        });
     }
 }

@@ -30,8 +30,9 @@ public sealed class InventorLinkServer : IAsyncDisposable
         _server.Handle(LinkProtocol.Requests.Ping, (_, _) =>
             Task.FromResult<object?>(new PingResult("Inventor", version, LinkProtocol.Version)));
 
-        _server.Handle(LinkProtocol.Requests.GetStatus, async (_, _) => await ui.InvokeAsync(() =>
+        _server.Handle(LinkProtocol.Requests.GetStatus, async (_, ct) => await ui.InvokeAsync(() =>
         {
+            ct.ThrowIfCancellationRequested();
             var project = projects.GetActive();
             return (object?)new InventorStatus(
                 version, project?.Name, project?.ProjectFile, project?.RootFolder, ActiveDocumentPath(inventor));
@@ -45,9 +46,12 @@ public sealed class InventorLinkServer : IAsyncDisposable
             return null;
         });
 
-        _server.Handle(LinkProtocol.Requests.GetOpenDocuments, async (_, _) => await ui.InvokeAsync(() =>
-            (object?)new OpenDocumentsResult(InventorOpenDocuments.List(inventor)
-                .Select(d => new OpenDocumentEntry(d.Path, d.IsDirty, d.IsVisible)).ToList())));
+        _server.Handle(LinkProtocol.Requests.GetOpenDocuments, async (_, ct) => await ui.InvokeAsync(() =>
+        {
+            ct.ThrowIfCancellationRequested();
+            return (object?)new OpenDocumentsResult(InventorOpenDocuments.List(inventor)
+                .Select(d => new OpenDocumentEntry(d.Path, d.IsDirty, d.IsVisible)).ToList());
+        }));
 
         _server.Handle<DocumentArgs>(LinkProtocol.Requests.PlaceComponent, async (args, ct) =>
         {
@@ -83,6 +87,8 @@ public sealed class InventorLinkServer : IAsyncDisposable
         var path = inventor.ActiveDocument?.FullFileName;
         return string.IsNullOrEmpty(path) ? null : path; // новый несохранённый документ — без пути
     }
+
+    public Task StopAsync() => _server.StopAsync();
 
     public ValueTask DisposeAsync() => _server.DisposeAsync();
 }

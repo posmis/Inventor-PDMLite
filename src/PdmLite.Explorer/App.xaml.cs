@@ -119,9 +119,14 @@ public partial class App : Application
         }) { IsBackground = true, Name = "PdmLite exit watchdog" };
         watchdog.Start();
 
-        if (_linkServer is { } server)
-            SyncBridge.Run(() => server.DisposeAsync().AsTask(), TimeSpan.FromSeconds(2));
-        _host?.Dispose();
+        var server = _linkServer; var host = _host;
+        async Task StopOwnedResources()
+        {
+            if (server is not null) await server.StopAsync().ConfigureAwait(false);
+            if (host is not null) await host.DisposeAsync().ConfigureAwait(false);
+        }
+        if (!SyncBridge.Run(StopOwnedResources, TimeSpan.FromSeconds(2)))
+            _logger?.LogWarning("Запросы ещё завершаются; освобождение сервисов отложено.");
         base.OnExit(e);
     }
 

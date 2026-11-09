@@ -4,6 +4,7 @@ namespace PdmLite.Library.Storage;
 public sealed class LibrarySettings
 {
     public const string Name = "library";
+    public LibrarySettings Copy() => (LibrarySettings)MemberwiseClone();
 
     /// <summary>Папка библиотеки. Подключается в проекты Inventor как библиотека «PdmLite».</summary>
     public string RootFolder { get; set; } =

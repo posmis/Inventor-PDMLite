@@ -36,6 +36,8 @@ public sealed class LibraryModule : IPdmModule
     private LibraryPanelViewModel? _panel;
     private ContentCenterPrompt? _contentCenter;
     private LibraryFileResolver? _resolver;
+    private CancellationTokenSource? _backupStop;
+    private Task? _backupTask;
 
     public void ConfigureServices(IServiceCollection services, HostKind host)
     {
@@ -171,30 +173,44 @@ public sealed class LibraryModule : IPdmModule
     /// Копия по расписанию: через минуту после запуска Explorer, если последняя копия старше интервала.
     /// В фоне: ошибка только записывается в журнал (база могла быть ещё не настроена).
     /// </summary>
-    private static void ScheduleBackup(IServiceProvider services)
+    private void ScheduleBackup(IServiceProvider services)
     {
         var database = services.GetRequiredService<PdmLite.Data.IPdmDatabase>();
         var backup = services.GetRequiredService<LibraryBackupService>();
         var logger = services.GetRequiredService<Microsoft.Extensions.Logging.ILogger<LibraryModule>>();
-        Task.Run(async () =>
+        _backupStop = new CancellationTokenSource();
+        var token = _backupStop.Token;
+        _backupTask = Task.Run(async () =>
         {
             try
             {
-                await Task.Delay(TimeSpan.FromMinutes(1));
+                await Task.Delay(TimeSpan.FromMinutes(1), token);
                 if (database.IsConfigured && backup.IsScheduledDue())
-                    await backup.CreateAsync(PdmLite.Library.Backup.BackupReason.Scheduled);
+                    await backup.CreateAsync(PdmLite.Library.Backup.BackupReason.Scheduled, ct: token);
             }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { }
             catch (Exception ex)
             {
                 Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, ex, "Резервная копия по расписанию не сделана");
             }
-        }).Forget();
+        });
+    }
+
+    public async ValueTask ShutdownAsync()
+    {
+        var errors = new List<Exception>();
+        try { Shutdown(); } catch (Exception ex) { errors.Add(ex); }
+        try { if (_backupTask is not null) await _backupTask.ConfigureAwait(false); }
+        catch (Exception ex) { errors.Add(ex); }
+        finally { _backupStop?.Dispose(); _backupStop = null; }
+        if (errors.Count > 0) throw new AggregateException(errors);
     }
 
     public void Shutdown()
     {
-        _panel?.Detach();
-        _contentCenter?.Dispose();
-        _resolver?.Dispose();
+        var errors = new List<Exception>();
+        foreach (var stop in new Action[] { () => _backupStop?.Cancel(), () => _panel?.Detach(), () => _contentCenter?.Dispose(), () => _resolver?.Dispose() })
+            try { stop(); } catch (Exception ex) { errors.Add(ex); }
+        if (errors.Count > 0) throw new AggregateException(errors);
     }
 }

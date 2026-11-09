@@ -26,6 +26,11 @@ public sealed class DatabaseSettings
     public bool IsConfigured => !string.IsNullOrWhiteSpace(Host) && !string.IsNullOrWhiteSpace(Database)
                                 && !string.IsNullOrWhiteSpace(Username) && !string.IsNullOrEmpty(ProtectedPassword);
 
+    public DatabaseSettings Copy() => new()
+    {
+        Host = Host, Port = Port, Database = Database, Username = Username, ProtectedPassword = ProtectedPassword,
+    };
+
     public string GetPassword()
     {
         if (string.IsNullOrEmpty(ProtectedPassword))

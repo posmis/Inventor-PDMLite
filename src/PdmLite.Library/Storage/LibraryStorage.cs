@@ -70,9 +70,19 @@ public sealed class LibraryStorage(string rootFolder)
     {
         var target = GetFullPath(relativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        File.Copy(sourcePath, target, overwrite: false);
-        // Копия наследует атрибут «только чтение» исходника — снимаем, чтобы записать свойства.
-        File.SetAttributes(target, File.GetAttributes(target) & ~FileAttributes.ReadOnly);
+        var temporary = target + ".import-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            File.Copy(sourcePath, temporary, overwrite: false);
+            File.SetAttributes(temporary, File.GetAttributes(temporary) & ~FileAttributes.ReadOnly);
+            File.Move(temporary, target, overwrite: false);
+        }
+        catch (Exception failure)
+        {
+            try { Delete(temporary); }
+            catch (Exception cleanup) { throw new IOException($"Не удалось удалить временную копию {temporary}.", new AggregateException(failure, cleanup)); }
+            throw;
+        }
         return target;
     }
 

@@ -2,57 +2,92 @@ using System.Collections.Concurrent;
 
 namespace PdmLite.Apprentice;
 
-/// <summary>
-/// Отдельный STA-поток для COM-объектов Apprentice: они однопоточные, а работа с сотнями
-/// файлов не должна блокировать окно приложения.
-/// </summary>
+/// <summary>STA queue: callers can stop waiting while a native COM call unwinds on its owning thread.</summary>
 internal sealed class StaWorker : IDisposable
 {
-    private readonly BlockingCollection<Action> _queue = new();
-    private readonly Thread _thread;
-
-    public StaWorker(string name)
+    private interface IWork { void Run(); void Stop(); }
+    private sealed class Work<T> : IWork
     {
-        _thread = new Thread(Run) { IsBackground = true, Name = name };
-        _thread.SetApartmentState(ApartmentState.STA);
-        _thread.Start();
-    }
-
-    public Task<T> InvokeAsync<T>(Func<T> func, CancellationToken ct = default)
-    {
-        var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        _queue.Add(() =>
+        private readonly Func<T> function;
+        private readonly TaskCompletionSource<T> source = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly CancellationTokenRegistration registration;
+        public Task<T> Task => source.Task;
+        public Work(Func<T> function, CancellationToken ct)
         {
-            if (ct.IsCancellationRequested)
-            {
-                tcs.TrySetCanceled(ct);
-                return;
-            }
-            try
-            {
-                tcs.TrySetResult(func());
-            }
-            catch (Exception ex)
-            {
-                tcs.TrySetException(ex);
-            }
-        }, ct);
-        return tcs.Task;
+            this.function = function;
+            registration = ct.Register(() => source.TrySetCanceled(ct));
+        }
+        public void Run()
+        {
+            try { if (!source.Task.IsCompleted) source.TrySetResult(function()); }
+            catch (Exception ex) { source.TrySetException(ex); }
+            finally { registration.Dispose(); }
+        }
+        public void Stop() => source.TrySetException(new ObjectDisposedException(nameof(StaWorker)));
     }
+    private readonly BlockingCollection<IWork> queue = new();
+    private readonly HashSet<IWork> pending = [];
+    private readonly object gate = new();
+    private readonly Thread thread;
+    private readonly TimeSpan timeout;
+    private readonly TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private bool stopping;
+    private Action? finalizer;
+    public Task Completion => completion.Task;
 
-    public Task InvokeAsync(Action action, CancellationToken ct = default) =>
-        InvokeAsync(() => { action(); return true; }, ct);
-
+    public StaWorker(string name) : this(name, TimeSpan.FromSeconds(5)) { }
+    internal StaWorker(string name, TimeSpan timeout)
+    {
+        this.timeout = timeout;
+        thread = new Thread(Run) { IsBackground = true, Name = name };
+        if (OperatingSystem.IsWindows()) thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+    }
+    public Task<T> InvokeAsync<T>(Func<T> function, CancellationToken ct = default)
+    {
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(stopping, this);
+            var work = new Work<T>(function, ct);
+            pending.Add(work); queue.Add(work);
+            return work.Task;
+        }
+    }
+    public Task InvokeAsync(Action action, CancellationToken ct = default) => InvokeAsync(() => { action(); return true; }, ct);
     private void Run()
     {
-        foreach (var action in _queue.GetConsumingEnumerable())
-            action();
+        Exception? failure = null;
+        try
+        {
+            foreach (var work in queue.GetConsumingEnumerable())
+            {
+                work.Run();
+                lock (gate) pending.Remove(work);
+            }
+        }
+        catch (Exception ex) { failure = ex; }
+        finally
+        {
+            lock (gate) { stopping = true; foreach (var work in pending) work.Stop(); pending.Clear(); }
+            try { finalizer?.Invoke(); } catch (Exception ex) { failure = failure is null ? ex : new AggregateException(failure, ex); }
+            queue.Dispose();
+            if (failure is null) completion.TrySetResult(); else completion.TrySetException(failure);
+        }
     }
-
-    public void Dispose()
+    public void Dispose() => Stop(null);
+    public void Stop(Action? releaseOnSta)
     {
-        _queue.CompleteAdding();
-        _thread.Join(TimeSpan.FromSeconds(5));
-        _queue.Dispose();
+        lock (gate)
+        {
+            if (!stopping)
+            {
+                stopping = true; finalizer = releaseOnSta;
+                foreach (var work in pending) work.Stop();
+                queue.CompleteAdding();
+            }
+        }
+        if (Thread.CurrentThread == thread) return;
+        if (!thread.Join(timeout)) throw new TimeoutException("STA-вызов ещё выполняется. Ресурсы будут освобождены на STA-потоке после его завершения.");
+        Completion.GetAwaiter().GetResult();
     }
 }

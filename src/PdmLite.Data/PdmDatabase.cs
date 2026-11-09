@@ -26,16 +26,16 @@ public interface IPdmDatabase
 public sealed class PdmDatabase(DatabaseSettings settings, ILoggerFactory loggerFactory) : IPdmDatabase
 {
     private sealed record Configuration(DatabaseSettings Settings, bool Migrated = false);
-    private Configuration _configuration = new(settings);
+    private Configuration _configuration = new(settings.Copy());
     private readonly SemaphoreSlim _migrateGate = new(1, 1);
 
     public bool IsConfigured => Settings.IsConfigured;
-    public DatabaseSettings Settings => Volatile.Read(ref _configuration).Settings;
+    public DatabaseSettings Settings => Volatile.Read(ref _configuration).Settings.Copy();
 
     public void Configure(DatabaseSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        Volatile.Write(ref _configuration, new Configuration(settings));
+        Volatile.Write(ref _configuration, new Configuration(settings.Copy()));
     }
 
     public PdmDbContext CreateContext() => new(BuildOptions(Settings.BuildConnectionString(), loggerFactory));

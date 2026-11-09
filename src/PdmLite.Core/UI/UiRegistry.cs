@@ -22,6 +22,9 @@ public sealed class UiRegistry : IUiRegistry
         _commands.Add(command);
     }
 
+    public void UnregisterPanel(string id) => _panels.RemoveAll(p => p.Id == id);
+    public void UnregisterCommand(string id) => _commands.RemoveAll(c => c.Id == id);
+
     public IEnumerable<CommandDescriptor> GetCommands(CommandPlacement placement) =>
         _commands.Where(c => c.Placement.HasFlag(placement)).OrderBy(c => c.Group).ThenBy(c => c.Order);
 }

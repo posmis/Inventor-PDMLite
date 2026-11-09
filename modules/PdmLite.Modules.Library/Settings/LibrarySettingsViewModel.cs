@@ -59,18 +59,16 @@ public sealed partial class LibrarySettingsViewModel(
             return $"Не удалось создать папку библиотеки: {ex.Message}";
         }
 
-        databaseSettings.Value.Host = settings.Host;
-        databaseSettings.Value.Port = settings.Port;
-        databaseSettings.Value.Database = settings.Database;
-        databaseSettings.Value.Username = settings.Username;
-        databaseSettings.Value.ProtectedPassword = settings.ProtectedPassword;
-        databaseSettings.Save();
-        database.Configure(databaseSettings.Value);
-
-        librarySettings.Value.RootFolder = Path.GetFullPath(RootFolder);
-        librarySettings.Value.WarnOnContentCenter = WarnOnContentCenter;
-        librarySettings.Save();
-        return null;
+        var library = librarySettings.Value.Copy();
+        library.RootFolder = Path.GetFullPath(RootFolder);
+        library.WarnOnContentCenter = WarnOnContentCenter;
+        try
+        {
+            SettingsTransaction.SavePair(databaseSettings, settings, librarySettings, library);
+            database.Configure(settings);
+            return null;
+        }
+        catch (Exception ex) { return $"Настройки не применены: {ex.Message}"; }
     }
 
     private DatabaseSettings? BuildSettings()

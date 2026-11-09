@@ -22,6 +22,7 @@ internal sealed class SetupState
     public static SetupState Open(string folder, string root)
     {
         Directory.CreateDirectory(folder);
+        SettingsTransaction.RecoverPending(folder);
         var databasePath = Path.Combine(folder, "database.json");
         if (File.Exists(databasePath))
         {
@@ -56,8 +57,8 @@ internal sealed class SetupState
         if (Pending is not { Restored: true } pending) throw new InvalidOperationException("Библиотека ещё не восстановлена.");
         // Connection settings are the commit marker, published only after all prerequisites.
         Write("local-postgres-admin.json", pending.Admin);
-        Write("library.json", library);
-        Write("database.json", pending.Database);
+        SettingsTransaction.SavePair(new JsonSettings<DatabaseSettings>("database", folder), pending.Database,
+            new JsonSettings<LibrarySettings>("library", folder), library);
         File.Delete(PendingPath);
     }
 

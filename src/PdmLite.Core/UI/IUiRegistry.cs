@@ -11,6 +11,8 @@ public interface IUiRegistry
 
     void RegisterPanel(PanelDescriptor panel);
     void RegisterCommand(CommandDescriptor command);
+    void UnregisterPanel(string id);
+    void UnregisterCommand(string id);
 
     /// <summary>Команды для указанного места, отсортированные по <see cref="CommandDescriptor.Order"/>.</summary>
     IEnumerable<CommandDescriptor> GetCommands(CommandPlacement placement);
