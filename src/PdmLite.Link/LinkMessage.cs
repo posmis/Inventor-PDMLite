@@ -12,6 +12,11 @@ public sealed class LinkMessage
 
     [JsonPropertyName("type")] public string Type { get; set; } = RequestType;
 
+    /// <summary>Missing in the original v1 wire format. New clients declare their protocol explicitly.</summary>
+    [JsonPropertyName("protocolVersion")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? ProtocolVersion { get; set; }
+
     /// <summary>Идентификатор запроса; в ответе совпадает с запросом.</summary>
     [JsonPropertyName("id")] public string? Id { get; set; }
 

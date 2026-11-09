@@ -71,7 +71,7 @@ public partial class App : Application
     private async Task StartAsync(StartupArgs args)
     {
         // Второй экземпляр передаёт аргументы уже запущенному Explorer и завершается.
-        if (await ForwardToRunningInstanceAsync(args))
+        if (await ExplorerInstanceForwarder.ForwardAsync(args))
         {
             Shutdown();
             return;
@@ -144,29 +144,6 @@ public partial class App : Application
         {
             _logger?.LogError(ex, "Не удалось открыть проект {Path}", path);
             UiMessages.Error($"Не удалось открыть проект:\n{path}", ex);
-        }
-    }
-
-    private static async Task<bool> ForwardToRunningInstanceAsync(StartupArgs args)
-    {
-        await using var client = new LinkClient(LinkEndpoints.Explorer);
-        if (!await client.TryConnectAsync(TimeSpan.FromMilliseconds(300)))
-            return false;
-
-        try
-        {
-            if (args.RevealPath is not null)
-                await client.RequestAsync(LinkProtocol.Requests.RevealDocument, new RevealArgs(args.RevealPath, args.ProjectPath));
-            else if (args.ProjectPath is not null)
-                await client.RequestAsync(LinkProtocol.Requests.OpenProject, new ProjectArgs(args.ProjectPath));
-            else
-                await client.RequestAsync(LinkProtocol.Requests.Ping);
-            return true;
-        }
-        catch (Exception)
-        {
-            // Запущенный экземпляр не отвечает — работаем как отдельное приложение.
-            return false;
         }
     }
 

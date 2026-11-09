@@ -34,6 +34,7 @@ public sealed class InventorConnection : IInventorConnection, IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
     private LinkClient? _client;
     private Task? _loop;
+    private string? _compatibilityError;
 
     public InventorConnection(IEventBus events, ILogger<InventorConnection> logger)
         : this(events, logger, LinkEndpoints.Inventor, RetryInterval)
@@ -114,32 +115,55 @@ public sealed class InventorConnection : IInventorConnection, IAsyncDisposable
         if (!await client.TryConnectAsync(ConnectTimeout, ct))
         {
             await client.DisposeAsync();
+            SetCompatibilityError(null);
             return;
         }
 
-        PingResult? ping;
+        PingResult ping;
         InventorStatus? status;
         try
         {
-            ping = await client.RequestAsync<PingResult>(LinkProtocol.Requests.Ping, cancellationToken: ct);
+            ping = await LinkHandshake.VerifyAsync(client, "Inventor", ct);
             status = await client.RequestAsync<InventorStatus>(LinkProtocol.Requests.GetStatus, cancellationToken: ct);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (LinkCompatibilityException ex)
+        {
+            await client.DisposeAsync();
+            SetCompatibilityError(ex.Message);
+            return;
+        }
+        catch (OperationCanceledException)
+        {
+            await client.DisposeAsync();
+            throw;
+        }
+        catch (Exception ex)
         {
             // Плагин подключился, но не ответил — попробуем позже.
             logger.LogWarning(ex, "Inventor не ответил на запрос состояния");
             await client.DisposeAsync();
+            SetCompatibilityError(null);
             return;
         }
 
+        _compatibilityError = null;
         client.EventReceived += OnEvent;
         client.Disconnected += OnDisconnected;
         _client = client;
-        InventorVersion = status?.InventorVersion ?? ping?.Version;
+        InventorVersion = status?.InventorVersion ?? ping.Version;
 
         logger.LogInformation("Связь с Inventor {Version} установлена", InventorVersion);
         events.Publish(new InventorConnectionChanged(true, InventorVersion));
         events.Publish(new ActiveDocumentChanged(status?.ActiveDocument));
+    }
+
+    private void SetCompatibilityError(string? error)
+    {
+        if (_compatibilityError == error) return;
+        _compatibilityError = error;
+        if (error is not null) logger.LogWarning("{CompatibilityError}", error);
+        events.Publish(new InventorConnectionChanged(false, null) { Error = error });
+        events.Publish(new ActiveDocumentChanged(null));
     }
 
     private void OnEvent(LinkMessage message)

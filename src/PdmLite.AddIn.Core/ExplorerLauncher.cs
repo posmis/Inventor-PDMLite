@@ -12,13 +12,17 @@ namespace PdmLite.AddIn.Core;
 public sealed class ExplorerLauncher(ILogger<ExplorerLauncher> logger)
 {
     public const string ExeName = "PdmLite.Explorer.exe";
+    private readonly string _endpoint = LinkEndpoints.Explorer;
+
+    internal ExplorerLauncher(ILogger<ExplorerLauncher> logger, string endpoint) : this(logger) => _endpoint = endpoint;
 
     public async Task RevealAsync(string? documentPath, string? projectPath)
     {
-        await using (var client = new LinkClient(LinkEndpoints.Explorer))
+        await using (var client = new LinkClient(_endpoint))
         {
             if (await client.TryConnectAsync(TimeSpan.FromMilliseconds(300)))
             {
+                await LinkHandshake.VerifyAsync(client, "PdmLite.Explorer");
                 if (documentPath is not null)
                     await client.RequestAsync(LinkProtocol.Requests.RevealDocument, new RevealArgs(documentPath, projectPath));
                 else if (projectPath is not null)

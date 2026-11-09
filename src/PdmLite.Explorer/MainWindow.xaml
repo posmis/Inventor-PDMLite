@@ -115,7 +115,7 @@
                             </Style>
                         </Image.Style>
                     </Image>
-                    <TextBlock Text="{Binding InventorStatus}" />
+                    <TextBlock Text="{Binding InventorStatus}" ToolTip="{Binding InventorStatus}" />
                 </StackPanel>
             </StatusBarItem>
             <Separator Visibility="{Binding HasActiveDocument, Converter={StaticResource BoolToVisibility}}" />

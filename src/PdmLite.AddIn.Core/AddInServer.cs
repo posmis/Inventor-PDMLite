@@ -69,7 +69,7 @@ public sealed class AddInServer : Inv.ApplicationAddInServer
             _link.Start();
 
             _events = new InventorEventsBridge(_host.Services, _link, _logger);
-            _contentCenter = new ContentCenterWatcher(inventor, _host.Events);
+            _contentCenter = new ContentCenterWatcher(inventor, _host.Events, _logger);
             _fileResolution = new FileResolutionHook(inventor, _host.Services, _host.Events, _logger);
             _ui = new AddInUi(_host, ClientId, _logger);
             _ui.Create(firstTime);

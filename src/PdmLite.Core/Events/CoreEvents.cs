@@ -18,7 +18,10 @@ public sealed record DocumentSaved(string Path);
 public sealed record DocumentClosed(string Path);
 
 /// <summary>Изменилось состояние связи с Inventor (для внешнего приложения).</summary>
-public sealed record InventorConnectionChanged(bool IsConnected, string? InventorVersion);
+public sealed record InventorConnectionChanged(bool IsConnected, string? InventorVersion)
+{
+    public string? Error { get; init; }
+}
 
 /// <summary>Запрос показать и выделить документ в дереве проекта.</summary>
 public sealed record RevealDocumentRequested(string Path);

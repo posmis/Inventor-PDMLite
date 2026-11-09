@@ -1,20 +1,42 @@
 ﻿<#
 .SYNOPSIS
-    Удаление PdmLite текущего пользователя (настройки в %APPDATA%\PdmLite сохраняются).
+    Удаление ручной установки PdmLite (deploy/install.ps1). Пользовательские данные сохраняются.
 #>
-param([string]$InventorVersion = "2025")
+param([string]$InventorVersion = '2025')
+$ErrorActionPreference = 'Stop'
 
-$ErrorActionPreference = "Stop"
-$manifest = Join-Path $env:APPDATA "Autodesk\Inventor $InventorVersion\Addins\PdmLite.addin"
-$target = Join-Path $env:LOCALAPPDATA "PdmLite"
-
-if (Get-Process -Name Inventor -ErrorAction SilentlyContinue) {
-    throw "Закройте Inventor перед удалением."
+function Uninstall-PdmLite([string]$AppRoot, [string]$Manifest, [string[]]$Shortcuts) {
+    # Check both hosts before changing any files or plugin registration.
+    if (Get-Process -Name Inventor,PdmLite.Explorer -ErrorAction SilentlyContinue) {
+        throw 'Закройте Inventor и PdmLite Explorer перед удалением.'
+    }
+    if (Get-ChildItem -LiteralPath $AppRoot -Filter 'unins*.exe' -ErrorAction SilentlyContinue) {
+        throw 'PdmLite установлен через EXE. Используйте штатное удаление: Параметры Windows → Приложения → PdmLite.'
+    }
+    $paths = @((Join-Path $AppRoot 'AddIn'), (Join-Path $AppRoot 'Explorer'), $Manifest) + $Shortcuts
+    foreach ($path in $paths) {
+        if (-not (Test-Path -LiteralPath $path)) { continue }
+        try {
+            Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
+            if (Test-Path -LiteralPath $path) { throw 'Файл или папка остались после удаления.' }
+        } catch {
+            throw "Удаление PdmLite завершено не полностью. Не удалось удалить: $path. $($_.Exception.Message)"
+        }
+    }
 }
 
-Remove-Item $manifest -ErrorAction SilentlyContinue
-Remove-Item (Join-Path $target "AddIn") -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item (Join-Path $target "Explorer") -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item (Join-Path ([Environment]::GetFolderPath("Desktop")) "PdmLite Explorer.lnk") -ErrorAction SilentlyContinue
-Remove-Item (Join-Path ([Environment]::GetFolderPath("Programs")) "PdmLite") -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host "PdmLite удалён." -ForegroundColor Green
+if ($MyInvocation.InvocationName -ne '.') {
+    try {
+        $manifest = Join-Path $env:APPDATA "Autodesk\Inventor $InventorVersion\Addins\PdmLite.addin"
+        $target = Join-Path $env:LOCALAPPDATA 'PdmLite'
+        $shortcuts = @(
+            (Join-Path ([Environment]::GetFolderPath('Desktop')) 'PdmLite Explorer.lnk'),
+            (Join-Path ([Environment]::GetFolderPath('Programs')) 'PdmLite')
+        )
+        Uninstall-PdmLite $target $manifest $shortcuts
+        Write-Host 'PdmLite удалён. Библиотека, база и настройки сохранены.' -ForegroundColor Green
+    } catch {
+        Write-Error $_ -ErrorAction Continue
+        exit 1
+    }
+}

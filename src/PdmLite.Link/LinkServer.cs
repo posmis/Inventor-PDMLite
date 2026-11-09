@@ -133,6 +133,9 @@ public sealed class LinkServer : IAsyncDisposable
         var response = new LinkMessage { Type = LinkMessage.ResponseType, Id = request.Id, Name = request.Name };
         try
         {
+            // Legacy clients omitted this field only in protocol v1.
+            if ((request.ProtocolVersion ?? 1) != LinkProtocol.Version)
+                throw new NotSupportedException($"Несовместимый протокол PdmLite: {request.ProtocolVersion ?? 1}; ожидается {LinkProtocol.Version}. Обновите Explorer и плагин Inventor.");
             if (request.Name is null || !_handlers.TryGetValue(request.Name, out var handler))
                 throw new NotSupportedException($"Неизвестный запрос '{request.Name}'.");
             response.Payload = LinkMessage.ToPayload(await handler(request, ct).ConfigureAwait(false));

@@ -31,7 +31,7 @@ public sealed partial class MainViewModel : ObservableObject
         host.Events.Subscribe<InventorConnectionChanged>(e => ui.Post(() =>
         {
             IsInventorConnected = e.IsConnected;
-            InventorStatus = e.IsConnected ? $"Inventor {e.InventorVersion}: подключён" : "Inventor: нет связи";
+            InventorStatus = e.IsConnected ? $"Inventor {e.InventorVersion}: подключён" : e.Error ?? "Inventor: нет связи";
             // Доступность команд модулей зависит от связи с Inventor.
             System.Windows.Input.CommandManager.InvalidateRequerySuggested();
         }));

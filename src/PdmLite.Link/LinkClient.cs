@@ -88,7 +88,7 @@ public sealed class LinkClient : IAsyncDisposable
         try
         {
             if (!IsConnected) throw new IOException("Связь разорвана.");
-            await connection.WriteAsync(new LinkMessage { Type = LinkMessage.RequestType, Id = id, Name = name, Payload = LinkMessage.ToPayload(args) }, ct)
+            await connection.WriteAsync(new LinkMessage { Type = LinkMessage.RequestType, ProtocolVersion = LinkProtocol.Version, Id = id, Name = name, Payload = LinkMessage.ToPayload(args) }, ct)
                 .ConfigureAwait(false);
 
             var response = await tcs.Task.WaitAsync(timeout, ct).ConfigureAwait(false);
