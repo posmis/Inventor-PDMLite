@@ -521,11 +521,35 @@ public sealed class LibraryImportService(
         var storage = storageFactory();
         var user = Environment.UserName;
 
-        // Детали раньше сборок: сборке нужны уже внесённые компоненты.
-        var queue = session.Candidates.Where(c => c.CanImport)
-            .OrderBy(c => c.DocumentType == LibraryDocumentType.Assembly ? 1 : 0).ToList();
+        var eligible = session.Candidates.Where(c => c.CanImport)
+            .ToDictionary(c => PathKey(c.SourcePath), StringComparer.OrdinalIgnoreCase);
+        var degrees = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var parents = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (path, candidate) in eligible)
+        {
+            var dependencies = candidate.DocumentType == LibraryDocumentType.Assembly
+                ? (candidate.Properties?.References ?? []).Select(PathKey).Where(eligible.ContainsKey)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase)
+                : [];
+            degrees[path] = dependencies.Count;
+            foreach (var dependency in dependencies)
+            {
+                if (!parents.TryGetValue(dependency, out var list)) parents[dependency] = list = [];
+                list.Add(path);
+            }
+        }
+        var ready = new Queue<string>(eligible.Keys.Where(p => degrees[p] == 0));
+        var queue = new List<ImportCandidate>();
+        // Kahn ordering in O(files + references), including shared nested assemblies.
+        while (ready.TryDequeue(out var path))
+        {
+            queue.Add(eligible[path]);
+            foreach (var parent in parents.GetValueOrDefault(path) ?? [])
+                if (--degrees[parent] == 0) ready.Enqueue(parent);
+        }
+        var pending = eligible.Where(p => degrees[p.Key] > 0).Select(p => p.Value);
         var committed = new Dictionary<string, (Guid Id, string FullPath)>(StringComparer.OrdinalIgnoreCase);
-        var failed = new List<(ImportCandidate, string)>();
+        var failed = pending.Select(c => (c, "Цикл зависимостей сборок или зависимость от цикла. Импорт компонента пропущен.")).ToList();
 
         for (var i = 0; i < queue.Count; i++)
         {
@@ -547,6 +571,8 @@ public sealed class LibraryImportService(
 
                 await properties.WriteAsync(copied, LibraryProperties.For(c.Designation, c.Kind, c.Standard, c.Manufacturer, category.Path, id), ct)
                     .ConfigureAwait(false);
+                if (c.DocumentType == LibraryDocumentType.Assembly)
+                    await VerifyAssemblyAsync(db, storage, copied, componentIds, ct).ConfigureAwait(false);
                 LibraryStorage.MakeReadOnly(copied);
                 var (hash, size) = await LibraryStorage.HashAsync(copied, ct).ConfigureAwait(false);
                 var now = DateTime.UtcNow;
@@ -599,7 +625,7 @@ public sealed class LibraryImportService(
                 await db.SaveChangesAsync(ct).ConfigureAwait(false);
                 await tx.CommitAsync(ct).ConfigureAwait(false);
 
-                committed[c.SourcePath] = (id, copied);
+                committed[PathKey(c.SourcePath)] = (id, copied);
                 session.Remember(key, c.Designation, c.TargetRelativePath!, c.FileHash, hash);
                 if (c.Properties is { } shape && LibraryGeometry.Known(shape.Volume, shape.Area))
                     session.ExistingGeometry.Add((c.Designation, c.DocumentType, shape.Volume!.Value, shape.Area!.Value));
@@ -617,7 +643,8 @@ public sealed class LibraryImportService(
         progress?.Report(new ImportProgress(queue.Count, queue.Count, null));
         return new ImportResult(committed.Count, failed)
         {
-            Committed = committed.ToDictionary(c => c.Key, c => c.Value.FullPath, StringComparer.OrdinalIgnoreCase),
+            Committed = session.Candidates.Where(c => committed.ContainsKey(PathKey(c.SourcePath)))
+                .ToDictionary(c => c.SourcePath, c => committed[PathKey(c.SourcePath)].FullPath, StringComparer.OrdinalIgnoreCase),
         };
     }
 
@@ -629,7 +656,7 @@ public sealed class LibraryImportService(
         var ids = new List<Guid>();
         foreach (var reference in c.Properties?.References ?? [])
         {
-            if (committed.TryGetValue(reference, out var done))
+            if (committed.TryGetValue(PathKey(reference), out var done))
             {
                 map[reference] = done.FullPath;
                 ids.Add(done.Id);
@@ -657,6 +684,22 @@ public sealed class LibraryImportService(
         if (map.Count > 0)
             await properties.ReplaceReferencesAsync(copied, map, ct).ConfigureAwait(false);
         return ids;
+    }
+
+    private static string PathKey(string path) => Path.GetFullPath(path).Replace('\\', '/');
+
+    private async Task VerifyAssemblyAsync(PdmDbContext db, LibraryStorage storage, string copied,
+        List<Guid> componentIds, CancellationToken ct)
+    {
+        var expected = (await db.LibraryItems.AsNoTracking().Where(i => componentIds.Contains(i.Id))
+            .Select(i => i.RelativePath).ToListAsync(ct).ConfigureAwait(false))
+            .Select(p => PathKey(storage.GetFullPath(p))).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var actual = (await properties.ReadWithoutGeometryAsync(copied, ct).ConfigureAwait(false))
+            .References.Select(PathKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!expected.SetEquals(actual) || expected.Any(p => !File.Exists(p)))
+            throw new InvalidOperationException("Не подтверждена замена ссылок сборки. "
+                + "Отсутствуют: " + string.Join("; ", expected.Except(actual, StringComparer.OrdinalIgnoreCase))
+                + ". Неожиданные ссылки: " + string.Join("; ", actual.Except(expected, StringComparer.OrdinalIgnoreCase)));
     }
 
     private void TryDelete(string path)

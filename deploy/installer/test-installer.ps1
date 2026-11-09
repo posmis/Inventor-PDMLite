@@ -3,7 +3,7 @@
 param([string]$IsccPath)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-foreach ($file in @((Join-Path $repo 'deploy\build-release.ps1'), (Join-Path $PSScriptRoot 'install-postgresql-machine.ps1'), $PSCommandPath)) {
+foreach ($file in @((Join-Path $repo 'deploy\build-release.ps1')) + @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.ps1' | Select-Object -ExpandProperty FullName)) {
     $tokens = $null
     $errors = $null
     [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$tokens, [ref]$errors) | Out-Null

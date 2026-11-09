@@ -38,6 +38,11 @@ jobs:
           dotnet --version
       - name: Test core, settings, IPC and file utilities on Windows
         run: dotnet test tests/PdmLite.Core.Tests -c Release --logger "trx;LogFileName=windows-core.trx" --results-directory TestResults
+      - name: Test update rollback and secret option-file permissions
+        shell: powershell
+        run: |
+          & .\deploy\installer\test-update.ps1
+          & .\deploy\installer\test-postgresql-options.ps1
       - name: Build installer bootstrapper
         run: dotnet build tools/PdmLite.Setup -c Release
       - name: Check installer scripts and compile online and offline recipes

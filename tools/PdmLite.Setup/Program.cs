@@ -140,15 +140,18 @@ internal static class Setup
         await using (var stream = File.OpenRead(installer))
             if (!Convert.ToHexString(await SHA256.HashDataAsync(stream)).Equals(pg.Sha256, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Контрольная сумма установщика PostgreSQL не совпала.");
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
+        using var secret = new PostgresSecretChannel();
         var start = new ProcessStartInfo
         {
             FileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), @"WindowsPowerShell\v1.0\powershell.exe"),
             UseShellExecute = true,
             Verb = "runas"
         };
-        foreach (var arg in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(app, "Setup", "install-postgresql-machine.ps1"), "-Installer", installer, "-Sha256", pg.Sha256, "-Password", password })
+        foreach (var arg in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(app, "Setup", "install-postgresql-machine.ps1"), "-Installer", installer, "-Sha256", pg.Sha256, "-PipeName", secret.Name })
             start.ArgumentList.Add(arg);
         using var process = Process.Start(start) ?? throw new InvalidOperationException("Не удалось запустить установку PostgreSQL.");
+        await secret.SendAsync(process, password, CancellationToken.None);
         await process.WaitForExitAsync();
         if (process.ExitCode != 0) throw new InvalidOperationException("Установка PostgreSQL не завершена. Повторите установку и подтвердите запрос Windows.");
     }

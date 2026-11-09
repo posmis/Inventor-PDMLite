@@ -115,7 +115,7 @@ public sealed class FakePropertyStore : IDocumentPropertyStore
     public Task ReplaceReferencesAsync(string path, IReadOnlyDictionary<string, string> map, CancellationToken cancellationToken = default)
     {
         Relinked[path] = map;
-        var current = Files.GetValueOrDefault(path) ?? new DocumentProperties();
+        var current = Files.GetValueOrDefault(path) ?? new DocumentProperties { References = map.Keys.ToList() };
         Files[path] = current with { References = current.References.Select(r =>
             map.FirstOrDefault(p => PathComparer.Instance.Equals(p.Key, r)) is { Key: not null } found ? found.Value : r).ToList() };
         return Task.CompletedTask;

@@ -20,6 +20,7 @@ DisableDirPage=yes
 DefaultGroupName=PdmLite
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
+SetupMutex=PdmLiteSetupInstaller
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
@@ -39,6 +40,7 @@ DiskSpanning=no
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Files]
+Source: "application-update.ps1"; Flags: dontcopy
 Source: "{#PayloadDir}\Explorer\*"; DestDir: "{app}\Explorer"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#PayloadDir}\AddIn\*"; DestDir: "{app}\AddIn"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#PayloadDir}\Setup\*"; DestDir: "{app}\Setup"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "postgresql.exe"
@@ -65,6 +67,8 @@ var
   LibraryPage: TInputDirWizardPage;
   Configured: Boolean;
   Completed: Boolean;
+  UpdateStarted: Boolean;
+  UpdateFolder: String;
 
 function SetupSucceeded: Boolean;
 begin
@@ -125,10 +129,35 @@ begin
     Result := 'Для PdmLite требуется установленный Autodesk Inventor 2025.';
 end;
 
+function RunUpdateAction(Action: String): Boolean;
+var
+  Code: Integer;
+  Cmd: String;
+begin
+  Cmd := '-NoProfile -ExecutionPolicy Bypass -File ' + AddQuotes(ExpandConstant('{tmp}\application-update.ps1')) +
+    ' -Action ' + Action + ' -App ' + AddQuotes(ExpandConstant('{app}')) + ' -Transaction ' + AddQuotes(UpdateFolder);
+  Result := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Cmd, '', SW_HIDE, ewWaitUntilTerminated, Code);
+  if Result then Result := Code = 0;
+end;
+
+procedure DeinitializeSetup;
+begin
+  if UpdateStarted and not Completed then
+    if not RunUpdateAction('Rollback') then
+      MsgBox('Не удалось полностью восстановить программу. Резервные файлы сохранены: ' + UpdateFolder, mbError, MB_OK);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Code: Integer;
 begin
+  if CurStep = ssInstall then begin
+    ExtractTemporaryFile('application-update.ps1');
+    UpdateFolder := ExpandConstant('{app}\.update-') + GetMD5OfString(ExpandConstant('{tmp}'));
+    UpdateStarted := True;
+    if not RunUpdateAction('Begin') then
+      RaiseException('Не удалось подготовить обновление. Прежние файлы программы будут восстановлены.');
+  end;
   if CurStep = ssPostInstall then begin
     WizardForm.StatusLabel.Caption := 'Настройка PostgreSQL и библиотеки...';
     if not Exec(ExpandConstant('{app}\Setup\PdmLite.Setup.exe'),
@@ -136,5 +165,7 @@ begin
       '', SW_SHOW, ewWaitUntilTerminated, Code) or (Code <> 0) then
       RaiseException('Настройка PdmLite не завершена. Данные сохранены. Запустите установщик повторно после устранения причины.');
     Completed := True;
+    if not RunUpdateAction('Commit') then
+      Log('Application update backup retained: ' + UpdateFolder);
   end;
 end;
