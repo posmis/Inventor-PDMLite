@@ -105,6 +105,49 @@ public class ReferenceIndexTests
             ReferenceIndexService.Key(Path.Combine(Path.GetTempPath(), "a", "B.IPT") + Path.DirectorySeparatorChar));
 
     [PostgresFact]
+    public async Task DeepGraph_TraversesBeyond50Levels_HandlesCycleAndSharedMissingFile()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        using var folders = new TempFolders();
+        var store = new FakePropertyStore();
+        var assemblies = Enumerable.Range(0, 80).Select(i => folders.AddFile($"Узел{i}.iam", "a")).ToArray();
+        var part = folders.AddFile("Деталь.ipt", "p");
+        var deepMissing = Path.Combine(folders.Source, "Глубокая.ipt");
+        var sharedMissing = Path.Combine(folders.Source, "Общая.ipt");
+        for (var i = 0; i < assemblies.Length - 1; i++)
+            store.Files[assemblies[i]] = new DocumentProperties { References = [assemblies[i + 1]] };
+        store.Files[assemblies[0]] = new DocumentProperties { References = [assemblies[1], sharedMissing] };
+        store.Files[assemblies[^1]] = new DocumentProperties
+        {
+            References = [part, assemblies[0], deepMissing, sharedMissing] // Замкнутый цикл и повтор отсутствующей детали.
+        };
+        var index = Service(db, store);
+        await index.ScanAsync(folders.Source);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+        var parents = await index.WhereUsedAsync(part, true, deadline.Token);
+        Assert.Equal(assemblies.Reverse(), parents.Select(p => p.Path));
+        Assert.Equal(Enumerable.Range(1, 80), parents.Select(p => p.Level));
+        Assert.Equal([assemblies[^1]], (await index.WhereUsedAsync(part, false, deadline.Token)).Select(p => p.Path));
+        var cycle = await index.WhereUsedAsync(assemblies[0], true, deadline.Token);
+        Assert.Equal(79, cycle.Count);
+        Assert.DoesNotContain(cycle, p => p.Path == assemblies[0]);
+
+        var missing = await index.MissingComponentsAsync(assemblies[0], deadline.Token);
+        Assert.Equal(2, missing.Count);
+        Assert.Equal([assemblies[^1]], Assert.Single(missing, m => m.Target == deepMissing).UsedIn);
+        var shared = Assert.Single(missing, m => m.Target == sharedMissing);
+        Assert.Equal(2, shared.UsedIn.Count);
+        Assert.Contains(assemblies[0], shared.UsedIn);
+        Assert.Contains(assemblies[^1], shared.UsedIn);
+
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => index.WhereUsedAsync(part, true, cancelled.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => index.MissingComponentsAsync(assemblies[0], cancelled.Token));
+    }
+
+    [PostgresFact]
     public async Task FailedRead_PreservesReferences_AndRetriesWithoutFileChange()
     {
         await using var db = await TestDatabase.CreateAsync();

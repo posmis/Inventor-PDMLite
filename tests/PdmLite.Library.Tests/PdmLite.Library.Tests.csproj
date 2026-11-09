@@ -24,6 +24,8 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/PdmLite.Hosting/PdmLite.Hosting.csproj" />
+    <Compile Include="../../modules/PdmLite.Modules.Library/Checks/LibraryPathCache.cs" Link="Checks/LibraryPathCache.cs" />
+    <Compile Include="../../modules/PdmLite.Modules.Library/Checks/ContentCenterPromptAttempts.cs" Link="Checks/ContentCenterPromptAttempts.cs" />
     <Compile Include="../../modules/PdmLite.Modules.Library/Settings/LibrarySettingsViewModel.cs" Link="LibrarySettingsViewModel.cs" />
     <Compile Include="../../tools/PdmLite.Setup/PostgresSecretChannel.cs" Link="Installer/PostgresSecretChannel.cs" />
     <Compile Include="../../tools/PdmLite.Setup/SetupState.cs" Link="Installer/SetupState.cs" />

@@ -24,7 +24,7 @@ public sealed class ContentCenterPrompt(
     JsonSettings<LibrarySettings> settings,
     ILogger<ContentCenterPrompt> logger) : IDisposable
 {
-    private readonly HashSet<string> _asked = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ContentCenterPromptAttempts _attempts = new();
     private IDisposable? _subscription;
 
     public void Attach() =>
@@ -33,43 +33,45 @@ public sealed class ContentCenterPrompt(
 
     private async Task PromptAsync(ContentCenterComponentPlaced placed)
     {
-        // Настройки меняются в Explorer, а предупреждение работает в процессе Inventor.
-        if (!settings.Reload().WarnOnContentCenter || !_asked.Add(placed.AssemblyPath + "|" + placed.ComponentPath))
-            return;
-        // Файл из нашей библиотеки — всё правильно, даже если в нём осталась метка Content Center.
-        if (storage().Contains(placed.ComponentPath))
-            return;
-
         try
         {
-            var catalog = await items.LoadCatalogAsync();
-            var library = await items.ListAsync(catalog);
-            var check = AssemblyCheck.Run([new AssemblyComponentInfo(placed.ComponentPath, placed.PartNumber, true, 1)], library, storage())
-                .Findings.SingleOrDefault();
-            var name = check?.Designation ?? placed.PartNumber ?? Path.GetFileNameWithoutExtension(placed.ComponentPath);
+            // Настройки меняются в Explorer, а предупреждение работает в процессе Inventor.
+            if (!settings.Reload().WarnOnContentCenter || storage().Contains(placed.ComponentPath))
+                return;
 
-            if (check?.Replacement is not { } replacement)
+            await _attempts.RunAsync(placed.AssemblyPath + "|" + placed.ComponentPath, async markShown =>
             {
-                MessageBox.Show(
-                    $"Компонент «{name}» вставлен из Content Center.\n\nВ библиотеке PdmLite такого компонента нет. " +
-                    "Добавьте его в библиотеку (PdmLite Explorer → Добавить в библиотеку), чтобы в следующий раз брать оттуда.",
-                    UiMessages.Caption, MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
+                var catalog = await items.LoadCatalogAsync();
+                var library = await items.ListAsync(catalog);
+                var check = AssemblyCheck.Run([new AssemblyComponentInfo(placed.ComponentPath, placed.PartNumber, true, 1)], library, storage())
+                    .Findings.SingleOrDefault();
+                var name = check?.Designation ?? placed.PartNumber ?? Path.GetFileNameWithoutExtension(placed.ComponentPath);
 
-            var answer = MessageBox.Show(
-                $"Компонент «{name}» вставлен из Content Center.\n\n" +
-                (check.IsExact ? "В библиотеке PdmLite есть такой же" : "В библиотеке PdmLite есть похожий (проверьте обозначение)") +
-                $":\n«{replacement.Designation}».\n\n" +
-                "Заменить на компонент из библиотеки? Будут заменены все вхождения в этой сборке.",
-                UiMessages.Caption, MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (answer != MessageBoxResult.Yes)
-                return;
+                if (check?.Replacement is not { } replacement)
+                {
+                    MessageBox.Show(
+                        $"Компонент «{name}» вставлен из Content Center.\n\nВ библиотеке PdmLite такого компонента нет. " +
+                        "Добавьте его в библиотеку (PdmLite Explorer → Добавить в библиотеку), чтобы в следующий раз брать оттуда.",
+                        UiMessages.Caption, MessageBoxButton.OK, MessageBoxImage.Warning);
+                    markShown();
+                    return;
+                }
 
-            var result = await assembly.ReplaceAsync([new ComponentReplacement(placed.ComponentPath, storage().GetFullPath(replacement.RelativePath))]);
-            if (result.Problems.Count > 0)
-                UiMessages.Error("Не удалось заменить компонент:\n" + string.Join("\n", result.Problems)
-                                 + "\n\nЗавершите команду вставки и запустите «Проверить сборку».");
+                var answer = MessageBox.Show(
+                    $"Компонент «{name}» вставлен из Content Center.\n\n" +
+                    (check.IsExact ? "В библиотеке PdmLite есть такой же" : "В библиотеке PdmLite есть похожий (проверьте обозначение)") +
+                    $":\n«{replacement.Designation}».\n\n" +
+                    "Заменить на компонент из библиотеки? Будут заменены все вхождения в этой сборке.",
+                    UiMessages.Caption, MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                markShown();
+                if (answer != MessageBoxResult.Yes)
+                    return;
+
+                var result = await assembly.ReplaceAsync([new ComponentReplacement(placed.ComponentPath, storage().GetFullPath(replacement.RelativePath))]);
+                if (result.Problems.Count > 0)
+                    UiMessages.Error("Не удалось заменить компонент:\n" + string.Join("\n", result.Problems)
+                                     + "\n\nЗавершите команду вставки и запустите «Проверить сборку».");
+            });
         }
         catch (Exception ex)
         {

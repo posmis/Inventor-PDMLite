@@ -270,7 +270,7 @@ public sealed class ReferenceIndexService
         var result = new List<IndexedDocument>();
         var seen = new HashSet<string> { Key(path) };
         var level = new List<string> { Key(path) };
-        for (var depth = 1; level.Count > 0 && (allLevels || depth == 1) && depth <= 50; depth++)
+        for (var depth = 1; level.Count > 0 && (allLevels || depth == 1); depth++)
         {
             var current = level;
             var parents = await db.IndexedReferences.Where(r => current.Contains(r.TargetKey))
@@ -315,7 +315,7 @@ public sealed class ReferenceIndexService
         var missing = new Dictionary<string, (string Target, HashSet<string> UsedIn)>();
         var visited = new HashSet<string> { Key(path) };
         var level = new List<string> { Key(path) };
-        for (var depth = 0; level.Count > 0 && depth < 50; depth++)
+        while (level.Count > 0)
         {
             var current = level;
             var references = await db.IndexedReferences
