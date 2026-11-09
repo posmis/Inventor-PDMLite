@@ -19,6 +19,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - name: Show selected SDK
+        run: dotnet --version
       - name: Test core, settings, IPC and file utilities on Windows
         run: dotnet test tests/PdmLite.Core.Tests -c Release --logger "trx;LogFileName=windows-core.trx" --results-directory TestResults
       - name: Build installer bootstrapper

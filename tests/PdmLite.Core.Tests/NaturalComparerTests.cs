@@ -21,7 +21,7 @@ public class NaturalComparerTests
             "гайка M8",
             "Гайка M10",
         ];
-        var shuffled = sorted.Reverse().ToList();
+        var shuffled = sorted.AsEnumerable().Reverse().ToList();
 
         shuffled.Sort(NaturalComparer.Instance);
 
