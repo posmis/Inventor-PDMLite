@@ -19,8 +19,23 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Show selected SDK
-        run: dotnet --version
+      - name: Pin .NET 8 SDK for this CI checkout only
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sdk = dotnet --list-sdks | ForEach-Object {
+            if ($_ -match '^(8\.0\.\d+)\s') { [version]$Matches[1] }
+          } | Sort-Object -Descending | Select-Object -First 1
+          if (-not $sdk) { throw '.NET 8 SDK was not installed by setup-dotnet' }
+          # Local development keeps the tracked latestMajor policy; CI uses exactly SDK 8.
+          @{
+            sdk = @{
+              version = $sdk.ToString()
+              rollForward = 'disable'
+              allowPrerelease = $false
+            }
+          } | ConvertTo-Json | Set-Content -LiteralPath global.json -Encoding utf8
+          dotnet --version
       - name: Test core, settings, IPC and file utilities on Windows
         run: dotnet test tests/PdmLite.Core.Tests -c Release --logger "trx;LogFileName=windows-core.trx" --results-directory TestResults
       - name: Build installer bootstrapper
