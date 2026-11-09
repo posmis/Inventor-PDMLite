@@ -169,6 +169,7 @@ public sealed class LibraryItemService(
         // Резервные копии на время операции: свойства в файле перезаписываются, сборки перевязываются.
         var backups = new List<(string Path, string Backup)> { (oldFull, LibraryStorage.Backup(oldFull)) };
         var preserveBackups = false;
+        var didMove = false;
         try
         {
             LibraryStorage.ClearReadOnly(oldFull);
@@ -176,6 +177,7 @@ public sealed class LibraryItemService(
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(newFull)!);
                 File.Move(oldFull, newFull);
+                didMove = true;
             }
 
             await properties.WriteAsync(newFull, LibraryProperties.For(check.CanonicalDesignation, edit.Kind, check.Standard, manufacturer, category.Path, id), ct)
@@ -224,7 +226,7 @@ public sealed class LibraryItemService(
         catch (Exception failure)
         {
             var errors = new List<Exception>();
-            if (moved) AttemptRollback(() => LibraryStorage.Delete(newFull), newFull, errors);
+            if (didMove) AttemptRollback(() => LibraryStorage.Delete(newFull), newFull, errors);
             RestoreBackups(backups, errors);
             if (errors.Count > 0)
             {

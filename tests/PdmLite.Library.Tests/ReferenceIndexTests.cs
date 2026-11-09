@@ -105,6 +105,24 @@ public class ReferenceIndexTests
             ReferenceIndexService.Key(Path.Combine(Path.GetTempPath(), "a", "B.IPT") + Path.DirectorySeparatorChar));
 
     [PostgresFact]
+    public async Task FailedRead_PreservesReferences_AndRetriesWithoutFileChange()
+    {
+        await using var db = await TestDatabase.CreateAsync();
+        using var folders = new TempFolders();
+        var store = new FakePropertyStore();
+        var p = Build(folders, store);
+        var index = Service(db, store);
+        await index.ScanAsync(p.Root);
+        File.AppendAllText(p.Asm, "changed");
+        store.FailReadFor = Path.GetFileName(p.Asm);
+        Assert.NotEmpty((await index.ScanAsync(p.Root)).Errors);
+        Assert.Contains(await index.WhereUsedAsync(p.Part, false), d => d.Path == p.Asm);
+        store.FailReadFor = null;
+        Assert.Equal(1, (await index.ScanAsync(p.Root)).Read);
+        Assert.Contains(await index.WhereUsedAsync(p.Part, false), d => d.Path == p.Asm);
+    }
+
+    [PostgresFact]
     public async Task MissingComponents_OfOneAssembly_AllLevels_NamesOnce()
     {
         await using var db = await TestDatabase.CreateAsync();

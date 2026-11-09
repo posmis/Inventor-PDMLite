@@ -13,6 +13,37 @@ namespace PdmLite.Library.Tests;
 public sealed partial class ReviewRegressionTests
 {
     [PostgresFact]
+    public async Task Edit_DestinationAppearsAfterValidation_FailedMovePreservesBothFiles()
+    {
+        await using var db = await TestDatabase.CreateAsync(); var model = await SeedAsync(db.Database);
+        var items = Items(db.Database); var catalog = await items.LoadCatalogAsync();
+        var edit = new LibraryItemEdit("Renamed", LibraryItemKind.Purchased, "Test", model.Category);
+        var check = await items.CheckEditAsync(catalog, model.Remove, edit);
+        Assert.False(check.HasErrors);
+        var destination = _folders.InLibrary(check.NewRelativePath!);
+        var original = File.ReadAllText(model.RemovePath);
+        var calls = 0;
+        var racing = new LibraryItemService(db.Database, _store, () =>
+        {
+            if (++calls == 2)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                File.WriteAllText(destination, "created by another operation");
+            }
+            return new LibraryStorage(_folders.Library);
+        }, NullLogger<LibraryItemService>.Instance);
+
+        await Assert.ThrowsAsync<IOException>(() => racing.ApplyEditAsync(catalog, model.Remove, edit));
+
+        Assert.Equal(original, File.ReadAllText(model.RemovePath));
+        Assert.Equal("created by another operation", File.ReadAllText(destination));
+        Assert.Equal([model.RemovePath], FileBackedStore.References(model.AssemblyPath));
+        await using var after = db.Database.CreateContext();
+        Assert.Equal("Remove", (await after.LibraryItems.FindAsync(model.Remove))!.Designation);
+        Assert.False(await after.LibraryLog.AnyAsync(l => l.Action == "edit"));
+    }
+
+    [PostgresFact]
     public async Task Edit_FailedRollbackKeepsCopiesAndReportsIncompleteRecovery()
     {
         await using var db = await TestDatabase.CreateAsync(); var model = await SeedAsync(db.Database);

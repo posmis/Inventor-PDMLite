@@ -201,7 +201,8 @@ public sealed class ReferenceIndexService
             }
             else if (error is null)
             {
-                await db.IndexedReferences.Where(r => r.FileId == entry.Id).ExecuteDeleteAsync(ct).ConfigureAwait(false);
+                var oldReferences = await db.IndexedReferences.Where(r => r.FileId == entry.Id).ToListAsync(ct).ConfigureAwait(false);
+                db.IndexedReferences.RemoveRange(oldReferences);
                 entry.References.Clear();
             }
 
