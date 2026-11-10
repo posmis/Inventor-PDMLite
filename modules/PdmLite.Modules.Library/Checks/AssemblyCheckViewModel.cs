@@ -33,6 +33,7 @@ public sealed partial class AssemblyCheckViewModel(
 
     /// <summary>Файлы компонентов библиотеки в сборке — для проверки имён в обозревателе.</summary>
     private IReadOnlyList<string> _libraryFiles = [];
+    private string? _assemblyPath;
 
     /// <summary>Вхождения со старыми именами (например, оставшимися от Content Center).</summary>
     [ObservableProperty]
@@ -53,6 +54,7 @@ public sealed partial class AssemblyCheckViewModel(
         try
         {
             var inspection = await assembly.InspectActiveAsync();
+            _assemblyPath = inspection.AssemblyPath;
             var catalog = await items.LoadCatalogAsync();
             var library = await items.ListAsync(catalog);
             Library = library;
@@ -65,7 +67,7 @@ public sealed partial class AssemblyCheckViewModel(
 
             var root = storage();
             _libraryFiles = inspection.Components.Select(c => c.Path).Where(root.Contains).ToList();
-            NamesToFix = (await assembly.FixOccurrenceNamesAsync(_libraryFiles, apply: false)).Count;
+            NamesToFix = (await assembly.FixOccurrenceNamesAsync(_libraryFiles, apply: false, expectedAssemblyPath: _assemblyPath)).Count;
 
             Header = Path.GetFileName(inspection.AssemblyPath);
             Summary = (result.Findings.Count == 0
@@ -78,6 +80,7 @@ public sealed partial class AssemblyCheckViewModel(
             logger.LogWarning(ex, "Не удалось проверить сборку");
             Rows.Clear();
             Header = "";
+            _assemblyPath = null;
             Summary = ex.Message;
         }
         finally
@@ -100,7 +103,7 @@ public sealed partial class AssemblyCheckViewModel(
         ReplacementResult? result = null;
         try
         {
-            result = await assembly.ReplaceAsync(replacements);
+            result = await assembly.ReplaceAsync(replacements, expectedAssemblyPath: _assemblyPath);
         }
         catch (Exception ex)
         {
@@ -138,7 +141,7 @@ public sealed partial class AssemblyCheckViewModel(
         IsBusy = true;
         try
         {
-            var plan = await assembly.FixOccurrenceNamesAsync(_libraryFiles, apply: false);
+            var plan = await assembly.FixOccurrenceNamesAsync(_libraryFiles, apply: false, expectedAssemblyPath: _assemblyPath);
             if (plan.Count == 0)
             {
                 UiMessages.Info("Имена компонентов библиотеки в обозревателе уже в порядке.");
@@ -154,7 +157,7 @@ public sealed partial class AssemblyCheckViewModel(
             if (!Ask(confirm))
                 return;
 
-            var done = await assembly.FixOccurrenceNamesAsync(_libraryFiles, apply: true);
+            var done = await assembly.FixOccurrenceNamesAsync(_libraryFiles, apply: true, expectedAssemblyPath: _assemblyPath);
             UiMessages.Info($"Переименовано вхождений: {done.Count}. Сохраните сборку.");
         }
         catch (Exception ex)

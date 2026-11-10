@@ -12,6 +12,7 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
     public Task<AssemblyInspection> InspectActiveAsync(CancellationToken cancellationToken = default) =>
         ui.InvokeAsync(() =>
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var assembly = ActiveAssembly();
             var components = new Dictionary<string, (string? PartNumber, bool ContentCenter, int Count, bool Missing)>(StringComparer.OrdinalIgnoreCase);
 
@@ -40,10 +41,12 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
                 components.Select(c => new AssemblyComponentInfo(c.Key, c.Value.PartNumber, c.Value.ContentCenter, c.Value.Count, c.Value.Missing)).ToList());
         });
 
-    public Task<ReplacementResult> ReplaceAsync(IReadOnlyList<ComponentReplacement> replacements, CancellationToken cancellationToken = default) =>
+    public Task<ReplacementResult> ReplaceAsync(IReadOnlyList<ComponentReplacement> replacements, CancellationToken cancellationToken = default, string? expectedAssemblyPath = null) =>
         ui.InvokeAsync(() =>
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var top = ActiveAssembly();
+            AssemblyTarget.Verify(expectedAssemblyPath, top.FullFileName, cancellationToken);
             var map = replacements.ToDictionary(r => r.OldPath, r => r.NewPath, StringComparer.OrdinalIgnoreCase);
             var problems = new List<string>();
             var modified = new List<string>();
@@ -54,6 +57,7 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
             // Замена делается в той сборке, где компонент стоит непосредственно: в самой сборке и в каждой подсборке.
             foreach (var assembly in AssembliesOf(top))
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var direct = assembly.ComponentDefinition.Occurrences.Cast<Inv.ComponentOccurrence>()
                     .Where(o => !Safe(() => o.Suppressed, true))
                     .Select(o => (Occurrence: o, Path: PathOf(o)))
@@ -133,16 +137,19 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
                     foreach (Inv._Document child in sub.AllReferencedDocuments)
                         Consider(child, components);
 
-            return new ComponentSelection(selected, components, unsaved);
+            return new ComponentSelection(selected, components, unsaved, assembly.FullFileName);
         });
 
     public Task<IReadOnlyList<OccurrenceRename>> FixOccurrenceNamesAsync(IReadOnlyCollection<string> componentPaths, bool apply,
-        CancellationToken cancellationToken = default) =>
+        CancellationToken cancellationToken = default, string? expectedAssemblyPath = null) =>
         ui.InvokeAsync<IReadOnlyList<OccurrenceRename>>(() =>
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            var top = ActiveAssembly();
+            if (apply || expectedAssemblyPath is not null) AssemblyTarget.Verify(expectedAssemblyPath, top.FullFileName, cancellationToken);
             var paths = componentPaths.ToHashSet(StringComparer.OrdinalIgnoreCase);
             var result = new List<OccurrenceRename>();
-            foreach (var assembly in AssembliesOf(ActiveAssembly()))
+            foreach (var assembly in AssembliesOf(top))
             {
                 // Сборки библиотеки — только для чтения, их имена не трогаем.
                 var file = assembly.FullFileName;

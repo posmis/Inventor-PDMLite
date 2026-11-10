@@ -24,6 +24,9 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/PdmLite.Hosting/PdmLite.Hosting.csproj" />
+    <Compile Include="../../modules/PdmLite.Modules.Library/Checks/ContentCenterPrompt.cs" Link="Checks/ContentCenterPrompt.cs" />
+    <Compile Include="../../modules/PdmLite.Modules.Library/Checks/ContentCenterPromptLifetime.cs" Link="Checks/ContentCenterPromptLifetime.cs" />
+    <Compile Include="../../modules/PdmLite.Modules.Library/Checks/AssemblyCheckViewModel.cs" Link="Checks/AssemblyCheckViewModel.cs" />
     <Compile Include="../../modules/PdmLite.Modules.Library/Checks/LibraryPathCache.cs" Link="Checks/LibraryPathCache.cs" />
     <Compile Include="../../modules/PdmLite.Modules.Library/Checks/ContentCenterPromptAttempts.cs" Link="Checks/ContentCenterPromptAttempts.cs" />
     <Compile Include="../../modules/PdmLite.Modules.Library/Settings/LibrarySettingsViewModel.cs" Link="LibrarySettingsViewModel.cs" />

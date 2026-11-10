@@ -19,7 +19,7 @@ public sealed class OccurrenceNamesCommand(IAssemblyComponents assembly, Func<Li
             var inspection = await assembly.InspectActiveAsync();
             var root = storage();
             var libraryFiles = inspection.Components.Where(c => !c.IsMissing && root.Contains(c.Path)).Select(c => c.Path).ToList();
-            var plan = await assembly.FixOccurrenceNamesAsync(libraryFiles, apply: false);
+            var plan = await assembly.FixOccurrenceNamesAsync(libraryFiles, apply: false, expectedAssemblyPath: inspection.AssemblyPath);
             if (plan.Count == 0)
             {
                 UiMessages.Info("Имена компонентов библиотеки в обозревателе уже в порядке.");
@@ -35,7 +35,7 @@ public sealed class OccurrenceNamesCommand(IAssemblyComponents assembly, Func<Li
             if (confirm.ShowDialog() != true)
                 return;
 
-            var done = await assembly.FixOccurrenceNamesAsync(libraryFiles, apply: true);
+            var done = await assembly.FixOccurrenceNamesAsync(libraryFiles, apply: true, expectedAssemblyPath: inspection.AssemblyPath);
             UiMessages.Info($"Переименовано вхождений: {done.Count}. Сохраните сборку.");
         }
         catch (InvalidOperationException ex)

@@ -519,6 +519,8 @@ public sealed class LibraryImportService(
     {
         Validate(session);
         var storage = storageFactory();
+        await using var lease = await LibraryWriteLease.EnterAsync(database, storage.Root,
+            ex => logger.LogWarning(ex, "Импорт: очистка ресурсов"), ct).ConfigureAwait(false);
         var user = Environment.UserName;
 
         var eligible = session.Candidates.Where(c => c.CanImport)
@@ -560,11 +562,12 @@ public sealed class LibraryImportService(
             string? copied = null;
             var id = Guid.NewGuid();
             var registered = false;
-            var commitAttempted = false;
+            var commit = new LibraryMutationCommit(lease, LibraryMutationCommit.CreateContext);
             try
             {
                 var category = session.Catalog.Get(c.CategoryId)!;
                 copied = storage.CopyIn(c.SourcePath, c.TargetRelativePath!);
+                lease.SetCopies([new RecoveryCopy(copied, copied)]);
 
                 await using var db = database.CreateContext();
                 var componentIds = c.DocumentType == LibraryDocumentType.Assembly
@@ -580,7 +583,6 @@ public sealed class LibraryImportService(
                 var now = DateTime.UtcNow;
                 var key = DesignationNormalizer.ToKey(c.Designation);
 
-                await using var tx = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
                 db.LibraryItems.Add(new LibraryItem
                 {
                     Id = id,
@@ -624,35 +626,18 @@ public sealed class LibraryImportService(
                 if (c.CategoryId != c.SuggestedCategoryId)
                     await LibraryCatalog.LearnAsync(db, c.Designation, c.Standard, category.Id, ct).ConfigureAwait(false);
 
-                await db.SaveChangesAsync(ct).ConfigureAwait(false);
-                commitAttempted = true;
-                await tx.CommitAsync(ct).ConfigureAwait(false);
+                await commit.SaveAsync(db, ct).ConfigureAwait(false);
                 registered = true;
 
                 committed[PathKey(c.SourcePath)] = (id, copied);
                 session.Remember(key, c.Designation, c.TargetRelativePath!, c.FileHash, hash);
                 if (c.Properties is { } shape && LibraryGeometry.Known(shape.Volume, shape.Area))
                     session.ExistingGeometry.Add((c.Designation, c.DocumentType, shape.Volume!.Value, shape.Area!.Value));
+                ct.ThrowIfCancellationRequested();
                 logger.LogInformation("В библиотеку добавлен {Designation} ({Path})", c.Designation, c.TargetRelativePath);
             }
             catch (Exception ex)
             {
-                string? retained = null;
-                if (commitAttempted && !registered)
-                {
-                    // Commit cancellation/connection loss may occur after PostgreSQL committed.
-                    try
-                    {
-                        using var verifyTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                        await using var verify = database.CreateContext();
-                        registered = await verify.LibraryItems.AsNoTracking().AnyAsync(item => item.Id == id, verifyTimeout.Token).ConfigureAwait(false);
-                        if (!registered) retained = $"Фиксация БД не подтверждена; файл сохранён для проверки: {copied}.";
-                    }
-                    catch (Exception check)
-                    {
-                        retained = $"Статус фиксации БД неизвестен; файл сохранён для проверки: {copied}. {check.Message}";
-                    }
-                }
                 if (registered)
                 {
                     committed[PathKey(c.SourcePath)] = (id, copied!);
@@ -660,8 +645,10 @@ public sealed class LibraryImportService(
                     logger.LogWarning(ex, "Компонент {Path} уже сохранён; его файл не удаляется", copied);
                     continue;
                 }
-                var cleanup = copied is not null && retained is null ? TryDelete(copied) : null;
-                var detail = retained ?? (cleanup is null ? null : $"Не удалось очистить копию {copied}: {cleanup.Message}");
+                if (!await commit.CanRollbackAsync().ConfigureAwait(false))
+                    throw commit.Preserve(ex, copied is null ? [] : [new RecoveryCopy(copied, copied)]);
+                var cleanup = copied is not null ? TryDelete(copied) : null;
+                var detail = cleanup is null ? null : $"Не удалось очистить копию {copied}: {cleanup.Message}";
                 if (ex is OperationCanceledException cancelled)
                 {
                     if (detail is null) throw;

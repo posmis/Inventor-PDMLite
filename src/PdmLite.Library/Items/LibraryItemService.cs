@@ -70,6 +70,10 @@ public sealed class LibraryItemService(
     Func<LibraryStorage> storageFactory,
     ILogger<LibraryItemService> logger)
 {
+    internal Func<string, PdmDbContext> CreateVerificationContext { get; init; } = LibraryMutationCommit.CreateContext;
+    private Task<LibraryWriteLease> EnterWriteAsync(string root, CancellationToken ct) =>
+        LibraryWriteLease.EnterAsync(database, root, ex => logger.LogWarning(ex, "Операция библиотеки: очистка ресурсов"), ct);
+
     public async Task<LibraryCatalog> LoadCatalogAsync(CancellationToken ct = default)
     {
         await database.MigrateAsync(ct).ConfigureAwait(false);
@@ -149,11 +153,12 @@ public sealed class LibraryItemService(
     /// <summary>Применяет изменение карточки. При ошибке файл, сборки и база остаются как были.</summary>
     public async Task ApplyEditAsync(LibraryCatalog catalog, Guid id, LibraryItemEdit edit, CancellationToken ct = default)
     {
+        var storage = storageFactory();
+        await using var lease = await EnterWriteAsync(storage.Root, ct).ConfigureAwait(false);
         var check = await CheckEditAsync(catalog, id, edit, ct).ConfigureAwait(false);
         if (check.HasErrors)
             throw new InvalidOperationException(string.Join(" ", check.Issues.Where(i => i.Severity == ImportSeverity.Error).Select(i => i.Message)));
 
-        var storage = storageFactory();
         var user = Environment.UserName;
         var category = catalog.Get(edit.CategoryId)!;
         var manufacturer = string.IsNullOrWhiteSpace(edit.Manufacturer) ? null : edit.Manufacturer.Trim();
@@ -168,10 +173,12 @@ public sealed class LibraryItemService(
 
         // Резервные копии на время операции: свойства в файле перезаписываются, сборки перевязываются.
         var backups = new List<(string Path, string Backup)> { (oldFull, LibraryStorage.Backup(oldFull)) };
+        var commit = new LibraryMutationCommit(lease, CreateVerificationContext);
         var preserveBackups = false;
         var didMove = false;
         try
         {
+            lease.SetCopies(backups.Select(b => new RecoveryCopy(b.Path, b.Backup)));
             LibraryStorage.ClearReadOnly(oldFull);
             if (moved)
             {
@@ -186,7 +193,7 @@ public sealed class LibraryItemService(
             var (hash, size) = await LibraryStorage.HashAsync(newFull, ct).ConfigureAwait(false);
 
             if (moved)
-                await RelinkAssembliesAsync(db, storage, id, oldFull, newFull, backups, ct).ConfigureAwait(false);
+                await RelinkAssembliesAsync(db, storage, id, oldFull, newFull, backups, lease, ct).ConfigureAwait(false);
 
             var now = DateTime.UtcNow;
             var categoryChanged = item.CategoryId != category.Id;
@@ -220,17 +227,23 @@ public sealed class LibraryItemService(
             if (categoryChanged)
                 await LibraryCatalog.LearnAsync(db, item.Designation, item.Standard, category.Id, ct).ConfigureAwait(false);
 
-            await db.SaveChangesAsync(ct).ConfigureAwait(false);
-            logger.LogInformation("Компонент библиотеки изменён: {Before} → {After}", before.Designation, item.Designation);
+            await commit.SaveAsync(db, ct).ConfigureAwait(false);
+
         }
         catch (Exception failure)
         {
+            if (!await commit.CanRollbackAsync().ConfigureAwait(false))
+            {
+                preserveBackups = true;
+                throw commit.Preserve(failure, backups.Select(b => new RecoveryCopy(b.Path, b.Backup)));
+            }
             var errors = new List<Exception>();
             if (didMove) AttemptRollback(() => LibraryStorage.Delete(newFull), newFull, errors);
             RestoreBackups(backups, errors);
             if (errors.Count > 0)
             {
                 preserveBackups = true;
+                lease.Preserve("RollbackIncomplete", backups.Select(b => new RecoveryCopy(b.Path, b.Backup)));
                 throw new LibraryRollbackException(failure, errors, backups.Select(b => new RecoveryCopy(b.Path, b.Backup)));
             }
             throw;
@@ -252,10 +265,11 @@ public sealed class LibraryItemService(
     public async Task<IReadOnlyList<PropertyDiff>> DiagnosePropertiesAsync(LibraryCatalog catalog, IReadOnlyCollection<Guid>? ids,
         IProgress<(int Done, int Total, string? Current)>? progress = null, CancellationToken ct = default)
     {
+        var storage = storageFactory();
+        await using var lease = await EnterWriteAsync(storage.Root, ct).ConfigureAwait(false);
         if (!properties.IsAvailable)
             throw new InvalidOperationException($"Нет доступа к свойствам файлов Inventor: {properties.UnavailableReason}");
 
-        var storage = storageFactory();
         var items = await LoadItemsAsync(ids, ct).ConfigureAwait(false);
         var result = new List<PropertyDiff>();
 
@@ -298,64 +312,96 @@ public sealed class LibraryItemService(
     {
         if (!properties.IsAvailable)
             throw new InvalidOperationException($"Нет доступа к свойствам файлов Inventor: {properties.UnavailableReason}");
-
         var storage = storageFactory();
-        await using var db = database.CreateContext();
-        var query = db.LibraryItems.Include(i => i.Versions).AsQueryable();
-        if (ids is not null)
-            query = query.Where(i => ids.Contains(i.Id));
-        var items = (await query.ToListAsync(ct).ConfigureAwait(false)).OrderBy(i => i.Designation, NaturalComparer.Instance).ToList();
-
+        await using var lease = await EnterWriteAsync(storage.Root, ct).ConfigureAwait(false);
+        var snapshots = await LoadItemsAsync(ids, ct).ConfigureAwait(false);
         var failed = new List<string>();
         int updated = 0, upToDate = 0, done = 0;
         try
         {
-            foreach (var item in items)
+            foreach (var snapshot in snapshots)
             {
                 ct.ThrowIfCancellationRequested();
-                progress?.Report((done, items.Count, item.Designation));
-                var full = storage.GetFullPath(item.RelativePath);
-                var expected = Expected(item, catalog);
+                progress?.Report((done, snapshots.Count, snapshot.Designation));
+                var full = storage.GetFullPath(snapshot.RelativePath);
+                string? backup = null;
+                var preserve = false;
+                var commit = new LibraryMutationCommit(lease, CreateVerificationContext);
+                await using var db = database.CreateContext();
                 try
                 {
-                    if (!File.Exists(full))
-                        throw new FileNotFoundException("Файл не найден в папке библиотеки.", full);
-                    if (Compare(await properties.ReadAsync(full, ct).ConfigureAwait(false), expected).Count == 0)
+                    var item = await db.LibraryItems.Include(i => i.Versions).SingleAsync(i => i.Id == snapshot.Id, ct).ConfigureAwait(false);
+                    if (!File.Exists(full)) throw new FileNotFoundException("Файл не найден в папке библиотеки.", full);
+                    var expected = Expected(item, catalog);
+                    var change = Compare(await properties.ReadAsync(full, ct).ConfigureAwait(false), expected).Count > 0;
+                    if (change)
+                    {
+                        backup = LibraryStorage.Backup(full);
+                        lease.SetCopies([new RecoveryCopy(full, backup)]);
+                        LibraryStorage.ClearReadOnly(full);
+                        await properties.WriteAsync(full, expected, ct).ConfigureAwait(false);
+                        LibraryStorage.MakeReadOnly(full);
+                    }
+                    // Совпадение свойств не означает, что сохранённая контрольная сумма актуальна.
+                    var (hash, size) = await LibraryStorage.HashAsync(full, ct).ConfigureAwait(false);
+                    var version = item.Versions.FirstOrDefault(v => v.Version == item.Version);
+                    if (!change && item.FileHash == hash && item.FileSize == size
+                        && (version is null || version.FileHash == hash && version.FileSize == size))
                         upToDate++;
                     else
                     {
-                        await WriteSafelyAsync(full, expected, ct).ConfigureAwait(false);
-                        (item.FileHash, item.FileSize) = await LibraryStorage.HashAsync(full, ct).ConfigureAwait(false);
-                        if (item.Versions.FirstOrDefault(v => v.Version == item.Version) is { } current)
-                            (current.FileHash, current.FileSize) = (item.FileHash, item.FileSize);
-                        await db.SaveChangesAsync(ct).ConfigureAwait(false);
+                        (item.FileHash, item.FileSize) = (hash, size);
+                        if (version is not null) (version.FileHash, version.FileSize) = (hash, size);
+                        db.LibraryLog.Add(new LibraryLogEntry { At = DateTime.UtcNow, User = Environment.UserName,
+                            Action = "rewrite-properties-file", ItemId = item.Id, Details = JsonSerializer.Serialize(new { item.RelativePath, hash, size }) });
+                        await commit.SaveAsync(db, ct).ConfigureAwait(false);
                         updated++;
                     }
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                catch (Exception ex)
                 {
+                    var copies = new[] { new RecoveryCopy(full, backup ?? full) };
+                    if (!await commit.CanRollbackAsync().ConfigureAwait(false))
+                    {
+                        preserve = true;
+                        throw commit.Preserve(ex, copies);
+                    }
+                    if (backup is not null)
+                    {
+                        var errors = new List<Exception>();
+                        RestoreBackups([(full, backup)], errors);
+                        if (errors.Count > 0)
+                        {
+                            preserve = true;
+                            lease.Preserve("RollbackIncomplete", copies);
+                            throw new LibraryRollbackException(ex, errors, copies);
+                        }
+                    }
+                    if (ex is OperationCanceledException) throw;
                     logger.LogWarning(ex, "Не удалось обновить свойства {Path}", full);
-                    failed.Add($"{item.Designation}: {ex.Message}");
+                    failed.Add($"{snapshot.Designation}: {ex.Message}");
                 }
+                finally { if (backup is not null && !preserve) TryDelete(backup); }
                 done++;
             }
         }
         finally
         {
-            // Журнал пишется и при остановке: видно, сколько успели.
-            db.ChangeTracker.Clear();
-            db.LibraryLog.Add(new LibraryLogEntry
+            if (!lease.IsPreserved)
             {
-                At = DateTime.UtcNow,
-                User = Environment.UserName,
-                Action = "rewrite-properties",
-                Details = JsonSerializer.Serialize(new { total = items.Count, done, updated, upToDate, failed = failed.Count }),
-            });
-            await db.SaveChangesAsync(CancellationToken.None).ConfigureAwait(false);
+                try
+                {
+                    await using var log = database.CreateContext();
+                    log.LibraryLog.Add(new LibraryLogEntry { At = DateTime.UtcNow, User = Environment.UserName,
+                        Action = "rewrite-properties", Details = JsonSerializer.Serialize(new { total = snapshots.Count, done, updated, upToDate, failed = failed.Count }) });
+                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    await log.SaveChangesAsync(timeout.Token).ConfigureAwait(false);
+                }
+                catch (Exception ex) { logger.LogWarning(ex, "Не удалось сохранить итог обслуживания свойств"); }
+            }
         }
-
-        progress?.Report((items.Count, items.Count, null));
-        return new RewriteResult(items.Count, updated, upToDate, failed);
+        progress?.Report((snapshots.Count, snapshots.Count, null));
+        return new RewriteResult(snapshots.Count, updated, upToDate, failed);
     }
 
     private async Task<List<LibraryItem>> LoadItemsAsync(IReadOnlyCollection<Guid>? ids, CancellationToken ct)
@@ -388,31 +434,6 @@ public sealed class LibraryItemService(
         if (expected.RemoveContentCenterLink && current.IsContentCenter)
             changes.Add(new PropertyChange("Метка Content Center", "есть", "снята"));
         return changes;
-    }
-
-    /// <summary>Запись свойств с резервной копией: при ошибке файл возвращается как был.</summary>
-    private async Task WriteSafelyAsync(string full, DocumentPropertyChanges changes, CancellationToken ct)
-    {
-        var backup = LibraryStorage.Backup(full);
-        var preserveBackup = false;
-        try
-        {
-            LibraryStorage.ClearReadOnly(full);
-            await properties.WriteAsync(full, changes, ct).ConfigureAwait(false);
-            LibraryStorage.MakeReadOnly(full);
-        }
-        catch (Exception failure)
-        {
-            var errors = new List<Exception>();
-            RestoreBackups([(full, backup)], errors);
-            if (errors.Count > 0)
-            {
-                preserveBackup = true;
-                throw new LibraryRollbackException(failure, errors, [new RecoveryCopy(full, backup)]);
-            }
-            throw;
-        }
-        finally { if (!preserveBackup) TryDelete(backup); }
     }
 
     /// <summary>Запоминает геометрию компонента (файл не меняется) — для поиска дубликатов.</summary>
@@ -463,11 +484,12 @@ public sealed class LibraryItemService(
     /// </summary>
     public async Task<Guid> DuplicateAsync(LibraryCatalog catalog, Guid sourceId, LibraryItemEdit edit, CancellationToken ct = default)
     {
+        var storage = storageFactory();
+        await using var lease = await EnterWriteAsync(storage.Root, ct).ConfigureAwait(false);
         var check = await CheckDuplicateAsync(catalog, sourceId, edit, ct).ConfigureAwait(false);
         if (check.HasErrors)
             throw new InvalidOperationException(string.Join(" ", check.Issues.Where(i => i.Severity == ImportSeverity.Error).Select(i => i.Message)));
 
-        var storage = storageFactory();
         var user = Environment.UserName;
         var category = catalog.Get(edit.CategoryId)!;
         var manufacturer = string.IsNullOrWhiteSpace(edit.Manufacturer) ? null : edit.Manufacturer.Trim();
@@ -478,9 +500,11 @@ public sealed class LibraryItemService(
             .ToListAsync(ct).ConfigureAwait(false);
 
         var id = Guid.NewGuid();
+        var commit = new LibraryMutationCommit(lease, CreateVerificationContext);
         var copied = storage.CopyIn(storage.GetFullPath(source.RelativePath), check.NewRelativePath!);
         try
         {
+            lease.SetCopies([new RecoveryCopy(copied, copied)]);
             LibraryStorage.ClearReadOnly(copied);
             await properties.WriteAsync(copied, LibraryProperties.For(check.CanonicalDesignation, edit.Kind, check.Standard, manufacturer, category.Path, id), ct)
                 .ConfigureAwait(false);
@@ -527,15 +551,18 @@ public sealed class LibraryItemService(
                 ItemId = id,
                 Details = JsonSerializer.Serialize(new { from = source.Designation, fromId = source.Id, designation = check.CanonicalDesignation, path = check.NewRelativePath }),
             });
-            await db.SaveChangesAsync(ct).ConfigureAwait(false);
-            logger.LogInformation("Компонент скопирован: {From} → {To}", source.Designation, check.CanonicalDesignation);
-            return id;
+            await commit.SaveAsync(db, ct).ConfigureAwait(false);
+
         }
-        catch
+        catch (Exception failure)
         {
+            if (!await commit.CanRollbackAsync().ConfigureAwait(false))
+                throw commit.Preserve(failure, [new RecoveryCopy(copied, copied)]);
             TryDelete(copied);
             throw;
         }
+        logger.LogInformation("Компонент скопирован: {From} → {To}", source.Designation, check.CanonicalDesignation);
+        return id;
     }
 
     // ---------- Дубликаты ----------
@@ -635,10 +662,11 @@ public sealed class LibraryItemService(
     /// </summary>
     public async Task MergeDuplicatesAsync(Guid keepId, IReadOnlyCollection<Guid> removeIds, CancellationToken ct = default)
     {
+        var storage = storageFactory();
+        await using var lease = await EnterWriteAsync(storage.Root, ct).ConfigureAwait(false);
         if (removeIds.Contains(keepId))
             throw new ArgumentException("Оставляемый компонент не может быть в списке удаляемых.", nameof(removeIds));
 
-        var storage = storageFactory();
         foreach (var removeId in removeIds)
         {
             ct.ThrowIfCancellationRequested();
@@ -656,10 +684,11 @@ public sealed class LibraryItemService(
             var backups = new List<(string Path, string Backup)>();
             string? staged = null;
             var preserveBackups = false;
+            var commit = new LibraryMutationCommit(lease, CreateVerificationContext);
             try
             {
                 // Сборки библиотеки: ссылки в файлах и состав в базе — на оставляемый компонент.
-                await RelinkAssembliesAsync(db, storage, removeId, removeFull, keepFull, backups, ct).ConfigureAwait(false);
+                await RelinkAssembliesAsync(db, storage, removeId, removeFull, keepFull, backups, lease, ct).ConfigureAwait(false);
                 var references = await db.LibraryItemReferences.Where(r => r.ComponentId == removeId).ToListAsync(ct).ConfigureAwait(false);
                 foreach (var reference in references)
                 {
@@ -680,12 +709,20 @@ public sealed class LibraryItemService(
                 if (File.Exists(removeFull) && !SamePath(removeFull, keepFull))
                 {
                     staged = removeFull + ".pdmlite-merge-" + Guid.NewGuid().ToString("N");
+                    lease.SetCopies(backups.Select(b => new RecoveryCopy(b.Path, b.Backup)).Append(new RecoveryCopy(removeFull, staged)));
                     File.Move(removeFull, staged);
                 }
-                await db.SaveChangesAsync(ct).ConfigureAwait(false);
+                await commit.SaveAsync(db, ct).ConfigureAwait(false);
             }
             catch (Exception failure)
             {
+                var available = backups.Select(b => new RecoveryCopy(b.Path, b.Backup)).ToList();
+                if (staged is not null) available.Add(new RecoveryCopy(removeFull, staged));
+                if (!await commit.CanRollbackAsync().ConfigureAwait(false))
+                {
+                    preserveBackups = true;
+                    throw commit.Preserve(failure, available);
+                }
                 var errors = new List<Exception>();
                 RestoreBackups(backups, errors);
                 if (staged is not null && File.Exists(staged))
@@ -695,6 +732,7 @@ public sealed class LibraryItemService(
                     preserveBackups = true;
                     var copies = backups.Select(b => new RecoveryCopy(b.Path, b.Backup)).ToList();
                     if (staged is not null && File.Exists(staged)) copies.Add(new(removeFull, staged));
+                    lease.Preserve("RollbackIncomplete", copies);
                     throw new LibraryRollbackException(failure, errors, copies);
                 }
                 throw;
@@ -720,11 +758,12 @@ public sealed class LibraryItemService(
     /// <summary>Удаляет компонент: файл и запись в базе. Нельзя, если он входит в сборку библиотеки.</summary>
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
     {
+        var storage = storageFactory();
+        await using var lease = await EnterWriteAsync(storage.Root, ct).ConfigureAwait(false);
         var usedIn = await UsedInAsync(id, ct).ConfigureAwait(false);
         if (usedIn.Count > 0)
             throw new InvalidOperationException("Компонент входит в сборки библиотеки: " + string.Join(", ", usedIn) + ". Сначала удалите их.");
 
-        var storage = storageFactory();
         await using var db = database.CreateContext();
         var item = await db.LibraryItems.SingleAsync(i => i.Id == id, ct).ConfigureAwait(false);
         var full = storage.GetFullPath(item.RelativePath);
@@ -739,20 +778,25 @@ public sealed class LibraryItemService(
             Details = JsonSerializer.Serialize(new { item.Designation, item.RelativePath }),
         });
         // До фиксации БД файл остаётся восстановимым. Занятый файл — ошибка до удаления записи.
+        var commit = new LibraryMutationCommit(lease, CreateVerificationContext);
         var staged = full + ".pdmlite-delete-" + Guid.NewGuid().ToString("N");
         var hasFile = File.Exists(full);
+        lease.SetCopies(hasFile ? [new RecoveryCopy(full, staged)] : []);
         if (hasFile) File.Move(full, staged);
         try
         {
-            await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            await commit.SaveAsync(db, ct).ConfigureAwait(false);
         }
         catch (Exception failure)
         {
+            if (!await commit.CanRollbackAsync().ConfigureAwait(false))
+                throw commit.Preserve(failure, hasFile ? [new RecoveryCopy(full, staged)] : []);
             if (hasFile)
             {
                 try { File.Move(staged, full); }
                 catch (Exception restore) when (restore is IOException or UnauthorizedAccessException)
                 {
+                    lease.Preserve("RollbackIncomplete", [new RecoveryCopy(full, staged)]);
                     throw new AggregateException($"Не удалось вернуть файл после сбоя удаления. Копия: {staged}", failure, restore);
                 }
             }
@@ -768,7 +812,7 @@ public sealed class LibraryItemService(
 
     /// <summary>Сборки библиотеки, в которые входит компонент, — на новый путь файла.</summary>
     private async Task RelinkAssembliesAsync(PdmDbContext db, LibraryStorage storage, Guid componentId, string oldFull, string newFull,
-        List<(string Path, string Backup)> backups, CancellationToken ct)
+        List<(string Path, string Backup)> backups, LibraryWriteLease lease, CancellationToken ct)
     {
         var assemblies = await db.LibraryItemReferences.Where(r => r.ComponentId == componentId)
             .Join(db.LibraryItems, r => r.AssemblyId, i => i.Id, (_, i) => i).Include(i => i.Versions).ToListAsync(ct).ConfigureAwait(false);
@@ -778,6 +822,7 @@ public sealed class LibraryItemService(
         {
             var path = storage.GetFullPath(assembly.RelativePath);
             backups.Add((path, LibraryStorage.Backup(path)));
+            lease.SetCopies(backups.Select(b => new RecoveryCopy(b.Path, b.Backup)));
             LibraryStorage.ClearReadOnly(path);
             await properties.ReplaceReferencesAsync(path, map, ct).ConfigureAwait(false);
             var remaining = (await properties.ReadWithoutGeometryAsync(path, ct).ConfigureAwait(false)).References

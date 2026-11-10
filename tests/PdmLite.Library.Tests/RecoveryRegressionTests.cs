@@ -1,4 +1,7 @@
 using System.IO.Compression;
+using System.Data.Common;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using PdmLite.Data;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 using Microsoft.EntityFrameworkCore;
@@ -22,19 +25,17 @@ public sealed partial class ReviewRegressionTests
         Assert.False(check.HasErrors);
         var destination = _folders.InLibrary(check.NewRelativePath!);
         var original = File.ReadAllText(model.RemovePath);
-        var calls = 0;
-        var racing = new LibraryItemService(db.Database, _store, () =>
+        var collision = new DestinationCollision(() =>
         {
-            if (++calls == 2)
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                File.WriteAllText(destination, "created by another operation");
-            }
-            return new LibraryStorage(_folders.Library);
-        }, NullLogger<LibraryItemService>.Instance);
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.WriteAllText(destination, "created by another operation");
+        });
+        var racing = new LibraryItemService(new CollisionDatabase(db.Database, collision), _store,
+            () => new LibraryStorage(_folders.Library), NullLogger<LibraryItemService>.Instance);
 
         await Assert.ThrowsAsync<IOException>(() => racing.ApplyEditAsync(catalog, model.Remove, edit));
 
+        Assert.True(collision.Fired);
         Assert.Equal(original, File.ReadAllText(model.RemovePath));
         Assert.Equal("created by another operation", File.ReadAllText(destination));
         Assert.Equal([model.RemovePath], FileBackedStore.References(model.AssemblyPath));
@@ -145,6 +146,28 @@ public sealed partial class ReviewRegressionTests
         var safety = await service.RestoreAsync(source.Path);
         Assert.False(File.Exists(source.Path)); Assert.True(File.Exists(safety.Path));
         Assert.Equal(expected, File.ReadAllText(model.KeepPath));
+    }
+
+    // Инъекция на фактическом чтении редактируемой карточки после CheckEdit, а не по счётчику factory-вызовов.
+    private sealed class DestinationCollision(Action create) : DbCommandInterceptor
+    {
+        public bool Fired;
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData data,
+            InterceptionResult<DbDataReader> result, CancellationToken ct = default)
+        {
+            if (!Fired && command.CommandText.Contains("item_versions")) { Fired = true; create(); }
+            return ValueTask.FromResult(result);
+        }
+    }
+    private sealed class CollisionDatabase(IPdmDatabase inner, DestinationCollision collision) : IPdmDatabase
+    {
+        public bool IsConfigured => inner.IsConfigured;
+        public DatabaseSettings Settings => inner.Settings;
+        public void Configure(DatabaseSettings value) => inner.Configure(value);
+        public PdmDbContext CreateContext() => new(new DbContextOptionsBuilder<PdmDbContext>().UseNpgsql(Settings.BuildConnectionString())
+            .UseSnakeCaseNamingConvention().AddInterceptors(collision).Options);
+        public Task MigrateAsync(CancellationToken ct = default) => inner.MigrateAsync(ct);
+        public Task<(bool Ok, string Message)> TestAsync(DatabaseSettings value, CancellationToken ct = default) => inner.TestAsync(value, ct);
     }
 
     private sealed class DirectoryBlock : IDisposable

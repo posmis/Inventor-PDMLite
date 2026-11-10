@@ -53,7 +53,7 @@ public sealed class AddFromAssembly(IServiceProvider services, IAssemblyComponen
 
         var viewModel = services.GetRequiredService<ImportViewModel>();
         var selected = selection.Selected.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        viewModel.AfterCommit = result => ReplaceAsync(result.Committed.Where(c => selected.Contains(c.Key)));
+        viewModel.AfterCommit = result => ReplaceAsync(result.Committed.Where(c => selected.Contains(c.Key)), selection.AssemblyPath);
 
         var window = new ImportWindow(viewModel, services) { Title = "Добавить в библиотеку — из сборки" };
         new WindowInteropHelper(window).Owner = Process.GetCurrentProcess().MainWindowHandle;
@@ -71,7 +71,7 @@ public sealed class AddFromAssembly(IServiceProvider services, IAssemblyComponen
                 return;
             try
             {
-                UiMessages.Info(await ReplaceAsync(known) ?? "Заменять нечего.");
+                UiMessages.Info(await ReplaceAsync(known, selection.AssemblyPath) ?? "Заменять нечего.");
             }
             catch (Exception ex)
             {
@@ -84,13 +84,13 @@ public sealed class AddFromAssembly(IServiceProvider services, IAssemblyComponen
     }
 
     /// <summary>Заменяет в активной сборке исходные файлы библиотечными; текст итога.</summary>
-    private async Task<string?> ReplaceAsync(IEnumerable<KeyValuePair<string, string>> map)
+    private async Task<string?> ReplaceAsync(IEnumerable<KeyValuePair<string, string>> map, string? assemblyPath)
     {
         var replacements = map.Select(m => new ComponentReplacement(m.Key, m.Value)).ToList();
         if (replacements.Count == 0)
             return null;
 
-        var result = await assembly.ReplaceAsync(replacements);
+        var result = await assembly.ReplaceAsync(replacements, expectedAssemblyPath: assemblyPath);
         var text = $"В сборке заменено на компоненты библиотеки: {result.Replaced}. Сохраните сборку.";
         if (result.BackupFolder is not null)
             text += $"\nКопии сборок до замены: {result.BackupFolder}";

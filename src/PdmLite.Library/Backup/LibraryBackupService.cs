@@ -1,5 +1,6 @@
 using PdmLite.Core.IO;
 using Npgsql;
+using PdmLite.Library.Items;
 using System.Data;
 using System.IO.Compression;
 using System.Security.Cryptography;
@@ -325,6 +326,7 @@ public sealed class LibraryBackupService(
         IProgress<(int Done, int Total, string? Current)>? progress, CancellationToken ct)
     {
         var root = Path.TrimEndingDirectorySeparator(storageFactory().Root);
+        LibraryWriteLease.CheckPending(root, restoring: true);
         var stamp = Guid.NewGuid().ToString("N");
         var staging = root + ".restore-" + stamp;
         var previous = root + ".before-restore-" + stamp;
@@ -339,6 +341,7 @@ public sealed class LibraryBackupService(
         recovery.SetTarget(gatedConnectionString);
         await using var databaseGate = await RestoreDatabaseGate.EnterAsync(gatedConnectionString, VerificationTimeout,
             ex => logger.LogWarning(ex, "Не удалось освободить блокировку восстановления"), ct).ConfigureAwait(false);
+        LibraryWriteLease.CheckPending(root, restoring: true);
         var before = await CreateCoreAsync(BackupReason.BeforeRestore, progress, ct, recovery.SetBackup).ConfigureAwait(false);
         var (snapshot, _) = ReadArchive(path);
         var marker = JsonSerializer.Serialize(new { operationId = stamp, backup = Path.GetFileName(originalPath), items = snapshot.Items.Count });

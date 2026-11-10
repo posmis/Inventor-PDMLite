@@ -23,7 +23,7 @@ public sealed record ReplacementResult(int Replaced, IReadOnlyList<string> Modif
 /// <param name="Selected">Файлы выделенных компонентов (каждый — один раз).</param>
 /// <param name="Components">Для выделенных подсборок — файлы всех их компонентов, на всех уровнях.</param>
 /// <param name="Unsaved">Из них — открытые с несохранёнными изменениями.</param>
-public sealed record ComponentSelection(IReadOnlyList<string> Selected, IReadOnlyList<string> Components, IReadOnlyList<string> Unsaved);
+public sealed record ComponentSelection(IReadOnlyList<string> Selected, IReadOnlyList<string> Components, IReadOnlyList<string> Unsaved, string? AssemblyPath = null);
 
 /// <summary>Состав активной сборки Inventor и замена компонентов в ней. Есть только внутри Inventor.</summary>
 public interface IAssemblyComponents
@@ -35,7 +35,7 @@ public interface IAssemblyComponents
     /// Заменяет компоненты во всех сборках активной сборки (включая подсборки). Перед заменой
     /// копирует изменяемые сборки в папку резервных копий. Сохраняет пользователь.
     /// </summary>
-    Task<ReplacementResult> ReplaceAsync(IReadOnlyList<ComponentReplacement> replacements, CancellationToken cancellationToken = default);
+    Task<ReplacementResult> ReplaceAsync(IReadOnlyList<ComponentReplacement> replacements, CancellationToken cancellationToken = default, string? expectedAssemblyPath = null);
 
     /// <summary>Компоненты, выделенные в активной сборке. Если активный документ — не сборка, бросает <see cref="InvalidOperationException"/>.</summary>
     Task<ComponentSelection> GetSelectionAsync(CancellationToken cancellationToken = default);
@@ -46,7 +46,7 @@ public interface IAssemblyComponents
     /// </summary>
     /// <param name="apply"><c>false</c> — только список; <c>true</c> — переименовать (сохраняет пользователь).</param>
     Task<IReadOnlyList<OccurrenceRename>> FixOccurrenceNamesAsync(IReadOnlyCollection<string> componentPaths, bool apply,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default, string? expectedAssemblyPath = null);
 
     /// <summary>Сохраняет открытые в Inventor документы (по полным путям).</summary>
     Task SaveDocumentsAsync(IReadOnlyList<string> paths, CancellationToken cancellationToken = default);
