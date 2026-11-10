@@ -14,7 +14,7 @@ public sealed class WindowsRestoreFactAttribute : FactAttribute
 {
     public WindowsRestoreFactAttribute()
     {
-        if (!OperatingSystem.IsWindows()) Skip = "Requires Windows directory sharing modes.";
+        if (!OperatingSystem.IsWindows()) Skip = "Requires Windows directory query handles.";
     }
 }
 
@@ -199,25 +199,66 @@ public class RestoreRollbackTests
     }
 
     [WindowsRestoreFact]
-    public void Windows_LockedReplacementDirectory_PreservesOriginalAndReportsFailure() => LockedDirectory(false);
+    public void Windows_OpenReplacementDirectory_RollbackPreservesBothVersions() => OpenDirectory(false);
 
-    [WindowsRestoreFact]
-    public void Windows_LockedOriginalDirectory_PreservesBothVersionsAndReportsFailure() => LockedDirectory(true);
-
-    private static void LockedDirectory(bool lockPrevious)
+    [Theory]
+    [InlineData("evict", false)]
+    [InlineData("evict", true)]
+    [InlineData("return", false)]
+    [InlineData("return", true)]
+    public void Rollback_DeniedRename_IsReportedAndPreservesBothVersions(string step, bool accessDenied)
     {
         using var folders = new TempFolders();
         var previous = folders.Library + ".previous";
         var failed = folders.Library + ".failed";
         Add(folders.Library, "new.ipt", "new");
         Add(previous, "old.ipt", "old");
-        using var handle = CreateFileW(lockPrevious ? previous : folders.Library, 0,
+        Exception denied = accessDenied ? new UnauthorizedAccessException("access denied") : new IOException("sharing violation");
+
+        var errors = RestoreRollback.Run(folders.Library, previous, failed, true, true, (from, to) =>
+        {
+            if ((step == "evict" && to == failed) || (step == "return" && from == previous)) throw denied;
+            Directory.Move(from, to);
+        });
+
+        Assert.Contains(errors, e => ReferenceEquals(e, denied));
+        Assert.Equal(step == "evict" ? 2 : 1, errors.Count);
+        Assert.Equal("old", File.ReadAllText(Path.Combine(previous, "old.ipt")));
+        Assert.Equal("new", File.ReadAllText(Path.Combine(step == "evict" ? folders.Library : failed, "new.ipt")));
+    }
+
+    [WindowsRestoreFact]
+    public void Windows_OpenOriginalDirectory_RollbackPreservesBothVersions() => OpenDirectory(true);
+
+    private static void OpenDirectory(bool openPrevious)
+    {
+        using var folders = new TempFolders();
+        var previous = folders.Library + ".previous";
+        var failed = folders.Library + ".failed";
+        Add(folders.Library, "new.ipt", "new");
+        Add(previous, "old.ipt", "old");
+        using var handle = CreateFileW(openPrevious ? previous : folders.Library, 0,
             FileShare.Read | FileShare.Write, IntPtr.Zero, FileMode.Open, 0x02000000, IntPtr.Zero);
         if (handle.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
         var errors = RestoreRollback.Run(folders.Library, previous, failed, true, true, Directory.Move);
-        Assert.NotEmpty(errors);
-        Assert.Equal("old", File.ReadAllText(Path.Combine(previous, "old.ipt")));
-        Assert.Equal("new", File.ReadAllText(Path.Combine(lockPrevious ? failed : folders.Library, "new.ipt")));
+        // Открытый для запроса метаданных дескриптор не гарантирует отказ переименования.
+        // Проверяем сохранность обеих версий и соответствие результата фактическому откату.
+        Assert.False(handle.IsClosed);
+        if (errors.Count == 0)
+        {
+            Assert.Equal("old", File.ReadAllText(Path.Combine(folders.Library, "old.ipt")));
+            Assert.Equal("new", File.ReadAllText(Path.Combine(failed, "new.ipt")));
+            Assert.False(Directory.Exists(previous));
+        }
+        else
+        {
+            Assert.Equal("old", File.ReadAllText(Path.Combine(previous, "old.ipt")));
+            var preserved = Assert.Single(new[] { folders.Library, failed }
+                .Select(folder => Path.Combine(folder, "new.ipt")), File.Exists);
+            Assert.Equal("new", File.ReadAllText(preserved));
+        }
+        Assert.Equal(["new", "old"], Directory.GetFiles(folders.Root, "*", SearchOption.AllDirectories)
+            .Select(File.ReadAllText).Order(StringComparer.Ordinal));
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
