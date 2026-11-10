@@ -95,7 +95,7 @@ public class BackupTests
     }
 
     [PostgresFact]
-    public async Task Restore_FailingDatabase_LeavesLibraryAsItWas()
+    public async Task Restore_DuplicateIdsRejectedBeforeReplacement_LeavesLibraryAsItWas()
     {
         await using var db = await TestDatabase.CreateAsync();
         using var folders = new TempFolders();
@@ -104,7 +104,7 @@ public class BackupTests
         var backup = await s.Backup.CreateAsync(BackupReason.Manual);
         await ImportAsync(s, folders.AddFile("Гайка M8 ГОСТ 5915-70.ipt", "nut"));
 
-        // Портим данные копии: два компонента с одним Id — вставка в базу упадёт.
+        // Два компонента с одним Id отклоняются предварительной проверкой архива.
         var broken = Path.Combine(folders.Root, "broken.zip");
         File.Copy(backup.Path, broken);
         using (var zip = ZipFile.Open(broken, ZipArchiveMode.Update))

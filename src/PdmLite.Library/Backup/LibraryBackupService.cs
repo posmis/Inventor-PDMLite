@@ -68,7 +68,7 @@ public sealed record BackupOptions(string Folder, int Keep, int IntervalDays);
 /// <summary>
 /// Резервные копии библиотеки: база (все таблицы схемы library) и файлы папки библиотеки — в одном
 /// ZIP-архиве. Восстановление заменяет базу и папку целиком; перед ним делается копия текущего состояния,
-/// при ошибке всё возвращается как было.
+/// при ошибке выполняется откат; неполный откат сообщается явно.
 /// </summary>
 public sealed class LibraryBackupService(
     IPdmDatabase database,
@@ -76,6 +76,9 @@ public sealed class LibraryBackupService(
     Func<BackupOptions> options,
     ILogger<LibraryBackupService> logger)
 {
+    internal Action<string, string> MoveDirectory { get; init; } = Directory.Move;
+    internal Action<string> DeleteDirectory { get; init; } = path => Directory.Delete(path, recursive: true);
+
     private const string ManifestEntry = "manifest.json";
     private const string DataEntry = "data/library.json";
     private const string FilesPrefix = "files/";
@@ -306,6 +309,7 @@ public sealed class LibraryBackupService(
         var stamp = Guid.NewGuid().ToString("N");
         var staging = root + ".restore-" + stamp;
         var previous = root + ".before-restore-" + stamp;
+        var failed = root + ".failed-restore-" + stamp;
 
         // 1. Файлы — во временную папку рядом с библиотекой (тот же диск: подмена — переименованием).
         try
@@ -323,7 +327,7 @@ public sealed class LibraryBackupService(
         try
         {
             if (hadRoot)
-                Directory.Move(root, previous);
+                MoveDirectory(root, previous);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -335,17 +339,22 @@ public sealed class LibraryBackupService(
         var staged = false;
         try
         {
-            Directory.Move(staging, root);
+            MoveDirectory(staging, root);
             staged = true;
             await ReplaceDatabaseAsync(snapshot, Path.GetFileName(originalPath), ct).ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex)
         {
-            // Откат: восстановленная папка убирается, прежняя — на место; база не изменилась (транзакция).
-            TryDeleteFolder(staged ? root : staging);
-            if (hadRoot && Directory.Exists(previous) && !Directory.Exists(root))
-                Directory.Move(previous, root);
-            throw;
+            var rollbackErrors = RestoreRollback.Run(root, previous, failed, hadRoot, staged, MoveDirectory);
+            // Очистка больше не является условием возврата исходных файлов.
+            // При неполном откате не трогаем ни одну из аварийных папок.
+            if (rollbackErrors.Count == 0)
+                TryDeleteFolder(staged ? failed : staging);
+            var failure = new LibraryRestoreException(ex, rollbackErrors, root, previous,
+                staged ? failed : staging, before.Path);
+            if (!failure.RollbackCompleted)
+                logger.LogCritical(failure, "Откат восстановления библиотеки не завершён; исходные данные: {Previous}; копия: {Backup}", previous, before.Path);
+            throw failure;
         }
 
         if (hadRoot)
@@ -539,7 +548,7 @@ public sealed class LibraryBackupService(
                 return;
             foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
                 File.SetAttributes(file, FileAttributes.Normal);
-            Directory.Delete(folder, recursive: true);
+            DeleteDirectory(folder);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

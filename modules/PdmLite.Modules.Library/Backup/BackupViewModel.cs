@@ -195,7 +195,7 @@ public sealed partial class BackupViewModel(
         catch (Exception ex)
         {
             logger.LogError(ex, "{Title}: ошибка", title);
-            UiMessages.Error($"{title}: ошибка. Библиотека не изменена.", ex);
+            UiMessages.Error($"{title}: ошибка.", ex);
         }
         finally
         {
