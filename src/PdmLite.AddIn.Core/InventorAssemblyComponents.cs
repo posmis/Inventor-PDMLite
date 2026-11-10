@@ -81,28 +81,25 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
                     backups.Copy(file);
                 }
 
-                var newPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var group in direct)
+                var outcome = ReplacementBatch.Apply(direct,
+                    group => group.First().Occurrence.Replace(map[group.Key], true),
+                    group =>
+                    {
+                        // Исключение COM не доказывает отсутствие частично выполненной замены.
+                        var after = group.Select(o => PathOf(o.Occurrence)).ToList();
+                        if (after.Any(p => p is not null && !StringComparer.OrdinalIgnoreCase.Equals(p, group.Key))) return (bool?)true;
+                        return after.Any(p => p is null) ? null : false;
+                    },
+                    succeeded => FixNames(assembly, succeeded.Select(g => map[g.Key]).ToHashSet(StringComparer.OrdinalIgnoreCase), apply: true, logger).Count);
+                replaced += outcome.Replaced;
+                foreach (var failure in outcome.Failures)
                 {
-                    try
-                    {
-                        // ReplaceAll = true: все вхождения этого файла в этой сборке.
-                        group.First().Occurrence.Replace(map[group.Key], true);
-                        newPaths.Add(map[group.Key]);
-                        replaced++;
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning(ex, "Не удалось заменить {Old} в {Assembly}", group.Key, file);
-                        problems.Add($"{Path.GetFileName(file)}: «{Path.GetFileName(group.Key)}» не заменён — {ex.Message}");
-                    }
+                    logger.LogWarning(failure.Error, "Ошибка замены {Old} в {Assembly}", failure.Item.Key, file);
+                    var state = failure.Changed is null ? " Результат не подтверждён — проверьте сборку."
+                        : failure.Changed.Value ? " Обнаружены частичные изменения сборки." : "";
+                    problems.Add($"{Path.GetFileName(file)}: замена «{Path.GetFileName(failure.Item.Key)}» завершилась ошибкой — {failure.Error.Message}.{state}");
                 }
-
-                // Inventor оставляет старое имя вхождения (например, из Content Center) — даём имя по новому файлу.
-                FixNames(assembly, newPaths, apply: true, logger);
-
-                if (!modified.Contains(file))
-                    modified.Add(file);
+                if (outcome.Changed && !modified.Contains(file)) modified.Add(file);
             }
 
             logger.LogInformation("Замена компонентов в {Assembly}: {Count}, резервные копии: {Backup}", top.FullFileName, replaced, backupFolder);
@@ -181,12 +178,12 @@ public sealed class InventorAssemblyComponents(Inv.Application inventor, IUiDisp
         var result = new List<OccurrenceRename>();
         foreach (var (oldName, newName) in plan)
         {
-            result.Add(new OccurrenceRename(Path.GetFileName(assembly.FullFileName), oldName, newName));
-            if (!apply)
-                continue;
+            var change = new OccurrenceRename(Path.GetFileName(assembly.FullFileName), oldName, newName);
+            if (!apply) { result.Add(change); continue; }
             try
             {
                 candidates.First(c => c.Current == oldName).Occurrence.Name = newName;
+                result.Add(change);
             }
             catch (Exception ex)
             {

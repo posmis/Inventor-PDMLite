@@ -23,14 +23,39 @@
     <Error Text="Не найдена сборка Inventor API: $(InventorInteropPath). Установите Inventor 2025 или укажите путь: dotnet build -p:InventorInteropPath=..." />
   </Target>
 
-  <!-- Запущенный Inventor держит DLL плагина: понятная ошибка вместо «файл занят». -->
+  <UsingTask TaskName="PdmLiteProbeProcess" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <ProcessName ParameterType="System.String" Required="true" />
+      <IsRunning ParameterType="System.Boolean" Output="true" />
+      <ProbeError ParameterType="System.String" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.Diagnostics" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        ProbeError = "";
+        IsRunning = false;
+        try
+        {
+            var processes = Process.GetProcessesByName(ProcessName);
+            IsRunning = processes.Length > 0;
+            foreach (var process in processes) process.Dispose();
+        }
+        catch (Exception error) { ProbeError = error.Message; }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+  <PropertyGroup>
+    <PdmLiteInventorProcessName Condition="'$(PdmLiteInventorProcessName)' == ''">Inventor</PdmLiteInventorProcessName>
+  </PropertyGroup>
+  <!-- Управляемая проверка не зависит от оболочки и утилит find/tasklist в PATH. -->
   <Target Name="CheckInventorNotRunning" BeforeTargets="CopyFilesToOutputDirectory" Condition="'$(OS)' == 'Windows_NT' and '$(PdmLiteCheckInventorNotRunning)' != 'false'">
-    <Exec Command="tasklist /FI &quot;IMAGENAME eq Inventor.exe&quot; /NH | find /I &quot;Inventor.exe&quot; &gt; NUL"
-          IgnoreExitCode="true" StandardOutputImportance="low">
-      <Output TaskParameter="ExitCode" PropertyName="_InventorRunningExitCode" />
-    </Exec>
-    <Error Condition="'$(_InventorRunningExitCode)' == '0'"
+    <PdmLiteProbeProcess ProcessName="$(PdmLiteInventorProcessName)">
+      <Output TaskParameter="IsRunning" PropertyName="_InventorRunning" />
+      <Output TaskParameter="ProbeError" PropertyName="_InventorProbeError" />
+    </PdmLiteProbeProcess>
+    <Error Condition="'$(_InventorProbeError)' != ''" Text="Не удалось проверить запущенный Inventor: $(_InventorProbeError)" />
+    <Error Condition="'$(_InventorRunning)' == 'true'"
            Text="Inventor запущен и держит файлы плагина. Закройте Inventor и соберите снова (или запускайте его из Visual Studio по F5 после сборки)." />
   </Target>
-
 </Project>

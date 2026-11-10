@@ -44,6 +44,12 @@ jobs:
           & .\deploy\installer\test-uninstall.ps1
           & .\deploy\installer\test-update.ps1
           & .\deploy\installer\test-postgresql-options.ps1
+      - name: Test legacy PostgreSQL secrets, release hashes and process guard
+        shell: powershell
+        run: |
+          & .\deploy\installer\test-legacy-postgres.ps1
+          & .\deploy\installer\test-release-hashes.ps1
+          & .\build\test-inventor-check.ps1
       - name: Build installer bootstrapper
         run: dotnet build tools/PdmLite.Setup -c Release
       - name: Check installer scripts and compile online and offline recipes

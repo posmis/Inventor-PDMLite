@@ -75,7 +75,9 @@ foreach ($installerVariant in $variants) {
     & $IsccPath "/DPayloadDir=$payload" "/DOutputDir=$output" "/DVariant=$installerVariant" (Join-Path $PSScriptRoot 'installer\PdmLite.iss')
     if ($LASTEXITCODE -ne 0) { throw "Не удалось собрать установщик $installerVariant" }
 }
-$hashes = Get-ChildItem -LiteralPath $output -Filter 'PdmLite-Setup-0.1-*.exe' | Get-FileHash -Algorithm SHA256
-$hashes | ForEach-Object { '{0}  {1}' -f $_.Hash, [IO.Path]::GetFileName($_.Path) } | Set-Content -LiteralPath (Join-Path $output 'SHA256SUMS.txt') -Encoding ASCII
+. (Join-Path $PSScriptRoot 'installer\release-hashes.ps1')
+$hashes = @(Write-ReleaseHashes -OutputDirectory $output -Variants $variants)
+Write-Host 'Установщики текущего запуска:' -ForegroundColor Cyan
+$hashes | ForEach-Object { Write-Host $_.Path }
 Write-Host "Готово: $output" -ForegroundColor Green
 Start-Process explorer.exe -ArgumentList ('"{0}"' -f $output)

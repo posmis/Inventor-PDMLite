@@ -18,9 +18,9 @@
     powershell -ExecutionPolicy Bypass -File deploy\install-postgres.ps1
 #>
 param(
-    [string]$Database = "pdmlite",
-    [string]$User = "pdmlite",
-    [int]$Port = 5432
+    [ValidateNotNullOrEmpty()][string]$Database = "pdmlite",
+    [ValidateNotNullOrEmpty()][string]$User = "pdmlite",
+    [ValidateRange(1,65535)][int]$Port = 5432
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,70 +31,44 @@ function Find-Psql {
         Select-Object -First 1 -ExpandProperty FullName
 }
 
-$superSecure = Read-Host "Пароль администратора PostgreSQL (пользователь postgres)" -AsSecureString
-$super = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($superSecure))
-if ([string]::IsNullOrWhiteSpace($super)) { throw "Пароль администратора не может быть пустым." }
+. (Join-Path $PSScriptRoot 'installer\legacy-postgres-functions.ps1')
 
-# 1. Установка
-$psql = Find-Psql
-if (-not $psql) {
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        throw "Не найден winget. Установите PostgreSQL 16 вручную (https://www.postgresql.org/download/windows/), затем запустите скрипт снова."
+function Initialize-PdmPostgres([string]$Database, [string]$User, [int]$Port) {
+    $superSecure = $null
+    $super = $null
+    $userPassword = $null
+    $pointer = [IntPtr]::Zero
+    try {
+        $superSecure = Read-Host "Пароль администратора PostgreSQL (пользователь postgres)" -AsSecureString
+        try {
+            $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($superSecure)
+            $super = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer)
+        } finally {
+            if ($pointer -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer); $pointer = [IntPtr]::Zero }
+        }
+        if ([string]::IsNullOrWhiteSpace($super)) { throw 'Пароль администратора не может быть пустым.' }
+        $psql = Find-Psql
+        if (-not $psql) {
+            if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw 'Не найден winget. Установите PostgreSQL 16 вручную и запустите скрипт снова.' }
+            Install-PdmPostgresPackage $super $Port
+            $psql = Find-Psql
+            if (-not $psql) { throw 'Установка завершилась, но psql.exe не найден.' }
+        }
+        $userPassword = New-PdmDatabasePassword
+        $roleName = ConvertTo-PdmSqlIdentifier $User
+        $databaseName = ConvertTo-PdmSqlIdentifier $Database
+        $roleExists = Invoke-PdmSql $psql $Port $super ('SELECT 1 FROM pg_roles WHERE rolname = ' + (ConvertTo-PdmSqlLiteral $User))
+        if ($roleExists -eq '1') { throw "Роль $User уже существует. Используйте другое имя роли; её пароль не изменён." }
+        Invoke-PdmSql $psql $Port $super ('CREATE ROLE ' + $roleName + ' WITH LOGIN PASSWORD ' + (ConvertTo-PdmSqlLiteral $userPassword)) | Out-Null
+        $dbExists = Invoke-PdmSql $psql $Port $super ('SELECT 1 FROM pg_database WHERE datname = ' + (ConvertTo-PdmSqlLiteral $Database))
+        if ($dbExists -ne '1') { Invoke-PdmSql $psql $Port $super ('CREATE DATABASE ' + $databaseName + ' OWNER ' + $roleName + " ENCODING 'UTF8'") | Out-Null }
+        Save-PdmDatabaseSettings $Database $User $Port $userPassword
+        Write-Host "Готово: localhost:$Port / $Database / $User. Пароль приложения сохранён через DPAPI текущего пользователя." -ForegroundColor Green
+    } finally {
+        if ($superSecure) { $superSecure.Dispose() }
+        $super = $null
+        $userPassword = $null
     }
-    Write-Host "Установка PostgreSQL 16 (несколько минут)..." -ForegroundColor Cyan
-    $override = "--mode unattended --unattendedmodeui minimal --superpassword `"$super`" --serverport $Port --disable-components stackbuilder"
-    winget install --id PostgreSQL.PostgreSQL.16 --exact --silent --accept-source-agreements --accept-package-agreements --override $override
-    if ($LASTEXITCODE -ne 0) { throw "Установка PostgreSQL не удалась (код $LASTEXITCODE)." }
-    $psql = Find-Psql
-    if (-not $psql) { throw "PostgreSQL установлен, но psql.exe не найден в $env:ProgramFiles\PostgreSQL." }
-} else {
-    Write-Host "PostgreSQL уже установлен: $psql" -ForegroundColor Cyan
 }
 
-# 2. Пользователь и база
-$env:PGPASSWORD = $super
-function Invoke-Sql([string]$sql) {
-    $result = & $psql -h localhost -p $Port -U postgres -d postgres -v ON_ERROR_STOP=1 -tA -c $sql 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "Ошибка PostgreSQL: $result`nПроверьте пароль администратора и что служба PostgreSQL запущена."
-    }
-    return $result
-}
-
-$chars = [char[]]'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
-$userPassword = -join (1..24 | ForEach-Object { $chars | Get-Random })
-
-Write-Host "Создание пользователя и базы $Database..." -ForegroundColor Cyan
-$roleExists = Invoke-Sql ("SELECT 1 FROM pg_roles WHERE rolname = '{0}'" -f $User)
-if ($roleExists -eq "1") {
-    throw "Роль $User уже существует. Используйте другое имя роли; её пароль не изменён."
-} else {
-    Invoke-Sql ("CREATE ROLE ""{0}"" WITH LOGIN PASSWORD '{1}'" -f $User, $userPassword) | Out-Null
-}
-$dbExists = Invoke-Sql ("SELECT 1 FROM pg_database WHERE datname = '{0}'" -f $Database)
-if ($dbExists -ne "1") {
-    Invoke-Sql ("CREATE DATABASE ""{0}"" OWNER ""{1}"" ENCODING 'UTF8'" -f $Database, $User) | Out-Null
-}
-Remove-Item Env:PGPASSWORD
-
-# 3. Подключение для PdmLite (пароль — DPAPI текущего пользователя, как ConvertFrom-SecureString)
-$settingsDir = Join-Path $env:APPDATA "PdmLite"
-New-Item -ItemType Directory -Force -Path $settingsDir | Out-Null
-$protected = ConvertFrom-SecureString (ConvertTo-SecureString $userPassword -AsPlainText -Force)
-$settings = [ordered]@{
-    Host = "localhost"
-    Port = $Port
-    Database = $Database
-    Username = $User
-    ProtectedPassword = $protected
-}
-$json = $settings | ConvertTo-Json
-[System.IO.File]::WriteAllText((Join-Path $settingsDir "database.json"), $json, (New-Object System.Text.UTF8Encoding $false))
-
-Write-Host ""
-Write-Host "Готово." -ForegroundColor Green
-Write-Host "  Сервер:       localhost:$Port"
-Write-Host "  База:         $Database"
-Write-Host "  Пользователь: $User (пароль сохранён в $settingsDir\database.json, зашифрован)"
-Write-Host ""
-Write-Host "Проверка: PdmLite Explorer -> Сервис -> Настройки библиотеки -> Проверить подключение."
+if ($MyInvocation.InvocationName -ne '.') { Initialize-PdmPostgres $Database $User $Port }
