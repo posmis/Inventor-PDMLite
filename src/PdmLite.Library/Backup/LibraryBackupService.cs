@@ -1,4 +1,5 @@
 using PdmLite.Core.IO;
+using Npgsql;
 using System.Data;
 using System.IO.Compression;
 using System.Security.Cryptography;
@@ -79,6 +80,10 @@ public sealed class LibraryBackupService(
     internal Action<string, string> MoveDirectory { get; init; } = Directory.Move;
     internal Action<string> DeleteDirectory { get; init; } = path => Directory.Delete(path, recursive: true);
 
+    internal Func<string, PdmDbContext> CreateVerificationContext { get; init; } = connectionString =>
+        new PdmDbContext(new DbContextOptionsBuilder<PdmDbContext>().UseNpgsql(connectionString).UseSnakeCaseNamingConvention().Options);
+    internal TimeSpan VerificationTimeout { get; init; } = TimeSpan.FromSeconds(5);
+
     private const string ManifestEntry = "manifest.json";
     private const string DataEntry = "data/library.json";
     private const string FilesPrefix = "files/";
@@ -103,8 +108,11 @@ public sealed class LibraryBackupService(
     // ---------- Создание ----------
 
     /// <summary>Делает копию: база и все файлы библиотеки. Затем удаляет старые автоматические копии сверх лимита.</summary>
-    public async Task<BackupInfo> CreateAsync(BackupReason reason, IProgress<(int Done, int Total, string? Current)>? progress = null,
-        CancellationToken ct = default)
+    public Task<BackupInfo> CreateAsync(BackupReason reason, IProgress<(int Done, int Total, string? Current)>? progress = null,
+        CancellationToken ct = default) => CreateCoreAsync(reason, progress, ct, null);
+
+    private async Task<BackupInfo> CreateCoreAsync(BackupReason reason, IProgress<(int Done, int Total, string? Current)>? progress,
+        CancellationToken ct, Action<string>? reserve)
     {
         var opts = options();
         Directory.CreateDirectory(opts.Folder);
@@ -122,6 +130,7 @@ public sealed class LibraryBackupService(
         var now = DateTime.Now;
         var name = $"PdmLite-Library_{now:yyyy-MM-dd_HH-mm-ss}_{ReasonText(reason).Replace(' ', '-')}_{Guid.NewGuid():N}";
         var path = Path.Combine(opts.Folder, name + ".zip");
+        reserve?.Invoke(path); // Защита safety-копии действует до её появления и до первого Prune.
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".part";
         long size = 0;
         var checksums = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -211,8 +220,26 @@ public sealed class LibraryBackupService(
     /// <summary>Удаляет автоматические копии сверх лимита (ручные не трогает). Возвращает число удалённых.</summary>
     public int Prune()
     {
+        // Защищаем копию текущего состояния, а не исходный архив: тот уже закреплён частной копией.
+        string? protectedBackup = null;
+        var recoveryPath = Path.TrimEndingDirectorySeparator(storageFactory().Root) + ".restore-recovery.json";
+        if (File.Exists(recoveryPath))
+        {
+            try
+            {
+                using var file = new FileStream(recoveryPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var journal = JsonDocument.Parse(file);
+                protectedBackup = journal.RootElement.GetProperty("backup").GetString();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or KeyNotFoundException or InvalidOperationException)
+            {
+                logger.LogWarning(ex, "Не удалось прочитать журнал восстановления; очистка копий пропущена");
+                return 0;
+            }
+        }
         var keep = Math.Max(1, options().Keep);
-        var extra = List().Where(b => b.IsAutomatic).Skip(keep).ToList();
+        var extra = List().Where(b => b.IsAutomatic).Skip(keep)
+            .Where(b => !string.Equals(b.Path, protectedBackup, StringComparison.OrdinalIgnoreCase)).ToList();
         foreach (var backup in extra)
             TryDeleteFile(backup.Path);
         return extra.Count;
@@ -297,19 +324,25 @@ public sealed class LibraryBackupService(
     private async Task<BackupInfo> RestorePinnedAsync(string path, string originalPath,
         IProgress<(int Done, int Total, string? Current)>? progress, CancellationToken ct)
     {
-        var plan = await PlanRestoreAsync(path, ct).ConfigureAwait(false);
-        if (plan.IsDamaged)
-            throw new InvalidDataException("Копия повреждена: " + string.Join("; ", plan.MissingFiles.Take(5)) + ".");
-
-        var before = await CreateAsync(BackupReason.BeforeRestore, progress, ct).ConfigureAwait(false);
-        var (snapshot, _) = ReadArchive(path);
-
-        var storage = storageFactory();
-        var root = storage.Root;
+        var root = Path.TrimEndingDirectorySeparator(storageFactory().Root);
         var stamp = Guid.NewGuid().ToString("N");
         var staging = root + ".restore-" + stamp;
         var previous = root + ".before-restore-" + stamp;
         var failed = root + ".failed-restore-" + stamp;
+        using var recovery = new RestoreRecoveryJournal(root, stamp, previous,
+            ex => logger.LogError(ex, "Не удалось обновить журнал восстановления {Root}", root));
+        var plan = await PlanRestoreAsync(path, ct).ConfigureAwait(false);
+        if (plan.IsDamaged)
+            throw new InvalidDataException("Копия повреждена: " + string.Join("; ", plan.MissingFiles.Take(5)) + ".");
+
+        var gatedConnectionString = database.Settings.BuildConnectionString();
+        recovery.SetTarget(gatedConnectionString);
+        await using var databaseGate = await RestoreDatabaseGate.EnterAsync(gatedConnectionString, VerificationTimeout,
+            ex => logger.LogWarning(ex, "Не удалось освободить блокировку восстановления"), ct).ConfigureAwait(false);
+        var before = await CreateCoreAsync(BackupReason.BeforeRestore, progress, ct, recovery.SetBackup).ConfigureAwait(false);
+        var (snapshot, _) = ReadArchive(path);
+        var marker = JsonSerializer.Serialize(new { operationId = stamp, backup = Path.GetFileName(originalPath), items = snapshot.Items.Count });
+        var operation = new RestoreDatabaseAttempt(BitConverter.ToInt64(Guid.ParseExact(stamp, "N").ToByteArray(), 0), marker, gatedConnectionString);
 
         // 1. Файлы — во временную папку рядом с библиотекой (тот же диск: подмена — переименованием).
         try
@@ -341,20 +374,50 @@ public sealed class LibraryBackupService(
         {
             MoveDirectory(staging, root);
             staged = true;
-            await ReplaceDatabaseAsync(snapshot, Path.GetFileName(originalPath), ct).ConfigureAwait(false);
+            await ReplaceDatabaseAsync(snapshot, operation, ct).ConfigureAwait(false);
+            await databaseGate.EnsureHeldAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            var rollbackErrors = RestoreRollback.Run(root, previous, failed, hadRoot, staged, MoveDirectory);
-            // Очистка больше не является условием возврата исходных файлов.
-            // При неполном откате не трогаем ни одну из аварийных папок.
-            if (rollbackErrors.Count == 0)
-                TryDeleteFolder(staged ? failed : staging);
-            var failure = new LibraryRestoreException(ex, rollbackErrors, root, previous,
-                staged ? failed : staging, before.Path);
-            if (!failure.RollbackCompleted)
-                logger.LogCritical(failure, "Откат восстановления библиотеки не завершён; исходные данные: {Previous}; копия: {Backup}", previous, before.Path);
-            throw failure;
+            var outcome = RestoreDatabaseOutcome.NotCommitted;
+            Exception? verificationError = null;
+            if (operation.CommitStarted)
+            {
+                try
+                {
+                    await databaseGate.EnsureHeldAsync().ConfigureAwait(false);
+                    (outcome, verificationError) = await VerifyRestoreCommitAsync(operation.LockKey, marker, operation.ConnectionString).ConfigureAwait(false);
+                    await databaseGate.EnsureHeldAsync().ConfigureAwait(false);
+                }
+                catch (Exception gateError) { outcome = RestoreDatabaseOutcome.Unknown; verificationError = gateError; }
+            }
+            if (outcome == RestoreDatabaseOutcome.Committed)
+            {
+                logger.LogWarning(ex, "Фиксация восстановления {Operation} подтверждена повторной проверкой БД", stamp);
+                // Восстановленные файлы соответствуют подтверждённой БД. Файловый откат запрещён.
+            }
+            else if (outcome == RestoreDatabaseOutcome.Unknown)
+            {
+                recovery.Preserve("CommitUnknown");
+                var unknown = new LibraryRestoreException(ex, [], root, previous, root, before.Path,
+                    outcome, false, verificationError, recovery.Path);
+                logger.LogCritical(unknown, "Результат фиксации восстановления {Operation} неизвестен; обе папки сохранены", stamp);
+                throw unknown;
+            }
+            else
+            {
+                var rollbackErrors = RestoreRollback.Run(root, previous, failed, hadRoot, staged, MoveDirectory);
+                // Очистка больше не является условием возврата исходных файлов.
+                // При неполном откате не трогаем ни одну из аварийных папок.
+                if (rollbackErrors.Count == 0)
+                    TryDeleteFolder(staged ? failed : staging);
+                if (rollbackErrors.Count > 0) recovery.Preserve("RollbackIncomplete");
+                var failure = new LibraryRestoreException(ex, rollbackErrors, root, previous,
+                    staged ? failed : staging, before.Path, recoveryJournal: recovery.Path);
+                if (!failure.RollbackCompleted)
+                    logger.LogCritical(failure, "Откат восстановления библиотеки не завершён; исходные данные: {Previous}; копия: {Backup}", previous, before.Path);
+                throw failure;
+            }
         }
 
         if (hadRoot)
@@ -390,9 +453,14 @@ public sealed class LibraryBackupService(
     }
 
     /// <summary>Заменяет все таблицы библиотеки данными копии; счётчики Id — после наибольших.</summary>
-    private async Task ReplaceDatabaseAsync(LibrarySnapshot snapshot, string backupName, CancellationToken ct)
+    private async Task ReplaceDatabaseAsync(LibrarySnapshot snapshot, RestoreDatabaseAttempt operation, CancellationToken ct)
     {
         await using var db = database.CreateContext();
+        operation.ConnectionString = db.Database.GetConnectionString() ?? throw new InvalidOperationException("Нет подключения для проверки фиксации.");
+        var actual = new NpgsqlConnectionStringBuilder(operation.ConnectionString);
+        var gated = new NpgsqlConnectionStringBuilder(operation.GatedConnectionString);
+        if (actual.Host != gated.Host || actual.Port != gated.Port || actual.Database != gated.Database)
+            throw new InvalidOperationException("Настройки БД изменились во время восстановления. Повторите после завершения изменения настроек.");
         var tables = new[]
         {
             typeof(LibraryItemReference), typeof(LibraryItemProperty), typeof(LibraryItemVersion), typeof(LibraryItem),
@@ -400,6 +468,7 @@ public sealed class LibraryBackupService(
         }.Select(t => Table(db, t)).ToList();
 
         await using var tx = await db.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
+        await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", [operation.LockKey], ct).ConfigureAwait(false);
         // Имена таблиц — из модели EF (не ввод пользователя) и экранированы как идентификаторы:
         // идентификаторы в SQL нельзя передать параметрами.
         var truncate = "TRUNCATE " + string.Join(", ", tables) + " RESTART IDENTITY";
@@ -429,10 +498,36 @@ public sealed class LibraryBackupService(
             At = DateTime.UtcNow,
             User = Environment.UserName,
             Action = "restore",
-            Details = JsonSerializer.Serialize(new { backup = backupName, items = snapshot.Items.Count }),
+            Details = operation.Marker,
         });
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
+        operation.CommitStarted = true;
         await tx.CommitAsync(ct).ConfigureAwait(false);
+    }
+
+    private sealed class RestoreDatabaseAttempt(long lockKey, string marker, string gatedConnectionString)
+    {
+        public long LockKey { get; } = lockKey;
+        public string Marker { get; } = marker;
+        public string GatedConnectionString { get; } = gatedConnectionString;
+        public bool CommitStarted { get; set; }
+        public string? ConnectionString { get; set; }
+    }
+
+    internal async Task<(RestoreDatabaseOutcome Outcome, Exception? Error)> VerifyRestoreCommitAsync(long lockKey, string marker, string? connectionString = null)
+    {
+        // Отмена пользователем не отменяет проверку уже отправленного COMMIT.
+        using var timeout = new CancellationTokenSource(VerificationTimeout);
+        try
+        {
+            await using var db = CreateVerificationContext(connectionString ?? database.Settings.BuildConnectionString());
+            await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, timeout.Token).ConfigureAwait(false);
+            // Отсутствие маркера проверяется только после завершения исходной транзакции.
+            await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock({0})", [lockKey], timeout.Token).ConfigureAwait(false);
+            var committed = await db.LibraryLog.AsNoTracking().AnyAsync(l => l.Action == "restore" && l.Details == marker, timeout.Token).ConfigureAwait(false);
+            return (committed ? RestoreDatabaseOutcome.Committed : RestoreDatabaseOutcome.NotCommitted, null);
+        }
+        catch (Exception ex) { return (RestoreDatabaseOutcome.Unknown, ex); }
     }
 
     /// <summary>Таблица сущности как идентификатор SQL: «"схема"."таблица"».</summary>
