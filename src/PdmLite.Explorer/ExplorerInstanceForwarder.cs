@@ -4,10 +4,10 @@ namespace PdmLite.Explorer;
 
 internal static class ExplorerInstanceForwarder
 {
-    public static async Task<bool> ForwardAsync(StartupArgs args, string endpoint = LinkEndpoints.Explorer, CancellationToken ct = default)
+    public static async Task<bool> ForwardAsync(StartupArgs args, string endpoint = LinkEndpoints.Explorer, CancellationToken ct = default, TimeSpan? connectTimeout = null)
     {
         await using var client = new LinkClient(endpoint);
-        if (!await client.TryConnectAsync(TimeSpan.FromMilliseconds(300), ct)) return false;
+        if (!await client.TryConnectAsync(connectTimeout ?? TimeSpan.FromMilliseconds(300), ct)) return false;
         try
         {
             await LinkHandshake.VerifyAsync(client, "PdmLite.Explorer", ct);

@@ -12,6 +12,9 @@ namespace PdmLite.Core.Tests;
 
 public sealed class LinkCompatibilityTests
 {
+    // Проверяем протокол, а не скорость планирования фонового сервера на CI.
+    private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(5);
+
     private static string Endpoint() => "Compat" + Guid.NewGuid().ToString("N");
 
     [Theory]
@@ -52,14 +55,46 @@ public sealed class LinkCompatibilityTests
     [InlineData("none")]
     public async Task ExplorerForwarder_IncompatibleInstance_DoesNotForwardOrFallBackToNewProcess(string mode)
     {
-        var endpoint = Endpoint(); await using var server = new LinkServer(endpoint); var calls = 0;
-        server.Handle(LinkProtocol.Requests.Ping, (_, _) => Task.FromResult<object?>(new PingResult("PdmLite.Explorer", "old", 2)));
+        var endpoint = Endpoint(); await using var server = new LinkServer(endpoint); var calls = 0; var pings = 0;
+        server.Handle(LinkProtocol.Requests.Ping, (_, _) => { Interlocked.Increment(ref pings); return Task.FromResult<object?>(new PingResult("PdmLite.Explorer", "old", 2)); });
         server.Handle(LinkProtocol.Requests.OpenProject, (_, _) => { Interlocked.Increment(ref calls); return Task.FromResult<object?>(null); });
         server.Handle(LinkProtocol.Requests.RevealDocument, (_, _) => { Interlocked.Increment(ref calls); return Task.FromResult<object?>(null); });
         server.Start();
         var args = new StartupArgs(mode == "none" ? null : "project.ipj", mode == "reveal" ? "part.ipt" : null);
-        await Assert.ThrowsAsync<LinkCompatibilityException>(() => ExplorerInstanceForwarder.ForwardAsync(args, endpoint));
+        await Assert.ThrowsAsync<LinkCompatibilityException>(() => ExplorerInstanceForwarder.ForwardAsync(args, endpoint, connectTimeout: ConnectTimeout));
+        Assert.Equal(1, pings);
         Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public async Task ExplorerForwarder_ListenerStartsAfterClient_StillRejectsMismatch()
+    {
+        var endpoint = Endpoint();
+        await using var server = new LinkServer(endpoint);
+        var commands = 0;
+        server.Handle(LinkProtocol.Requests.Ping, (_, _) => Task.FromResult<object?>(new PingResult("PdmLite.Explorer", "old", 2)));
+        server.Handle(LinkProtocol.Requests.OpenProject, (_, _) => { Interlocked.Increment(ref commands); return Task.FromResult<object?>(null); });
+        // Подключение начинается до создания канала: готовность сервера не предполагается.
+        var forwarding = ExplorerInstanceForwarder.ForwardAsync(new("project.ipj", null), endpoint, connectTimeout: ConnectTimeout);
+        server.Start();
+        await Assert.ThrowsAsync<LinkCompatibilityException>(() => forwarding);
+        Assert.Equal(0, commands);
+    }
+
+    [Fact]
+    public async Task ExplorerForwarder_AbsentInstance_ReturnsFalseWhenConnectionBudgetExpires()
+    {
+        Assert.False(await ExplorerInstanceForwarder.ForwardAsync(new("project.ipj", null), Endpoint(),
+            connectTimeout: TimeSpan.FromMilliseconds(20)));
+    }
+
+    [Fact]
+    public async Task ExplorerForwarder_CancelledConnection_DoesNotBecomeFallback()
+    {
+        using var stop = new CancellationTokenSource();
+        stop.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ExplorerInstanceForwarder.ForwardAsync(
+            new("project.ipj", null), Endpoint(), stop.Token, ConnectTimeout));
     }
 
     [Fact]
@@ -69,7 +104,7 @@ public sealed class LinkCompatibilityTests
         server.Handle(LinkProtocol.Requests.Ping, (_, _) => Task.FromResult<object?>(new PingResult("PdmLite.Explorer", "old", 2)));
         server.Handle(LinkProtocol.Requests.RevealDocument, (_, _) => { Interlocked.Increment(ref calls); return Task.FromResult<object?>(null); });
         server.Start();
-        var launcher = new ExplorerLauncher(NullLogger<ExplorerLauncher>.Instance, endpoint);
+        var launcher = new ExplorerLauncher(NullLogger<ExplorerLauncher>.Instance, endpoint, ConnectTimeout);
         await Assert.ThrowsAsync<LinkCompatibilityException>(() => launcher.RevealAsync("part.ipt", "project.ipj"));
         Assert.Equal(0, calls);
     }
@@ -83,7 +118,7 @@ public sealed class LinkCompatibilityTests
         server.Handle(LinkProtocol.Requests.Ping, (_, _) => { calls.Enqueue("ping"); return Task.FromResult<object?>(new PingResult("PdmLite.Explorer", "0.1", 1)); });
         var command = reveal ? LinkProtocol.Requests.RevealDocument : LinkProtocol.Requests.OpenProject;
         server.Handle(command, (_, _) => { calls.Enqueue(command); return Task.FromResult<object?>(null); }); server.Start();
-        Assert.True(await ExplorerInstanceForwarder.ForwardAsync(new("project.ipj", reveal ? "part.ipt" : null), endpoint));
+        Assert.True(await ExplorerInstanceForwarder.ForwardAsync(new("project.ipj", reveal ? "part.ipt" : null), endpoint, connectTimeout: ConnectTimeout));
         Assert.Equal(["ping", command], calls);
     }
 

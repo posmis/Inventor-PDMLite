@@ -14,13 +14,19 @@ public sealed class ExplorerLauncher(ILogger<ExplorerLauncher> logger)
     public const string ExeName = "PdmLite.Explorer.exe";
     private readonly string _endpoint = LinkEndpoints.Explorer;
 
-    internal ExplorerLauncher(ILogger<ExplorerLauncher> logger, string endpoint) : this(logger) => _endpoint = endpoint;
+    private readonly TimeSpan _connectTimeout = TimeSpan.FromMilliseconds(300);
+
+    internal ExplorerLauncher(ILogger<ExplorerLauncher> logger, string endpoint, TimeSpan? connectTimeout = null) : this(logger)
+    {
+        _endpoint = endpoint;
+        _connectTimeout = connectTimeout ?? TimeSpan.FromMilliseconds(300);
+    }
 
     public async Task RevealAsync(string? documentPath, string? projectPath)
     {
         await using (var client = new LinkClient(_endpoint))
         {
-            if (await client.TryConnectAsync(TimeSpan.FromMilliseconds(300)))
+            if (await client.TryConnectAsync(_connectTimeout))
             {
                 await LinkHandshake.VerifyAsync(client, "PdmLite.Explorer");
                 if (documentPath is not null)
