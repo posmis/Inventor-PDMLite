@@ -117,6 +117,12 @@ internal sealed class Collector
                     log($"    {(here ? "+" : "-")} {dependency.Name}{(here ? "" : "  (нет в папке)")}");
                 }
             }
+            catch (IncompleteReferencesException ex)
+            {
+                result = ex.References;
+                warnings.Add($"{file.Name}: состав прочитан не полностью — {ex.Message}");
+                log(warnings[^1]);
+            }
             catch (Exception ex)
             {
                 warnings.Add($"{file.Name}: зависимости не прочитаны — {ex.Message}");

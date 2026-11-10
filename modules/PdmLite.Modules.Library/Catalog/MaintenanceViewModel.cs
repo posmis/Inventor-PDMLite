@@ -195,7 +195,8 @@ public sealed partial class MaintenanceViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanCheck))]
     private Task FindDuplicatesAsync() => RunAsync("Поиск дубликатов", async (_, ct) =>
     {
-        var groups = await _service.FindDuplicatesAsync(_catalog, ct);
+        var groups = await Task.Run(() => _service.FindDuplicatesAsync(_catalog, ct), ct);
+        ct.ThrowIfCancellationRequested();
         DuplicateRows.Clear();
         _groups.Clear();
         foreach (var group in groups)

@@ -567,19 +567,23 @@ public sealed class LibraryItemService(
         }
 
         foreach (var group in items.GroupBy(i => LooseKey(i.Designation)).Where(g => g.Key.Length > 0))
+        {
+            ct.ThrowIfCancellationRequested();
             Join(group, "обозначения отличаются только пробелами, знаками или регистром");
+        }
         var byHash = items.SelectMany(i => new[] { i.FileHash, i.SourceHash }.OfType<string>().Distinct().Select(h => (Hash: h, Item: i)))
             .GroupBy(x => x.Hash);
         foreach (var group in byHash)
+        {
+            ct.ThrowIfCancellationRequested();
             Join(group.Select(x => x.Item).DistinctBy(i => i.Id), "одинаковый файл");
+        }
 
         const string sameShape = "одинаковая геометрия (объём и площадь поверхности)";
-        var shaped = items.Where(i => LibraryGeometry.Known(i.Volume, i.Area)).ToList();
-        for (var a = 0; a < shaped.Count; a++)
-            for (var b = a + 1; b < shaped.Count; b++)
-                if (shaped[a].DocumentType == shaped[b].DocumentType
-                    && LibraryGeometry.Same(shaped[a].Volume, shaped[a].Area, shaped[b].Volume, shaped[b].Area))
-                    Join([shaped[a], shaped[b]], sameShape);
+        foreach (var (first, second) in LibraryGeometry.MatchingPairs(
+                     items.Select(i => (i, (int)i.DocumentType, i.Volume, i.Area)), ct))
+            Join([first, second], sameShape);
+        ct.ThrowIfCancellationRequested();
 
         return items.Where(i => reasons.ContainsKey(i.Id))
             .GroupBy(i => Root(i.Id))

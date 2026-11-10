@@ -218,62 +218,11 @@ internal sealed class Apprentice : IDisposable, IReferenceReader
     /// </summary>
     public IReadOnlyList<DocumentReference> Read(string path)
     {
-        var result = new List<DocumentReference>();
         dynamic? document = null;
         try
         {
             document = _server!.Open(path);
-            Console.WriteLine($"    [Apprentice] открыт: тип {Get(() => Convert.ToString(document.DocumentType))}");
-
-            // Способ 1: ссылки файла (есть и у потерянных ссылок).
-            int count = 0;
-            try
-            {
-                dynamic descriptors = document.File.ReferencedFileDescriptors;
-                count = descriptors.Count;
-                Console.WriteLine($"    [Apprentice] File.ReferencedFileDescriptors: {count}");
-                // Явный тип: с dynamic-аргументами результат тоже был бы dynamic, а у него нет имён полей кортежа.
-                List<(int Index, object Value)> descriptorItems = Items(descriptors, count);
-                foreach (var item in descriptorItems)
-                {
-                    dynamic descriptor = item.Value;
-                    var i = item.Index;
-                    var full = Get(() => (string?)descriptor.FullFileName);
-                    var relative = Get(() => (string?)descriptor.RelativeFileName);
-                    var logical = Get(() => (string?)descriptor.LogicalFileName);
-                    var missing = Get(() => Convert.ToString(descriptor.ReferenceMissing));
-                    Console.WriteLine($"      #{i}: полный «{full}», относительный «{relative}», логический «{logical}», потерян: {missing}");
-                    Add(result, full, relative, logical);
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"    [Apprentice] File.ReferencedFileDescriptors — ошибка: {ex.GetType().Name}: {ex.Message}");
-            }
-
-            // Способ 2 (если первый ничего не дал): найденные документы, на которые ссылается этот.
-            if (result.Count == 0)
-            {
-                try
-                {
-                    dynamic documents = document.ReferencedDocuments;
-                    int found = documents.Count;
-                    Console.WriteLine($"    [Apprentice] ReferencedDocuments: {found}");
-                    List<(int Index, object Value)> documentItems = Items(documents, found);
-                    foreach (var item in documentItems)
-                    {
-                        dynamic referenced = item.Value;
-                        var i = item.Index;
-                        var full = Get(() => (string?)referenced.FullFileName);
-                        Console.WriteLine($"      документ #{i}: «{full}»");
-                        Add(result, full, null, null);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"    [Apprentice] ReferencedDocuments — ошибка: {ex.GetType().Name}: {ex.Message}");
-                }
-            }
+            return DocumentReferences.Read((object)document);
         }
         finally
         {
@@ -288,70 +237,6 @@ internal sealed class Apprentice : IDisposable, IReferenceReader
                 }
                 Marshal.ReleaseComObject(document);
             }
-        }
-        return result;
-    }
-
-    /// <summary>
-    /// Элементы коллекции Inventor: по номеру (индексатор), через Item(i) или перебором — что сработает.
-    /// Каждый неудавшийся способ пишется в журнал.
-    /// </summary>
-    private static List<(int Index, object Value)> Items(dynamic collection, int count)
-    {
-        var result = new List<(int, object)>();
-        foreach (var (name, read) in new (string, Func<int, object>)[]
-                 {
-                     ("индексатор", i => collection[i]),
-                     ("Item(i)", i => collection.Item(i)),
-                 })
-        {
-            try
-            {
-                result.Clear();
-                for (var i = 1; i <= count; i++)
-                    result.Add((i, read(i)));
-                return result;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"    [Apprentice] перебор «{name}» не сработал: {ex.GetType().Name}: {ex.Message}");
-            }
-        }
-
-        try
-        {
-            result.Clear();
-            var index = 0;
-            foreach (var value in (System.Collections.IEnumerable)collection)
-                result.Add((++index, value));
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"    [Apprentice] перебор «foreach» не сработал: {ex.GetType().Name}: {ex.Message}");
-        }
-        return result;
-    }
-
-    /// <summary>Имя ссылки — из первого непустого поля (у потерянной ссылки полного пути может не быть).</summary>
-    private static void Add(List<DocumentReference> result, string? full, string? relative, string? logical)
-    {
-        var name = new[] { full, relative, logical }
-            .Where(v => !string.IsNullOrWhiteSpace(v))
-            .Select(v => Path.GetFileName(v!.TrimEnd('\\', '/')))
-            .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
-        if (name is not null && !result.Any(r => r.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
-            result.Add(new DocumentReference(name, string.IsNullOrWhiteSpace(full) ? null : full));
-    }
-
-    private static string? Get(Func<string?> read)
-    {
-        try
-        {
-            return read();
-        }
-        catch (Exception ex) when (ex is COMException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
-        {
-            return null;
         }
     }
 

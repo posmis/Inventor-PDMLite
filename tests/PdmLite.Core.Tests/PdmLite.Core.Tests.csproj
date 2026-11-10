@@ -25,6 +25,8 @@
 
   <!-- Логика отдельной утилиты сбора файлов (без Inventor и окон) — для тестов. -->
   <ItemGroup>
+    <Compile Include="../../tools/CollectComponents/DocumentReferences.cs" Link="CollectComponents/DocumentReferences.cs" />
+    <Compile Include="../../tools/ShortenNames/ProjectFiles.cs" Link="ShortenNames/ProjectFiles.cs" />
     <Compile Include="..\..\tools\CollectComponents\Collector.cs" Link="CollectComponents\Collector.cs" />
     <Compile Include="..\..\tools\ShortenNames\Shortener.cs" Link="ShortenNames\Shortener.cs" />
     <Compile Include="..\..\tools\ShortenNames\Relinker.cs" Link="ShortenNames\Relinker.cs" />

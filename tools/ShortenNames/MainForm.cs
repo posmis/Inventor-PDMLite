@@ -139,7 +139,8 @@ internal sealed class MainForm : Form
             MessageBox.Show(this, "Выберите существующую папку.", Caption, MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
-        var files = Directory.EnumerateFiles(Root, "*", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true });
+        var scan = ProjectFiles.Scan(Root);
+        var files = scan.Files;
         _changes = Shortener.Plan(Root, files, (int)_maxPath.Value, (int)_maxName.Value);
         _grid.Rows.Clear();
         foreach (var change in _changes)
@@ -160,6 +161,13 @@ internal sealed class MainForm : Form
         _status.Text = _changes.Count == 0
             ? "Длинных имён нет."
             : $"Длинных имён: {_changes.Count}. Проверьте «Станет» и нажмите «Переименовать…».";
+        if (scan.Warnings.Count > 0)
+        {
+            _status.Text = $"Проверка неполная: пропущено путей {scan.Warnings.Count}. Найдено длинных имён: {_changes.Count}.";
+            foreach (var warning in scan.Warnings) Program.Log(warning);
+            MessageBox.Show(this, _status.Text + "\n\n" + string.Join("\n", scan.Warnings.Take(20))
+                + "\n\nПолный список — в журнале утилиты.", Caption, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
         Program.Log($"Поиск в {Root}: путь ≤ {_maxPath.Value}, имя ≤ {_maxName.Value}; найдено {_changes.Count}");
     }
 
